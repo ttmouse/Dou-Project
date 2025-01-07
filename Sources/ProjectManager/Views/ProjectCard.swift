@@ -1,15 +1,26 @@
 import SwiftUI
 
 // MARK: - 辅助函数
-private func openInVSCode(path: String) {
+private func openInCursor(path: String) {
     let task = Process()
-    task.executableURL = URL(fileURLWithPath: "/usr/local/bin/code")
+    task.executableURL = URL(fileURLWithPath: "/usr/local/bin/cursor")
     task.arguments = [path]
     
     do {
         try task.run()
     } catch {
-        print("Error opening VS Code: \(error)")
+        print("Error opening Cursor: \(error)")
+        
+        // 如果直接打开失败，尝试使用 open 命令
+        let openTask = Process()
+        openTask.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        openTask.arguments = ["-a", "Cursor", path]
+        
+        do {
+            try openTask.run()
+        } catch {
+            print("Error using open command: \(error)")
+        }
     }
 }
 
@@ -28,13 +39,13 @@ struct ProjectCard: View {
                 Spacer()
                 
                 Button(action: {
-                    openInVSCode(path: project.path)
+                    openInCursor(path: project.path)
                 }) {
                     Image(systemName: "chevron.right.circle")
                         .foregroundColor(.blue)
                 }
                 .buttonStyle(.plain)
-                .help("在 VS Code 中打开")
+                .help("在 Cursor 中打开")
             }
             
             // 项目路径
@@ -70,7 +81,7 @@ struct ProjectCard: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            openInVSCode(path: project.path)
+            openInCursor(path: project.path)
         }
     }
 }
