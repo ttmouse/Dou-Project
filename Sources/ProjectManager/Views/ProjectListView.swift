@@ -3,12 +3,11 @@ import SwiftUI
 struct ProjectListView: View {
     @State private var searchText = ""
     @State private var selectedTags: Set<String> = []
-    @State private var projects: [Project] = []
     @EnvironmentObject var tagManager: TagManager
     
     // 分步过滤
     private var filteredProjects: [Project] {
-        var result = projects
+        var result = Array(tagManager.projects.values)
         
         // 搜索过滤
         if !searchText.isEmpty {
@@ -17,16 +16,12 @@ struct ProjectListView: View {
         
         // 标签过滤
         if !selectedTags.isEmpty {
-            print("选中的标签: \(selectedTags)")
             result = result.filter { project in
-                print("检查项目 '\(project.name)' 的标签: \(project.tags)")
-                let hasTag = !selectedTags.isDisjoint(with: project.tags)
-                print("项目 '\(project.name)' \(hasTag ? "包含" : "不包含")选中的标签")
-                return hasTag
+                !selectedTags.isDisjoint(with: project.tags)
             }
         }
         
-        return result
+        return result.sorted { $0.lastModified > $1.lastModified }
     }
     
     var body: some View {
@@ -35,40 +30,38 @@ struct ProjectListView: View {
             VStack(spacing: 0) {
                 // 标签列表
                 List {
-                    Section {
-                        if !selectedTags.isEmpty {
-                            HStack {
-                                Spacer()
-                                Button("清除筛选") {
-                                    print("清除标签筛选")
-                                    selectedTags.removeAll()
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundColor(.blue)
-                            }
-                        }
-                        
-                        ForEach(Array(tagManager.allTags).sorted(), id: \.self) { tag in
-                            TagRow(
-                                tag: tag,
-                                isSelected: selectedTags.contains(tag),
-                                count: tagManager.getUsageCount(for: tag),
-                                action: {
-                                    print("点击标签: \(tag)")
-                                    if selectedTags.contains(tag) {
-                                        print("移除标签: \(tag)")
-                                        selectedTags.remove(tag)
-                                    } else {
-                                        print("选择标签: \(tag)")
-                                        selectedTags = [tag]
-                                    }
-                                    print("当前选中的标签: \(selectedTags)")
-                                },
-                                tagManager: tagManager
-                            )
-                        }
-                    } header: {
+                    HStack {
                         Text("标签")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Button("清除筛选") {
+                            selectedTags.removeAll()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(selectedTags.isEmpty ? .secondary : .blue)
+                        .disabled(selectedTags.isEmpty)
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    
+                    ForEach(Array(tagManager.allTags).sorted(), id: \.self) { tag in
+                        TagRow(
+                            tag: tag,
+                            isSelected: selectedTags.contains(tag),
+                            count: tagManager.getUsageCount(for: tag),
+                            action: {
+                                if selectedTags.contains(tag) {
+                                    selectedTags.remove(tag)
+                                } else {
+                                    selectedTags = [tag]
+                                }
+                            },
+                            tagManager: tagManager
+                        )
                     }
                 }
             }
@@ -121,15 +114,12 @@ struct ProjectListView: View {
     }
     
     private func loadProjects() {
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
+        DispatchQueue.global(qos: .userInitiated).async {
             let baseDir = "/Users/douba/Downloads/GPT插件/"
             let loadedProjects = Project.loadProjects(from: baseDir)
             
-            DispatchQueue.main.async { [self] in
-                print("加载项目数量: \(loadedProjects.count)")
-                projects = loadedProjects
-                projects.forEach { project in
-                    print("注册项目: \(project.name), 标签: \(project.tags)")
+            DispatchQueue.main.async {
+                loadedProjects.forEach { project in
                     tagManager.registerProject(project)
                 }
             }
