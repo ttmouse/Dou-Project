@@ -14,24 +14,61 @@ struct Project: Identifiable, Equatable {
         self.path = path
         self.lastModified = lastModified
         self.tags = tags
+        saveTags() // 初始化时保存标签
     }
     
     mutating func addTag(_ tag: String) {
+        print("添加标签到项目 '\(name)': \(tag)")
+        print("原有标签: \(tags)")
         tags.insert(tag)
+        print("更新后标签: \(tags)")
+        saveTags()
     }
     
     mutating func removeTag(_ tag: String) {
+        print("从项目 '\(name)' 移除标签: \(tag)")
+        print("原有标签: \(tags)")
         tags.remove(tag)
+        print("更新后标签: \(tags)")
+        saveTags()
     }
     
     func copyWith(tags newTags: Set<String>) -> Project {
-        Project(
+        let project = Project(
             id: self.id,
             name: self.name,
             path: self.path,
             lastModified: self.lastModified,
             tags: newTags
         )
+        return project // 初始化时已经保存标签
+    }
+    
+    // 保存标签到项目目录
+    private func saveTags() {
+        print("保存标签到文件: \(tags)")
+        let tagsFile = "\(path)/.project-tags.json"
+        do {
+            let data = try JSONEncoder().encode(Array(tags))
+            try data.write(to: URL(fileURLWithPath: tagsFile))
+            print("标签保存成功")
+        } catch {
+            print("保存标签失败: \(error)")
+        }
+    }
+    
+    // 从项目目录加载标签
+    private static func loadTags(from path: String) -> Set<String> {
+        let tagsFile = "\(path)/.project-tags.json"
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: tagsFile))
+            let tags = try JSONDecoder().decode([String].self, from: data)
+            print("从文件加载标签: \(tags)")
+            return Set(tags)
+        } catch {
+            print("加载标签失败: \(error)")
+            return []
+        }
     }
     
     private var projectType: ProjectType {
@@ -67,6 +104,7 @@ struct Project: Identifiable, Equatable {
     }
     
     static func loadProjects(from directory: String) -> [Project] {
+        print("开始加载项目目录: \(directory)")
         let fileManager = FileManager.default
         let directoryURL = URL(fileURLWithPath: directory)
         
@@ -74,23 +112,31 @@ struct Project: Identifiable, Equatable {
             at: directoryURL,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
-        ) else { return [] }
+        ) else {
+            print("读取目录失败")
+            return []
+        }
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         
-        return contents
+        let projects = contents
             .filter { $0.hasDirectoryPath }
             .map { url in
                 let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+                let tags = loadTags(from: url.path)
+                print("加载项目: \(url.lastPathComponent), 标签: \(tags)")
                 return Project(
                     name: url.lastPathComponent,
                     path: url.path,
                     lastModified: dateFormatter.string(from: modDate),
-                    tags: []
+                    tags: tags
                 )
             }
             .sorted { $0.lastModified > $1.lastModified }
+        
+        print("加载完成，共 \(projects.count) 个项目")
+        return projects
     }
     
     func openInVSCode() {

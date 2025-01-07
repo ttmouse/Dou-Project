@@ -1,26 +1,57 @@
 import SwiftUI
 
 struct FlowLayout: View {
-    var spacing: CGFloat
-    var content: [AnyView]
+    let spacing: CGFloat
+    let data: [String]
+    let content: (String) -> AnyView
     
-    init<Data: RandomAccessCollection, Content: View>(
+    init<Content: View>(
         spacing: CGFloat = 8,
-        data: Data,
-        @ViewBuilder content: @escaping (Data.Element) -> Content
+        data: [String],
+        @ViewBuilder content: @escaping (String) -> Content
     ) {
         self.spacing = spacing
-        self.content = data.map { AnyView(content($0)) }
+        self.data = data
+        self.content = { AnyView(content($0)) }
     }
     
     var body: some View {
         GeometryReader { geometry in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: spacing) {
-                    ForEach(0..<content.count, id: \.self) { index in
-                        content[index]
+            self.generateContent(in: geometry)
+        }
+    }
+    
+    private func generateContent(in geometry: GeometryProxy) -> some View {
+        var width = CGFloat.zero
+        var height = CGFloat.zero
+        var lastHeight = CGFloat.zero
+        
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(data.enumerated()), id: \.element) { _, item in
+                content(item)
+                    .padding(.horizontal, 4)
+                    .alignmentGuide(.leading) { dimension in
+                        if abs(width - dimension.width) > geometry.size.width {
+                            width = 0
+                            height -= lastHeight
+                        }
+                        let result = width
+                        if item == data.last {
+                            width = 0
+                        } else {
+                            width -= dimension.width
+                            width -= spacing
+                        }
+                        lastHeight = dimension.height
+                        return result
                     }
-                }
+                    .alignmentGuide(.top) { _ in
+                        let result = height
+                        if item == data.last {
+                            height = 0
+                        }
+                        return result
+                    }
             }
         }
     }
