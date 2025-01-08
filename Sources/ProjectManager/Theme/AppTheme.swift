@@ -58,7 +58,7 @@ enum AppTheme {
     /// 次要背景色 - #1A1A1A
     static let secondaryBackground = Color(hex: "#1A1A1A")
     /// 强调色 - 蓝色
-    static let accent = Color(hex: "#36309C")
+    static let accent = Color(hex: "#453BE7")
     /// 主文本色 - 白色，不透明度90%
     static let text = Color(hex: "#FFFFFF", alpha: 0.9)
     /// 次要文本色 - 白色，不透明度60%
@@ -243,4 +243,16 @@ enum AppTheme {
     static let tagListHeaderPaddingV: CGFloat = 4
     /// 标签列表内容区域内边距 - 垂直
     static let tagListContentPaddingV: CGFloat = 4
+
+    // MARK: - 标签预设颜色
+    /// 标签预设颜色列表
+    static let tagPresetColors: [(name: String, color: Color)] = [
+        ("红色", Color(hex: "#EF4444")),
+        ("橙色", Color(hex: "#F97316")),
+        ("黄色", Color(hex: "#EAB308")),
+        ("绿色", Color(hex: "#22C55E")),
+        ("蓝色", Color(hex: "#3B82F6")),
+        ("紫色", Color(hex: "#8B5CF6")),
+        ("灰色", Color(hex: "#71717A")),
+    ]
 }

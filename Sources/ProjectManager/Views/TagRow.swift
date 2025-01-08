@@ -8,6 +8,7 @@ struct TagRow: View {
     let onDrop: ((String) -> Void)?
     @ObservedObject var tagManager: TagManager
     @State private var isTargeted = false
+    @State private var showingContextMenu = false
 
     var body: some View {
         Button(action: action) {
@@ -55,6 +56,36 @@ struct TagRow: View {
                 )
         )
         .animation(.easeInOut(duration: 0.2), value: isTargeted)
+        .contextMenu {
+            Menu("设置颜色") {
+                ForEach(AppTheme.tagPresetColors, id: \.name) { colorOption in
+                    Button(action: {
+                        tagManager.setColor(colorOption.color, for: tag)
+                    }) {
+                        HStack {
+                            Circle()
+                                .fill(colorOption.color)
+                                .frame(width: 12, height: 12)
+                            Text(colorOption.name)
+                            if tagManager.getColor(for: tag) == colorOption.color {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button(
+                role: .destructive,
+                action: {
+                    tagManager.removeTag(tag)
+                }
+            ) {
+                Label("删除标签", systemImage: "trash")
+            }
+        }
         .onDrop(of: [.text], isTargeted: $isTargeted) { providers in
             guard let onDrop = onDrop,
                 let first = providers.first

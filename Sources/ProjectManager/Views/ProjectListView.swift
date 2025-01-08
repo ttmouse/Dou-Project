@@ -23,7 +23,22 @@ struct ProjectListView: View {
 
         // 搜索过滤
         if !searchText.isEmpty {
-            result = result.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            result = result.filter { project in
+                // 项目名称匹配
+                if project.name.localizedCaseInsensitiveContains(searchText) {
+                    return true
+                }
+                // 路径匹配
+                if project.path.localizedCaseInsensitiveContains(searchText) {
+                    return true
+                }
+                // 标签匹配
+                if project.tags.contains(where: { $0.localizedCaseInsensitiveContains(searchText) })
+                {
+                    return true
+                }
+                return false
+            }
         }
 
         // 标签过滤
