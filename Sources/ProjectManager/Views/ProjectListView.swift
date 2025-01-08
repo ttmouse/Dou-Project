@@ -4,7 +4,7 @@ struct ProjectListView: View {
     @State private var searchText = ""
     @State private var selectedTags: Set<String> = []
     @State private var isShowingDirectoryPicker = false
-    @State private var watchedDirectory: String = NSHomeDirectory() + "/Projects"
+    @State private var watchedDirectory: String = "/Users/douba/Downloads/GPT插件"
     @EnvironmentObject var tagManager: TagManager
     
     // 分步过滤
@@ -24,6 +24,10 @@ struct ProjectListView: View {
         }
         
         return result.sorted { $0.lastModified > $1.lastModified }
+    }
+    
+    private func handleTagSelection(_ tag: String) {
+        selectedTags = [tag]  // 直接选择点击的标签
     }
     
     var body: some View {
@@ -75,13 +79,7 @@ struct ProjectListView: View {
                                     tag: tag,
                                     isSelected: selectedTags.contains(tag),
                                     count: tagManager.getUsageCount(for: tag),
-                                    action: {
-                                        if selectedTags.contains(tag) {
-                                            selectedTags.remove(tag)
-                                        } else {
-                                            selectedTags = [tag]
-                                        }
-                                    },
+                                    action: { handleTagSelection(tag) },
                                     tagManager: tagManager
                                 )
                                 .padding(.horizontal)
@@ -127,7 +125,8 @@ struct ProjectListView: View {
                             ForEach(filteredProjects) { project in
                                 ProjectCard(
                                     project: project,
-                                    tagManager: tagManager
+                                    tagManager: tagManager,
+                                    onTagSelected: handleTagSelection
                                 )
                             }
                         }

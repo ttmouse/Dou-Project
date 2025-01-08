@@ -23,16 +23,17 @@ struct TagRow: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 2)
                     .background(Color(.controlBackgroundColor))
                     .cornerRadius(4)
             }
             .contentShape(Rectangle())
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
         .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
         .cornerRadius(6)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 }
 

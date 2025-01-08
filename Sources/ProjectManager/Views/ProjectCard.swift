@@ -28,6 +28,7 @@ struct ProjectCard: View {
     let project: Project
     @ObservedObject var tagManager: TagManager
     @State private var isEditingTags = false
+    let onTagSelected: (String) -> Void  // 添加标签选择回调
     
     private var headerView: some View {
         HStack {
@@ -85,6 +86,9 @@ struct ProjectCard: View {
                         color: tagManager.getColor(for: tag),
                         fontSize: 11
                     )
+                    .onTapGesture {
+                        onTagSelected(tag)
+                    }
                 }
             }
             .padding(.vertical, 4)
@@ -232,7 +236,8 @@ struct ProjectCard_Previews: PreviewProvider {
                 lastModified: "2024-01-01",
                 tags: ["Swift", "iOS"]
             ),
-            tagManager: TagManager()
+            tagManager: TagManager(),
+            onTagSelected: { _ in }
         )
         .padding()
     }
