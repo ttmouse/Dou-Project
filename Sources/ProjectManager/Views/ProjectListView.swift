@@ -23,6 +23,7 @@ struct ProjectListView: View {
             }
         }
         
+        // 按修改时间倒序排序
         return result.sorted { $0.lastModified > $1.lastModified }
     }
     
@@ -74,7 +75,11 @@ struct ProjectListView: View {
                     
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(tagManager.allTags).sorted(), id: \.self) { tag in
+                            ForEach(Array(tagManager.allTags).sorted { tag1, tag2 in
+                                let count1 = tagManager.getUsageCount(for: tag1)
+                                let count2 = tagManager.getUsageCount(for: tag2)
+                                return count1 > count2
+                            }, id: \.self) { tag in
                                 TagRow(
                                     tag: tag,
                                     isSelected: selectedTags.contains(tag),

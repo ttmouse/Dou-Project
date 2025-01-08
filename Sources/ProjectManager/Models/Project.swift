@@ -5,16 +5,51 @@ struct Project: Identifiable, Equatable, Codable {
     let id: UUID
     let name: String
     let path: String
-    let lastModified: String
+    let lastModified: Date
     private(set) var tags: Set<String>
+    let gitInfo: GitInfo?
     
-    init(id: UUID = UUID(), name: String, path: String, lastModified: String, tags: Set<String> = []) {
+    struct GitInfo: Codable, Equatable {
+        let commitCount: Int
+    }
+    
+    init(id: UUID = UUID(), name: String, path: String, lastModified: Date = Date(), tags: Set<String> = []) {
         self.id = id
         self.name = name
         self.path = path
         self.lastModified = lastModified
         self.tags = tags
-        saveTagsToSystem() // 初始化时保存标签
+        self.gitInfo = Self.loadGitInfo(path: path)
+        saveTagsToSystem()
+    }
+    
+    private static func loadGitInfo(path: String) -> GitInfo? {
+        // 检查是否是 Git 仓库
+        let gitPath = "\(path)/.git"
+        guard FileManager.default.fileExists(atPath: gitPath) else {
+            return nil
+        }
+        
+        // 获取提交次数
+        let process = Process()
+        process.currentDirectoryURL = URL(fileURLWithPath: path)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["rev-list", "--count", "HEAD"]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let commitCount = Int(String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0") {
+                return GitInfo(commitCount: commitCount)
+            }
+        } catch {
+            print("获取 Git 提交次数失败: \(error)")
+        }
+        return nil
     }
     
     mutating func addTag(_ tag: String) {
@@ -116,23 +151,21 @@ struct Project: Identifiable, Equatable, Codable {
             return []
         }
         
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        
         let projects = contents
             .filter { $0.hasDirectoryPath }
-            .map { url in
-                let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+            .compactMap { url -> Project? in
+                guard let modDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else {
+                    return nil
+                }
                 let tags = loadTagsFromSystem(path: url.path)
                 print("加载项目: \(url.lastPathComponent), 标签: \(tags)")
                 return Project(
                     name: url.lastPathComponent,
                     path: url.path,
-                    lastModified: dateFormatter.string(from: modDate),
+                    lastModified: modDate,
                     tags: tags
                 )
             }
-            .sorted { $0.lastModified > $1.lastModified }
         
         print("加载完成，共 \(projects.count) 个项目")
         return projects

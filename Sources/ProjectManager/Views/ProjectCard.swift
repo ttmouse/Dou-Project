@@ -71,10 +71,37 @@ struct ProjectCard: View {
             .lineLimit(1)
     }
     
-    private var dateView: some View {
-        Text(project.lastModified)
+    private var infoView: some View {
+        HStack(spacing: 12) {
+            // 日期信息
+            HStack(spacing: 4) {
+                Image(systemName: "calendar")
+                    .foregroundColor(.secondary)
+                Text(project.lastModified, style: .date)
+                    + Text(" ")
+                    + Text(project.lastModified, style: .time)
+            }
             .font(.caption)
             .foregroundColor(.secondary)
+            
+            // Git 提交次数
+            if let gitInfo = project.gitInfo {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundColor(.blue)
+                    Text("\(gitInfo.commitCount)")
+                        .foregroundColor(.blue)
+                        .fontWeight(.medium)
+                    Text("次提交")
+                        .foregroundColor(.secondary)
+                }
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(4)
+            }
+        }
     }
     
     private var tagsView: some View {
@@ -99,7 +126,7 @@ struct ProjectCard: View {
         VStack(alignment: .leading, spacing: 8) {
             headerView
             pathView
-            dateView
+            infoView
             tagsView
         }
         .padding()
