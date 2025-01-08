@@ -24,5 +24,11 @@
     <string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>需要访问系统服务以提供完整功能</string>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>需要使用系统扩展以提供完整功能</string>
+    <key>com.apple.security.temporary-exception.apple-events</key>
+    <true/>
 </dict>
 </plist> 

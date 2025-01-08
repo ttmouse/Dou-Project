@@ -4,7 +4,10 @@ struct ProjectListView: View {
     @State private var searchText = ""
     @State private var selectedTags: Set<String> = []
     @State private var isShowingDirectoryPicker = false
-    @State private var watchedDirectory: String = "/Users/douba/Downloads/GPT插件"
+    @State private var watchedDirectory: String =
+        UserDefaults.standard.string(forKey: "WatchedDirectory")
+        ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path
+        ?? NSHomeDirectory() + "/Desktop"
     @State private var selectedProjects: Set<UUID> = []  // 选中的项目
     @State private var isShowingNewTagDialog = false
     @State private var tagToRename: IdentifiableString? = nil
@@ -158,7 +161,28 @@ struct ProjectListView: View {
     // 目录选择按钮视图
     private var directoryPickerButton: some View {
         Button(action: {
-            isShowingDirectoryPicker = true
+            DispatchQueue.main.async {
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.allowsMultipleSelection = false
+                panel.canCreateDirectories = true
+                panel.prompt = "选择"
+                panel.message = "请选择要监视的项目目录"
+
+                panel.begin { response in
+                    if response == .OK {
+                        if let url = panel.url {
+                            DispatchQueue.main.async {
+                                self.watchedDirectory = url.path
+                                UserDefaults.standard.set(
+                                    self.watchedDirectory, forKey: "WatchedDirectory")
+                                self.loadProjects()
+                            }
+                        }
+                    }
+                }
+            }
         }) {
             HStack {
                 Image(systemName: "folder")
@@ -219,6 +243,17 @@ struct ProjectListView: View {
     private var tagListContent: some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
+                // 添加"全部"特殊标签
+                TagRow(
+                    tag: "全部",
+                    isSelected: selectedTags.isEmpty,
+                    count: tagManager.projects.count,
+                    action: { selectedTags.removeAll() },
+                    onDrop: nil,
+                    onRename: nil,
+                    tagManager: tagManager
+                )
+
                 ForEach(
                     Array(tagManager.allTags).sorted { tag1, tag2 in
                         let count1 = tagManager.getUsageCount(for: tag1)
@@ -353,21 +388,6 @@ struct ProjectListView: View {
         .onAppear {
             loadProjects()
         }
-        .fileImporter(
-            isPresented: $isShowingDirectoryPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    watchedDirectory = url.path
-                    loadProjects()
-                }
-            case .failure(let error):
-                print("选择目录失败: \(error)")
-            }
-        }
         .sheet(item: $tagToRename) { identifiableTag in
             TagEditDialog(
                 title: "重命名标签",
@@ -401,8 +421,8 @@ struct ProjectListView: View {
             // 异步加载最新的项目
             DispatchQueue.global(qos: .userInitiated).async {
                 let loadedProjects = Project.loadProjects(
-                    from: watchedDirectory,
-                    existingProjects: tagManager.projects
+                    from: self.watchedDirectory,
+                    existingProjects: self.tagManager.projects
                 )
                 print("从磁盘加载到 \(loadedProjects.count) 个项目")
 
@@ -420,10 +440,8 @@ struct ProjectListView: View {
                         print("新增项目: \(newProjects.count), 移除项目: \(removedProjects.count)")
 
                         // 批量移除不存在的项目
-                        if !removedProjects.isEmpty {
-                            removedProjects.forEach { project in
-                                self.tagManager.removeProject(project.id)
-                            }
+                        removedProjects.forEach { project in
+                            self.tagManager.removeProject(project.id)
                         }
 
                         // 批量添加新项目
@@ -434,10 +452,8 @@ struct ProjectListView: View {
                                 let end = min(batch + batchSize, newProjects.count)
                                 let projectBatch = Array(newProjects[batch..<end])
 
-                                DispatchQueue.main.async {
-                                    projectBatch.forEach { project in
-                                        self.tagManager.registerProject(project)
-                                    }
+                                projectBatch.forEach { project in
+                                    self.tagManager.registerProject(project)
                                 }
 
                                 // 每批之间添加小延迟

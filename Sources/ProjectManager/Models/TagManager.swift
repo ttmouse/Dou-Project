@@ -82,32 +82,35 @@ class TagManager: ObservableObject {
     }
 
     private func saveTagColors() {
-        // 保存标签颜色
-        let colorData = tagColors.compactMapValues { color -> String? in
-            // 将 Color 转换为 NSColor 然后获取 RGB 值
-            let nsColor = NSColor(color)
-            let red = Int(round(nsColor.redComponent * 255))
-            let green = Int(round(nsColor.greenComponent * 255))
-            let blue = Int(round(nsColor.blueComponent * 255))
-            let hexColor = String(format: "#%02X%02X%02X", red, green, blue)
-            return hexColor
-        }
+        // 在主线程中执行保存操作
+        DispatchQueue.main.async {
+            do {
+                let colorData = self.tagColors.compactMapValues { color -> String? in
+                    // 将 Color 转换为 NSColor 然后获取 RGB 值
+                    let nsColor = NSColor(color)
+                    let red = Int(round(nsColor.redComponent * 255))
+                    let green = Int(round(nsColor.greenComponent * 255))
+                    let blue = Int(round(nsColor.blueComponent * 255))
+                    let hexColor = String(format: "#%02X%02X%02X", red, green, blue)
+                    return hexColor
+                }
 
-        do {
-            let encoded = try JSONEncoder().encode(colorData)
-            defaults.set(encoded, forKey: tagColorsKey)
-            defaults.synchronize()
+                let encoded = try JSONEncoder().encode(colorData)
+                self.defaults.set(encoded, forKey: self.tagColorsKey)
+                self.defaults.synchronize()
 
-            // 立即验证保存
-            if let savedData = defaults.object(forKey: tagColorsKey) as? Data,
-                let savedColors = try? JSONDecoder().decode([String: String].self, from: savedData)
-            {
-                print("保存标签颜色成功，验证通过: \(savedColors)")
-            } else {
-                print("警告：标签颜色保存后验证失败")
+                // 立即验证保存
+                if let savedData = self.defaults.object(forKey: self.tagColorsKey) as? Data,
+                    let savedColors = try? JSONDecoder().decode(
+                        [String: String].self, from: savedData)
+                {
+                    print("保存标签颜色成功，验证通过: \(savedColors)")
+                } else {
+                    print("警告：标签颜色保存后验证失败")
+                }
+            } catch {
+                print("保存标签颜色失败: \(error)")
             }
-        } catch {
-            print("保存标签颜色失败: \(error)")
         }
     }
 
@@ -305,6 +308,11 @@ class TagManager: ObservableObject {
     }
 
     func getColor(for tag: String) -> Color {
+        // 为"全部"标签返回固定颜色
+        if tag == "全部" {
+            return AppTheme.accent
+        }
+
         if let color = tagColors[tag] {
             return color
         }
@@ -317,8 +325,15 @@ class TagManager: ObservableObject {
 
     func setColor(_ color: Color, for tag: String) {
         print("设置标签 '\(tag)' 的颜色")
-        tagColors[tag] = color
-        saveTagColors()  // 只保存颜色数据
+        // 在主线程中执行颜色更新
+        DispatchQueue.main.async {
+            self.tagColors[tag] = color
+            self.objectWillChange.send()
+            // 延迟保存，避免频繁写入
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.saveTagColors()
+            }
+        }
     }
 
     // MARK: - 标签统计

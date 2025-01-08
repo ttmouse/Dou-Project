@@ -19,6 +19,12 @@ let package = Package(
             dependencies: [],
             resources: [
                 .copy("Resources")
+            ],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-enable-private-imports",
+                    "-suppress-warnings",
+                ])
             ]
         )
     ]

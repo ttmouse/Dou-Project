@@ -117,7 +117,10 @@ struct ProjectCard: View {
                     TagView(
                         tag: tag,
                         color: tagManager.getColor(for: tag),
-                        fontSize: 11
+                        fontSize: 13,
+                        onDelete: {
+                            tagManager.removeTagFromProject(projectId: project.id, tag: tag)
+                        }
                     )
                     .onTapGesture {
                         onTagSelected(tag)
