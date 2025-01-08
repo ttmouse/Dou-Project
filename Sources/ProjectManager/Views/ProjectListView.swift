@@ -3,6 +3,8 @@ import SwiftUI
 struct ProjectListView: View {
     @State private var searchText = ""
     @State private var selectedTags: Set<String> = []
+    @State private var isShowingDirectoryPicker = false
+    @State private var watchedDirectory: String = NSHomeDirectory() + "/Projects"
     @EnvironmentObject var tagManager: TagManager
     
     // 分步过滤
@@ -28,8 +30,27 @@ struct ProjectListView: View {
         NavigationView {
             // 侧边栏
             VStack(spacing: 0) {
+                // 目录选择按钮
+                Button(action: {
+                    isShowingDirectoryPicker = true
+                }) {
+                    HStack {
+                        Image(systemName: "folder")
+                        Text(watchedDirectory)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.controlBackgroundColor))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                
                 // 标签列表
-                List {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack {
                         Text("标签")
                             .font(.headline)
@@ -37,35 +58,42 @@ struct ProjectListView: View {
                         
                         Spacer()
                         
-                        Button("清除筛选") {
-                            selectedTags.removeAll()
+                        Button(action: { selectedTags.removeAll() }) {
+                            Text("清除")
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(selectedTags.isEmpty ? .secondary : .blue)
-                        .disabled(selectedTags.isEmpty)
+                        .opacity(selectedTags.isEmpty ? 0.5 : 1)
                     }
-                    .listRowInsets(EdgeInsets())
                     .padding(.horizontal)
-                    .padding(.vertical, 8)
                     
-                    ForEach(Array(tagManager.allTags).sorted(), id: \.self) { tag in
-                        TagRow(
-                            tag: tag,
-                            isSelected: selectedTags.contains(tag),
-                            count: tagManager.getUsageCount(for: tag),
-                            action: {
-                                if selectedTags.contains(tag) {
-                                    selectedTags.remove(tag)
-                                } else {
-                                    selectedTags = [tag]
-                                }
-                            },
-                            tagManager: tagManager
-                        )
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(tagManager.allTags).sorted(), id: \.self) { tag in
+                                TagRow(
+                                    tag: tag,
+                                    isSelected: selectedTags.contains(tag),
+                                    count: tagManager.getUsageCount(for: tag),
+                                    action: {
+                                        if selectedTags.contains(tag) {
+                                            selectedTags.remove(tag)
+                                        } else {
+                                            selectedTags = [tag]
+                                        }
+                                    },
+                                    tagManager: tagManager
+                                )
+                                .padding(.horizontal)
+                            }
+                        }
+                        .padding(.vertical, 8)
                     }
                 }
+                .frame(maxWidth: .infinity)
             }
             .frame(minWidth: 200, maxWidth: 300)
+            .background(Color(.windowBackgroundColor))
             
             // 主内容
             VStack {
@@ -111,17 +139,63 @@ struct ProjectListView: View {
         .onAppear {
             loadProjects()
         }
+        .fileImporter(
+            isPresented: $isShowingDirectoryPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    watchedDirectory = url.path
+                    loadProjects()
+                }
+            case .failure(let error):
+                print("选择目录失败: \(error)")
+            }
+        }
     }
     
     private func loadProjects() {
+        print("开始加载项目...")
+        
+        // 先显示缓存的项目
+        let cachedProjects = Array(tagManager.projects.values)
+        if !cachedProjects.isEmpty {
+            print("使用缓存的 \(cachedProjects.count) 个项目")
+        }
+        
+        // 异步加载最新的项目
         DispatchQueue.global(qos: .userInitiated).async {
-            let baseDir = "/Users/douba/Downloads/GPT插件/"
-            let loadedProjects = Project.loadProjects(from: baseDir)
+            let loadedProjects = Project.loadProjects(from: watchedDirectory)
+            print("从磁盘加载到 \(loadedProjects.count) 个项目")
             
-            DispatchQueue.main.async {
-                loadedProjects.forEach { project in
-                    tagManager.registerProject(project)
+            // 找出需要更新的项目
+            let existingProjects = Set(cachedProjects.map { $0.id })
+            let newProjects = loadedProjects.filter { !existingProjects.contains($0.id) }
+            let removedProjects = cachedProjects.filter { project in
+                !loadedProjects.contains { $0.id == project.id }
+            }
+            
+            if !newProjects.isEmpty || !removedProjects.isEmpty {
+                DispatchQueue.main.async {
+                    print("开始更新 UI...")
+                    print("新增项目: \(newProjects.count), 移除项目: \(removedProjects.count)")
+                    
+                    // 移除不存在的项目
+                    removedProjects.forEach { project in
+                        self.tagManager.removeProject(project.id)
+                    }
+                    
+                    // 添加新项目
+                    newProjects.forEach { project in
+                        self.tagManager.registerProject(project)
+                    }
+                    
+                    print("UI 更新完成，当前项目数: \(self.tagManager.projects.count)")
                 }
+            } else {
+                print("项目列表无变化")
             }
         }
     }

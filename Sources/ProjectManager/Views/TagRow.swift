@@ -8,24 +8,31 @@ struct TagRow: View {
     @ObservedObject var tagManager: TagManager
     
     var body: some View {
-        HStack {
-            Circle()
-                .fill(isSelected ? Color.blue : Color.clear)
-                .frame(width: 12, height: 12)
-            
-            Text(tag)
-            
-            Spacer()
-            
-            Text("\(count)")
-                .foregroundColor(.secondary)
-                .font(.caption)
+        Button(action: action) {
+            HStack {
+                TagView(
+                    tag: tag,
+                    color: tagManager.getColor(for: tag),
+                    fontSize: 13,
+                    isSelected: isSelected
+                )
+                
+                Spacer()
+                
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(.controlBackgroundColor))
+                    .cornerRadius(4)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: action)
+        .buttonStyle(.plain)
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+        .cornerRadius(6)
     }
 }
 

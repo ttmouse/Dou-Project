@@ -64,7 +64,7 @@ struct FlowLayout_Previews: PreviewProvider {
             spacing: 8,
             data: ["SwiftUI", "macOS", "Swift", "Xcode", "VSCode"],
             content: { tag in
-                TagView(tag: tag)
+                TagView(tag: tag, color: .blue, fontSize: 13)
             }
         )
         .padding()

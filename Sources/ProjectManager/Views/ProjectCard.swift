@@ -45,13 +45,21 @@ struct ProjectCard: View {
             .buttonStyle(.plain)
             .help("编辑标签")
             
-            // 打开项目按钮
+            // 在 Cursor 中打开按钮
             Button(action: { openInCursor(path: project.path) }) {
-                Image(systemName: "chevron.right.circle")
-                    .foregroundColor(.blue)
+                Image(systemName: "cursorarrow.rays")
+                    .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
             .help("在 Cursor 中打开")
+            
+            // 打开文件夹按钮
+            Button(action: { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path) }) {
+                Image(systemName: "folder")
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(.plain)
+            .help("打开文件夹")
         }
     }
     
@@ -96,10 +104,6 @@ struct ProjectCard: View {
                 .fill(Color(.textBackgroundColor))
                 .shadow(radius: 2)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            openInCursor(path: project.path)
-        }
         .sheet(isPresented: $isEditingTags) {
             TagEditorView(project: project, tagManager: tagManager)
         }

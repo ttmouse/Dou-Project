@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 class TagManager: ObservableObject {
     @Published var allTags: Set<String> = []
@@ -6,6 +7,88 @@ class TagManager: ObservableObject {
     @Published private var tagUsageCount: [String: Int] = [:]
     @Published var tagColors: [String: Color] = [:]
     private var tagLastUsed: [String: Date] = [:]
+    private let cacheFileName = "project_cache.json"
+    
+    init() {
+        loadSystemTags()
+        loadFromCache()
+    }
+    
+    // MARK: - 缓存管理
+    
+    private var cacheFileURL: URL {
+        let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("com.projectmanager").appendingPathComponent(cacheFileName)
+    }
+    
+    private func loadFromCache() {
+        do {
+            let data = try Data(contentsOf: cacheFileURL)
+            let decoder = JSONDecoder()
+            let cachedProjects = try decoder.decode([Project].self, from: data)
+            print("从缓存加载 \(cachedProjects.count) 个项目")
+            
+            cachedProjects.forEach { project in
+                projects[project.id] = project
+                project.tags.forEach { tag in
+                    addTag(tag)
+                    incrementUsage(for: tag)
+                }
+            }
+        } catch {
+            print("加载缓存失败: \(error)")
+        }
+    }
+    
+    private func saveToCache() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(Array(projects.values))
+            
+            // 确保缓存目录存在
+            let cacheDir = cacheFileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            
+            try data.write(to: cacheFileURL)
+            print("项目缓存保存成功")
+        } catch {
+            print("保存缓存失败: \(error)")
+        }
+    }
+    
+    // MARK: - 项目管理
+    
+    func removeProject(_ id: UUID) {
+        if let project = projects[id] {
+            project.tags.forEach { tag in
+                decrementUsage(for: tag)
+            }
+            projects.removeValue(forKey: id)
+            saveToCache()
+            objectWillChange.send()
+        }
+    }
+    
+    func clearProjects() {
+        projects.removeAll()
+        saveToCache()
+        objectWillChange.send()
+    }
+    
+    // MARK: - 系统标签管理
+    
+    func loadSystemTags() {
+        let workspace = NSWorkspace.shared
+        let labels = workspace.fileLabels
+        let colors = workspace.fileLabelColors
+        
+        for (index, label) in labels.enumerated() {
+            allTags.insert(label)
+            if index < colors.count {
+                tagColors[label] = Color(nsColor: colors[index])
+            }
+        }
+    }
     
     // MARK: - 项目标签管理
     
@@ -16,6 +99,7 @@ class TagManager: ObservableObject {
             addTag(tag)
             incrementUsage(for: tag)
         }
+        saveToCache()
         objectWillChange.send()
     }
     

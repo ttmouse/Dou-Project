@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-struct Project: Identifiable, Equatable {
+struct Project: Identifiable, Equatable, Codable {
     let id: UUID
     let name: String
     let path: String
@@ -14,7 +14,7 @@ struct Project: Identifiable, Equatable {
         self.path = path
         self.lastModified = lastModified
         self.tags = tags
-        saveTags() // 初始化时保存标签
+        saveTagsToSystem() // 初始化时保存标签
     }
     
     mutating func addTag(_ tag: String) {
@@ -22,7 +22,7 @@ struct Project: Identifiable, Equatable {
         print("原有标签: \(tags)")
         tags.insert(tag)
         print("更新后标签: \(tags)")
-        saveTags()
+        saveTagsToSystem()
     }
     
     mutating func removeTag(_ tag: String) {
@@ -30,7 +30,7 @@ struct Project: Identifiable, Equatable {
         print("原有标签: \(tags)")
         tags.remove(tag)
         print("更新后标签: \(tags)")
-        saveTags()
+        saveTagsToSystem()
     }
     
     func copyWith(tags newTags: Set<String>) -> Project {
@@ -44,31 +44,30 @@ struct Project: Identifiable, Equatable {
         return project // 初始化时已经保存标签
     }
     
-    // 保存标签到项目目录
-    private func saveTags() {
-        print("保存标签到文件: \(tags)")
-        let tagsFile = "\(path)/.project-tags.json"
+    // 保存标签到系统
+    private func saveTagsToSystem() {
+        let url = URL(fileURLWithPath: path)
         do {
-            let data = try JSONEncoder().encode(Array(tags))
-            try data.write(to: URL(fileURLWithPath: tagsFile))
-            print("标签保存成功")
+            try (url as NSURL).setResourceValue(Array(tags), forKey: .tagNamesKey)
+            print("系统标签保存成功: \(tags)")
         } catch {
-            print("保存标签失败: \(error)")
+            print("保存系统标签失败: \(error)")
         }
     }
     
-    // 从项目目录加载标签
-    private static func loadTags(from path: String) -> Set<String> {
-        let tagsFile = "\(path)/.project-tags.json"
+    // 从系统加载标签
+    private static func loadTagsFromSystem(path: String) -> Set<String> {
+        let url = URL(fileURLWithPath: path)
         do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: tagsFile))
-            let tags = try JSONDecoder().decode([String].self, from: data)
-            print("从文件加载标签: \(tags)")
-            return Set(tags)
+            let resourceValues = try url.resourceValues(forKeys: Set([.tagNamesKey]))
+            if let tags = resourceValues.tagNames {
+                print("从系统加载标签: \(tags)")
+                return Set(tags)
+            }
         } catch {
-            print("加载标签失败: \(error)")
-            return []
+            print("加载系统标签失败: \(error)")
         }
+        return []
     }
     
     private var projectType: ProjectType {
@@ -124,7 +123,7 @@ struct Project: Identifiable, Equatable {
             .filter { $0.hasDirectoryPath }
             .map { url in
                 let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
-                let tags = loadTags(from: url.path)
+                let tags = loadTagsFromSystem(path: url.path)
                 print("加载项目: \(url.lastPathComponent), 标签: \(tags)")
                 return Project(
                     name: url.lastPathComponent,
