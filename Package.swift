@@ -1,9 +1,8 @@
-// swift-tools-version:5.5
+// swift-tools-version:5.7
 import PackageDescription
 
 let package = Package(
     name: "ProjectManager",
-    defaultLocalization: "zh-Hans",
     platforms: [
         .macOS(.v12)
     ],
@@ -18,7 +17,9 @@ let package = Package(
         .executableTarget(
             name: "ProjectManager",
             dependencies: [],
-            path: "Sources/ProjectManager"
+            resources: [
+                .copy("Resources")
+            ]
         )
     ]
-) 
+)

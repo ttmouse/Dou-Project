@@ -247,12 +247,13 @@ enum AppTheme {
     // MARK: - 标签预设颜色
     /// 标签预设颜色列表
     static let tagPresetColors: [(name: String, color: Color)] = [
-        ("红色", Color(hex: "#EF4444")),
-        ("橙色", Color(hex: "#F97316")),
-        ("黄色", Color(hex: "#EAB308")),
-        ("绿色", Color(hex: "#22C55E")),
-        ("蓝色", Color(hex: "#3B82F6")),
-        ("紫色", Color(hex: "#8B5CF6")),
-        ("灰色", Color(hex: "#71717A")),
+        ("无颜色", Color(hex: "#4DABF7")),  // 默认蓝色
+        ("红色", Color(hex: "#FF6B6B")),
+        ("橙色", Color(hex: "#FFA94D")),
+        ("黄色", Color(hex: "#FFD43B")),
+        ("绿色", Color(hex: "#69DB7C")),
+        ("蓝色", Color(hex: "#4DABF7")),
+        ("紫色", Color(hex: "#DA77F2")),
+        ("灰色", Color(hex: "#868E96")),
     ]
 }

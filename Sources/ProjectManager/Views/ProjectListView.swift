@@ -6,6 +6,8 @@ struct ProjectListView: View {
     @State private var isShowingDirectoryPicker = false
     @State private var watchedDirectory: String = "/Users/douba/Downloads/GPT插件"
     @State private var selectedProjects: Set<UUID> = []  // 选中的项目
+    @State private var isShowingNewTagDialog = false
+    @State private var tagToRename: IdentifiableString? = nil
 
     // 排序方式
     enum SortOption {
@@ -141,148 +143,212 @@ struct ProjectListView: View {
         )
     }
 
-    var body: some View {
-        NavigationView {
-            // 侧边栏
-            VStack(spacing: 0) {
-                // 目录选择按钮
-                Button(action: {
-                    isShowingDirectoryPicker = true
-                }) {
-                    HStack {
-                        Image(systemName: "folder")
-                            .foregroundColor(AppTheme.sidebarSecondaryText)
-                        Text(watchedDirectory)
-                            .foregroundColor(AppTheme.sidebarTitle)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity)
-                    .background(AppTheme.sidebarDirectoryBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(AppTheme.sidebarDirectoryBorder, lineWidth: 1)
+    // 添加清除按钮的视图计算属性
+    private var clearButton: some View {
+        Button(action: { selectedTags.removeAll() }) {
+            Text("清除")
+                .font(.subheadline)
+                .foregroundColor(
+                    selectedTags.isEmpty ? AppTheme.sidebarSecondaryText : AppTheme.accent)
+        }
+        .buttonStyle(.plain)
+        .opacity(selectedTags.isEmpty ? 0.5 : 1)
+    }
+
+    // 目录选择按钮视图
+    private var directoryPickerButton: some View {
+        Button(action: {
+            isShowingDirectoryPicker = true
+        }) {
+            HStack {
+                Image(systemName: "folder")
+                    .foregroundColor(AppTheme.sidebarSecondaryText)
+                Text(watchedDirectory)
+                    .foregroundColor(AppTheme.sidebarTitle)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity)
+            .background(AppTheme.sidebarDirectoryBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(AppTheme.sidebarDirectoryBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    // 标签列表头部视图
+    private var tagListHeader: some View {
+        HStack {
+            Text("标签")
+                .font(.headline)
+                .foregroundColor(AppTheme.sidebarTitle)
+
+            Spacer()
+
+            // 添加新建标签按钮
+            Button(action: {
+                isShowingNewTagDialog = true
+            }) {
+                Image(systemName: "plus.circle.fill")
+                    .foregroundColor(AppTheme.accent)
+            }
+            .buttonStyle(.plain)
+            .help("新建标签")
+            .sheet(isPresented: $isShowingNewTagDialog) {
+                TagEditDialog(
+                    title: "新建标签",
+                    isPresented: $isShowingNewTagDialog,
+                    tagManager: tagManager
+                ) { name in
+                    tagManager.addTag(name)
+                }
+            }
+
+            clearButton
+        }
+        .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
+        .padding(.vertical, AppTheme.tagListHeaderPaddingV)
+    }
+
+    // 标签列表内容视图
+    private var tagListContent: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
+                ForEach(
+                    Array(tagManager.allTags).sorted { tag1, tag2 in
+                        let count1 = tagManager.getUsageCount(for: tag1)
+                        let count2 = tagManager.getUsageCount(for: tag2)
+                        return count1 > count2
+                    }, id: \.self
+                ) { tag in
+                    TagRow(
+                        tag: tag,
+                        isSelected: selectedTags.contains(tag),
+                        count: tagManager.getUsageCount(for: tag),
+                        action: { handleTagSelection(tag) },
+                        onDrop: { _ in handleDrop(tag: tag) },
+                        onRename: {
+                            tagToRename = IdentifiableString(tag)
+                        },
+                        tagManager: tagManager
                     )
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-
-                // 标签列表
-                VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
-                    HStack {
-                        Text("标签")
-                            .font(.headline)
-                            .foregroundColor(AppTheme.sidebarTitle)
-
-                        Spacer()
-
-                        Button(action: { selectedTags.removeAll() }) {
-                            Text("清除")
-                                .font(.subheadline)
-                                .foregroundColor(
-                                    selectedTags.isEmpty
-                                        ? AppTheme.sidebarSecondaryText : AppTheme.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(selectedTags.isEmpty ? 0.5 : 1)
-                    }
-                    .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
-                    .padding(.vertical, AppTheme.tagListHeaderPaddingV)
-
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
-                            ForEach(
-                                Array(tagManager.allTags).sorted { tag1, tag2 in
-                                    let count1 = tagManager.getUsageCount(for: tag1)
-                                    let count2 = tagManager.getUsageCount(for: tag2)
-                                    return count1 > count2
-                                }, id: \.self
-                            ) { tag in
-                                TagRow(
-                                    tag: tag,
-                                    isSelected: selectedTags.contains(tag),
-                                    count: tagManager.getUsageCount(for: tag),
-                                    action: { handleTagSelection(tag) },
-                                    onDrop: { _ in handleDrop(tag: tag) },
-                                    tagManager: tagManager
-                                )
-                            }
-                        }
-                        .padding(.vertical, AppTheme.tagListContentPaddingV)
-                    }
-                }
-                .frame(maxWidth: .infinity)
             }
-            .frame(minWidth: 200, maxWidth: 300)
-            .background(AppTheme.sidebarBackground)
-            .overlay(
-                Rectangle()
-                    .fill(AppTheme.sidebarBorder)
-                    .frame(width: 1)
-                    .offset(x: 299)
-            )
+            .padding(.vertical, AppTheme.tagListContentPaddingV)
+        }
+    }
 
-            // 主内容
-            VStack {
-                searchAndSortBar
+    // 为 String 添加 Identifiable 扩展
+    private struct IdentifiableString: Identifiable {
+        let id: String
+        let value: String
 
-                if filteredProjects.isEmpty {
-                    VStack(spacing: 20) {
-                        Spacer()
+        init(_ string: String) {
+            self.id = string
+            self.value = string
+        }
+    }
 
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 36))
-                            .foregroundColor(.secondary)
+    // 侧边栏视图
+    private var sidebarView: some View {
+        VStack(spacing: 0) {
+            directoryPickerButton
 
-                        Text("没有匹配的项目")
-                            .font(.headline)
+            // 标签列表
+            VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
+                tagListHeader
+                tagListContent
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(minWidth: 200, maxWidth: 300)
+        .background(AppTheme.sidebarBackground)
+        .overlay(
+            Rectangle()
+                .fill(AppTheme.sidebarBorder)
+                .frame(width: 1)
+                .offset(x: 299)
+        )
+    }
 
-                        Text("尝试修改搜索条件或清除标签筛选")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+    // 空状态视图
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Spacer()
 
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(
-                                    .adaptive(
-                                        minimum: AppTheme.cardMinWidth,
-                                        maximum: AppTheme.cardMaxWidth
-                                    ),
-                                    spacing: AppTheme.cardGridSpacingH
-                                )
-                            ],
-                            spacing: AppTheme.cardGridSpacingV
-                        ) {
-                            ForEach(filteredProjects) { project in
-                                ProjectCard(
-                                    project: project,
-                                    isSelected: selectedProjects.contains(project.id),
-                                    selectedCount: selectedProjects.count,
-                                    tagManager: tagManager,
-                                    onTagSelected: handleTagSelection,
-                                    onSelect: { isShiftPressed in
-                                        handleProjectSelection(
-                                            project, isShiftPressed: isShiftPressed)
-                                    }
-                                )
-                            }
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 36))
+                .foregroundColor(.secondary)
+
+            Text("没有匹配的项目")
+                .font(.headline)
+
+            Text("尝试修改搜索条件或清除标签筛选")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // 项目网格视图
+    private var projectGridView: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [
+                    GridItem(
+                        .adaptive(
+                            minimum: AppTheme.cardMinWidth,
+                            maximum: AppTheme.cardMaxWidth
+                        ),
+                        spacing: AppTheme.cardGridSpacingH
+                    )
+                ],
+                spacing: AppTheme.cardGridSpacingV
+            ) {
+                ForEach(filteredProjects) { project in
+                    ProjectCard(
+                        project: project,
+                        isSelected: selectedProjects.contains(project.id),
+                        selectedCount: selectedProjects.count,
+                        tagManager: tagManager,
+                        onTagSelected: handleTagSelection,
+                        onSelect: { isShiftPressed in
+                            handleProjectSelection(project, isShiftPressed: isShiftPressed)
                         }
-                        .padding(AppTheme.cardGridPadding)
-                        .contentShape(Rectangle())  // 使整个区域可点击
-                        .onTapGesture {
-                            // 点击空白区域清除选中状态
-                            selectedProjects.removeAll()
-                        }
-                    }
+                    )
                 }
             }
+            .padding(AppTheme.cardGridPadding)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedProjects.removeAll()
+            }
+        }
+    }
+
+    // 主内容视图
+    private var mainContentView: some View {
+        VStack {
+            searchAndSortBar
+            if filteredProjects.isEmpty {
+                emptyStateView
+            } else {
+                projectGridView
+            }
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            sidebarView
+            mainContentView
         }
         .onAppear {
             loadProjects()
@@ -300,6 +366,22 @@ struct ProjectListView: View {
                 }
             case .failure(let error):
                 print("选择目录失败: \(error)")
+            }
+        }
+        .sheet(item: $tagToRename) { identifiableTag in
+            TagEditDialog(
+                title: "重命名标签",
+                originalName: identifiableTag.value,
+                isPresented: .init(
+                    get: { tagToRename != nil },
+                    set: { if !$0 { tagToRename = nil } }
+                ),
+                tagManager: tagManager
+            ) { newName in
+                DispatchQueue.main.async {
+                    tagManager.renameTag(identifiableTag.value, to: newName)
+                    tagToRename = nil
+                }
             }
         }
     }

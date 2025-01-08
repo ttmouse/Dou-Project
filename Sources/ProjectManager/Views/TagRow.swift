@@ -6,6 +6,7 @@ struct TagRow: View {
     let count: Int
     let action: () -> Void
     let onDrop: ((String) -> Void)?
+    let onRename: (() -> Void)?
     @ObservedObject var tagManager: TagManager
     @State private var isTargeted = false
     @State private var showingContextMenu = false
@@ -57,6 +58,12 @@ struct TagRow: View {
         )
         .animation(.easeInOut(duration: 0.2), value: isTargeted)
         .contextMenu {
+            Button(action: {
+                onRename?()
+            }) {
+                Label("重命名", systemImage: "pencil")
+            }
+
             Menu("设置颜色") {
                 ForEach(AppTheme.tagPresetColors, id: \.name) { colorOption in
                     Button(action: {
@@ -67,10 +74,14 @@ struct TagRow: View {
                                 .fill(colorOption.color)
                                 .frame(width: 12, height: 12)
                             Text(colorOption.name)
+                                .foregroundColor(.primary)
+                            Spacer()
                             if tagManager.getColor(for: tag) == colorOption.color {
                                 Image(systemName: "checkmark")
+                                    .foregroundColor(.blue)
                             }
                         }
+                        .frame(minWidth: 120)
                     }
                 }
             }
@@ -113,6 +124,7 @@ struct TagRow: View {
                     count: 5,
                     action: {},
                     onDrop: nil,
+                    onRename: {},
                     tagManager: TagManager()
                 )
                 TagRow(
@@ -121,6 +133,7 @@ struct TagRow: View {
                     count: 3,
                     action: {},
                     onDrop: nil,
+                    onRename: {},
                     tagManager: TagManager()
                 )
             }

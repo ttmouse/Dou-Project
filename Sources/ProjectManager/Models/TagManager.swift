@@ -14,8 +14,12 @@ class TagManager: ObservableObject {
     private var tagLastUsed: [String: Date] = [:]
     private let cacheFileName = "project_cache.json"
 
+    // 使用标准的 UserDefaults 和应用标识符
     private let defaults = UserDefaults.standard
-    private let tagColorsKey = "tagColors"  // 标签颜色缓存键
+    private let bundleId = Bundle.main.bundleIdentifier ?? "com.projectmanager"
+    private var tagColorsKey: String {
+        return "\(bundleId).TagColors"
+    }
 
     enum SortCriteria {
         case name
@@ -26,9 +30,85 @@ class TagManager: ObservableObject {
     // MARK: - 初始化
 
     init() {
+        // 先加载标签颜色
+        loadTagColors()
+        // 再加载系统标签
         loadSystemTags()
+        // 最后加载项目缓存
         loadFromCache()
         updateSortedProjects()
+
+        // 打印当前的配置信息
+        print("应用标识符: \(bundleId)")
+        print("标签颜色存储键: \(tagColorsKey)")
+        print("当前 UserDefaults 所有键: \(Array(defaults.dictionaryRepresentation().keys))")
+    }
+
+    private func loadTagColors() {
+        // 加载标签颜色
+        print("开始从 UserDefaults 加载标签颜色 - Key: \(tagColorsKey)")
+        if let colorData = defaults.object(forKey: tagColorsKey) as? Data {
+            print("找到颜色数据，尝试解码...")
+            do {
+                let decodedColors = try JSONDecoder().decode([String: String].self, from: colorData)
+                print("成功解码标签颜色: \(decodedColors)")
+                tagColors = decodedColors.mapValues { Color(hex: $0) }
+                print("当前加载的标签颜色: \(tagColors)")
+            } catch {
+                print("解码标签颜色失败: \(error)")
+            }
+        } else {
+            print("UserDefaults 中未找到标签颜色数据")
+        }
+    }
+
+    private func loadFromCache() {
+        do {
+            let data = try Data(contentsOf: cacheFileURL)
+            let decoder = JSONDecoder()
+            let cachedProjects = try decoder.decode([Project].self, from: data)
+            print("从缓存加载 \(cachedProjects.count) 个项目")
+
+            cachedProjects.forEach { project in
+                projects[project.id] = project
+                project.tags.forEach { tag in
+                    addTag(tag)
+                    incrementUsage(for: tag)
+                }
+            }
+        } catch {
+            print("加载缓存失败: \(error)")
+        }
+    }
+
+    private func saveTagColors() {
+        // 保存标签颜色
+        let colorData = tagColors.compactMapValues { color -> String? in
+            // 将 Color 转换为 NSColor 然后获取 RGB 值
+            let nsColor = NSColor(color)
+            let red = Int(round(nsColor.redComponent * 255))
+            let green = Int(round(nsColor.greenComponent * 255))
+            let blue = Int(round(nsColor.blueComponent * 255))
+            let hexColor = String(format: "#%02X%02X%02X", red, green, blue)
+            return hexColor
+        }
+
+        do {
+            let encoded = try JSONEncoder().encode(colorData)
+            defaults.set(encoded, forKey: tagColorsKey)
+            defaults.synchronize()
+
+            // 立即验证保存
+            if let savedData = defaults.object(forKey: tagColorsKey) as? Data,
+                let savedColors = try? JSONDecoder().decode([String: String].self, from: savedData)
+            {
+                print("保存标签颜色成功，验证通过: \(savedColors)")
+            } else {
+                print("警告：标签颜色保存后验证失败")
+            }
+        } catch {
+            print("保存标签颜色失败: \(error)")
+        }
     }
 
     // MARK: - 项目排序
@@ -55,7 +135,6 @@ class TagManager: ObservableObject {
             sortCriteria = criteria
             isAscending = ascending
             updateSortedProjects()
-            objectWillChange.send()
         }
     }
 
@@ -84,64 +163,6 @@ class TagManager: ObservableObject {
             cacheFileName)
     }
 
-    private func loadFromCache() {
-        do {
-            let data = try Data(contentsOf: cacheFileURL)
-            let decoder = JSONDecoder()
-            let cachedProjects = try decoder.decode([Project].self, from: data)
-            print("从缓存加载 \(cachedProjects.count) 个项目")
-
-            cachedProjects.forEach { project in
-                projects[project.id] = project
-                project.tags.forEach { tag in
-                    addTag(tag)
-                    incrementUsage(for: tag)
-                }
-            }
-        } catch {
-            print("加载缓存失败: \(error)")
-        }
-
-        // 加载标签颜色
-        if let colorData = defaults.data(forKey: tagColorsKey),
-            let decodedColors = try? JSONDecoder().decode([String: String].self, from: colorData)
-        {
-            print("加载标签颜色: \(decodedColors)")
-            tagColors = decodedColors.mapValues { Color(hex: $0) }
-        }
-    }
-
-    private func saveToCache() {
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(Array(projects.values))
-
-            // 确保缓存目录存在
-            let cacheDir = cacheFileURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-
-            try data.write(to: cacheFileURL)
-            print("项目缓存保存成功")
-        } catch {
-            print("保存缓存失败: \(error)")
-        }
-
-        // 保存标签颜色
-        let colorData = tagColors.compactMapValues { color -> String? in
-            // 将 Color 转换为 NSColor 然后获取 RGB 值
-            let nsColor = NSColor(color)
-            let red = Int(round(nsColor.redComponent * 255))
-            let green = Int(round(nsColor.greenComponent * 255))
-            let blue = Int(round(nsColor.blueComponent * 255))
-            return String(format: "#%02X%02X%02X", red, green, blue)
-        }
-
-        if let encoded = try? JSONEncoder().encode(colorData) {
-            defaults.set(encoded, forKey: tagColorsKey)
-            print("保存标签颜色: \(colorData)")
-        }
-    }
-
     // MARK: - 项目管理
 
     func removeProject(_ id: UUID) {
@@ -151,14 +172,12 @@ class TagManager: ObservableObject {
             }
             projects.removeValue(forKey: id)
             saveToCache()
-            objectWillChange.send()
         }
     }
 
     func clearProjects() {
         projects.removeAll()
         saveToCache()
-        objectWillChange.send()
     }
 
     // MARK: - 系统标签管理
@@ -190,9 +209,7 @@ class TagManager: ObservableObject {
 
         // 使用二分查找插入新项目
         insertProjectInSortedArray(project)
-
         saveToCache()
-        objectWillChange.send()
     }
 
     private func insertProjectInSortedArray(_ project: Project) {
@@ -233,7 +250,6 @@ class TagManager: ObservableObject {
     func updateProject(_ project: Project) {
         print("更新项目: \(project.name), 标签: \(project.tags)")
         projects[project.id] = project
-        objectWillChange.send()
     }
 
     func addTagToProject(projectId: UUID, tag: String) {
@@ -250,7 +266,6 @@ class TagManager: ObservableObject {
             projects[projectId] = project
             addTag(tag)
             incrementUsage(for: tag)
-            objectWillChange.send()
             print("标签添加完成")
         } else {
             print("项目已包含该标签")
@@ -270,7 +285,6 @@ class TagManager: ObservableObject {
             print("移除标签后: \(project.tags)")
             projects[projectId] = project
             decrementUsage(for: tag)
-            objectWillChange.send()
             print("标签移除完成")
         } else {
             print("项目不包含该标签")
@@ -283,11 +297,10 @@ class TagManager: ObservableObject {
         print("添加标签到全局集合: \(tag)")
         allTags.insert(tag)
         if tagColors[tag] == nil {
-            // 从预设颜色中随机选择一个作为默认颜色
-            let randomColor = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
-            tagColors[tag] = randomColor
-            print("为标签 '\(tag)' 设置默认颜色")
-            saveToCache()  // 保存新设置的颜色
+            // 使用蓝色作为默认颜色
+            tagColors[tag] = AppTheme.accent
+            print("为标签 '\(tag)' 设置默认蓝色")
+            saveTagColors()  // 只保存颜色数据
         }
     }
 
@@ -298,13 +311,14 @@ class TagManager: ObservableObject {
         // 如果没有设置颜色，从预设颜色中随机选择一个
         let randomColor = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
         tagColors[tag] = randomColor
-        saveToCache()  // 保存新设置的颜色
+        saveTagColors()  // 只保存颜色数据
         return randomColor
     }
 
     func setColor(_ color: Color, for tag: String) {
+        print("设置标签 '\(tag)' 的颜色")
         tagColors[tag] = color
-        saveToCache()  // 保存到缓存
+        saveTagColors()  // 只保存颜色数据
     }
 
     // MARK: - 标签统计
@@ -335,11 +349,18 @@ class TagManager: ObservableObject {
     func removeTag(_ tag: String) {
         print("删除标签: \(tag)")
         // 从所有项目中移除该标签
-        for projectId in projects.keys {
-            if var project = projects[projectId], project.tags.contains(tag) {
-                project.removeTag(tag)
-                projects[projectId] = project
+        var updatedProjects: [UUID: Project] = [:]
+        for (projectId, project) in projects {
+            if project.tags.contains(tag) {
+                var updatedProject = project
+                updatedProject.removeTag(tag)
+                updatedProjects[projectId] = updatedProject
             }
+        }
+
+        // 批量更新项目
+        for (projectId, project) in updatedProjects {
+            projects[projectId] = project
         }
 
         // 清理标签相关数据
@@ -350,6 +371,59 @@ class TagManager: ObservableObject {
 
         // 保存更改
         saveToCache()
-        objectWillChange.send()
+        saveTagColors()  // 保存颜色变更
+    }
+
+    func renameTag(_ oldName: String, to newName: String) {
+        guard oldName != newName else { return }
+        guard !allTags.contains(newName) else { return }
+
+        // 保存旧标签的颜色和使用次数
+        let oldColor = tagColors[oldName]
+        let oldCount = tagUsageCount[oldName]
+
+        // 从所有项目中更新标签
+        for (projectId, project) in projects {
+            if project.tags.contains(oldName) {
+                var updatedProject = project
+                updatedProject.removeTag(oldName)
+                updatedProject.addTag(newName)
+                projects[projectId] = updatedProject
+            }
+        }
+
+        // 更新标签相关数据
+        allTags.remove(oldName)
+        allTags.insert(newName)
+
+        if let color = oldColor {
+            tagColors.removeValue(forKey: oldName)
+            tagColors[newName] = color
+        }
+
+        if let count = oldCount {
+            tagUsageCount.removeValue(forKey: oldName)
+            tagUsageCount[newName] = count
+        }
+
+        // 保存更改
+        saveToCache()
+        saveTagColors()  // 保存颜色变更
+    }
+
+    private func saveToCache() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(Array(projects.values))
+
+            // 确保缓存目录存在
+            let cacheDir = cacheFileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+
+            try data.write(to: cacheFileURL)
+            print("项目缓存保存成功")
+        } catch {
+            print("保存缓存失败: \(error)")
+        }
     }
 }
