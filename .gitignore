@@ -70,3 +70,10 @@ coverage/
 
 # Cursor
 .cursorrules
+
+# 应用打包相关
+ProjectManager.app/
+ProjectManager.dmg
+ProjectManager.iconset/
+ProjectManager.icns
+icon.png
