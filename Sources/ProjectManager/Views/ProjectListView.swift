@@ -5,6 +5,7 @@ struct ProjectListView: View {
     @State private var selectedTags: Set<String> = []
     @State private var isShowingDirectoryPicker = false
     @State private var watchedDirectory: String = "/Users/douba/Downloads/GPT插件"
+    @State private var selectedProjects: Set<UUID> = []  // 选中的项目
 
     // 排序方式
     enum SortOption {
@@ -49,6 +50,32 @@ struct ProjectListView: View {
 
     private func handleTagSelection(_ tag: String) {
         selectedTags = [tag]  // 直接选择点击的标签
+    }
+
+    // 处理项目选中
+    private func handleProjectSelection(_ project: Project, isShiftPressed: Bool) {
+        if isShiftPressed {
+            // Shift 键按下时，切换选中状态
+            if selectedProjects.contains(project.id) {
+                selectedProjects.remove(project.id)
+            } else {
+                selectedProjects.insert(project.id)
+            }
+        } else {
+            // Shift 键未按下时，单选
+            selectedProjects = [project.id]
+        }
+    }
+
+    // 处理拖拽完成
+    private func handleDrop(tag: String) {
+        for projectId in selectedProjects {
+            if let project = tagManager.projects[projectId] {
+                tagManager.addTagToProject(projectId: project.id, tag: tag)
+            }
+        }
+        // 清除选中状态
+        selectedProjects.removeAll()
     }
 
     private var searchAndSortBar: some View {
@@ -163,6 +190,7 @@ struct ProjectListView: View {
                                     isSelected: selectedTags.contains(tag),
                                     count: tagManager.getUsageCount(for: tag),
                                     action: { handleTagSelection(tag) },
+                                    onDrop: { _ in handleDrop(tag: tag) },
                                     tagManager: tagManager
                                 )
                             }
@@ -220,12 +248,23 @@ struct ProjectListView: View {
                             ForEach(filteredProjects) { project in
                                 ProjectCard(
                                     project: project,
+                                    isSelected: selectedProjects.contains(project.id),
+                                    selectedCount: selectedProjects.count,
                                     tagManager: tagManager,
-                                    onTagSelected: handleTagSelection
+                                    onTagSelected: handleTagSelection,
+                                    onSelect: { isShiftPressed in
+                                        handleProjectSelection(
+                                            project, isShiftPressed: isShiftPressed)
+                                    }
                                 )
                             }
                         }
                         .padding(AppTheme.cardGridPadding)
+                        .contentShape(Rectangle())  // 使整个区域可点击
+                        .onTapGesture {
+                            // 点击空白区域清除选中状态
+                            selectedProjects.removeAll()
+                        }
                     }
                 }
             }

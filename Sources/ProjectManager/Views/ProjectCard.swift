@@ -26,9 +26,12 @@ private func openInCursor(path: String) {
 
 struct ProjectCard: View {
     let project: Project
+    let isSelected: Bool
+    let selectedCount: Int  // 添加选中数量
     @ObservedObject var tagManager: TagManager
     @State private var isEditingTags = false
-    let onTagSelected: (String) -> Void  // 添加标签选择回调
+    let onTagSelected: (String) -> Void
+    let onSelect: (Bool) -> Void
 
     private var headerView: some View {
         HStack {
@@ -75,7 +78,7 @@ struct ProjectCard: View {
     }
 
     private var infoView: some View {
-        HStack(spacing: 12) {
+        HStack {
             // 日期信息
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
@@ -87,27 +90,22 @@ struct ProjectCard: View {
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)
 
+            Spacer()
+
             // Git 提交次数
             if let gitInfo = project.gitInfo {
                 HStack(spacing: 4) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundColor(AppTheme.gitIcon)
                     Text("\(gitInfo.commitCount)")
-                        .foregroundColor(AppTheme.gitIcon)
-                        .fontWeight(.medium)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppTheme.accent)
                     Text("次提交")
+                        .font(AppTheme.captionFont)
                         .foregroundColor(AppTheme.secondaryText)
                 }
-                // 设置字体大小为12号
-                .font(AppTheme.captionFont)
-                // 水平方向内边距8点
                 .padding(.horizontal, 8)
-                // 垂直方向内边距2点
                 .padding(.vertical, 4)
-                // 设置背景色为卡片背景色
-                .background(AppTheme.cardBackground)
-                // 不设置圆角
-                .cornerRadius(0)
+                .background(AppTheme.accent.opacity(0.1))
+                .cornerRadius(6)
             }
         }
     }
@@ -142,13 +140,48 @@ struct ProjectCard: View {
         .frame(height: AppTheme.cardHeight)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                .fill(AppTheme.cardBackground)
+                .fill(isSelected ? AppTheme.cardSelectedBackground : AppTheme.cardBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                .strokeBorder(AppTheme.cardBorder, lineWidth: AppTheme.cardBorderWidth)
+                .strokeBorder(
+                    isSelected ? AppTheme.cardSelectedBorder : AppTheme.cardBorder,
+                    lineWidth: isSelected
+                        ? AppTheme.cardSelectedBorderWidth : AppTheme.cardBorderWidth
+                )
         )
-        .shadow(color: AppTheme.cardShadow, radius: 4, x: 0, y: 2)
+        .shadow(
+            color: isSelected ? AppTheme.cardSelectedShadow : AppTheme.cardShadow,
+            radius: isSelected ? AppTheme.cardSelectedShadowRadius : 4,
+            x: 0,
+            y: 2
+        )
+        .onTapGesture {
+            let flags = NSEvent.modifierFlags
+            onSelect(flags.contains(.shift))
+        }
+        .onDrag {
+            NSItemProvider(object: project.id.uuidString as NSString)
+        } preview: {
+            // 拖拽预览
+            HStack(spacing: 4) {
+                Image(systemName: "folder.fill")
+                    .foregroundColor(AppTheme.folderIcon)
+                if selectedCount > 1 {
+                    Text("\(selectedCount) 个项目")
+                        .foregroundColor(AppTheme.text)
+                } else {
+                    Text(project.name)
+                        .foregroundColor(AppTheme.text)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(AppTheme.cardBackground)
+            .cornerRadius(4)
+            .frame(maxWidth: 200)
+        }
         .sheet(isPresented: $isEditingTags) {
             TagEditorView(project: project, tagManager: tagManager)
         }
@@ -362,8 +395,11 @@ struct TagEditorView: View {
                     lastModified: Date(),
                     tags: ["Swift", "iOS"]
                 ),
+                isSelected: false,
+                selectedCount: 1,
                 tagManager: TagManager(),
-                onTagSelected: { _ in }
+                onTagSelected: { _ in },
+                onSelect: { _ in }
             )
             .padding()
         }

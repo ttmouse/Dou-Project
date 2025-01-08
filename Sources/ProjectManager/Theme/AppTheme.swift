@@ -57,8 +57,8 @@ enum AppTheme {
     static let background = Color(hex: "#171717")
     /// 次要背景色 - #1A1A1A
     static let secondaryBackground = Color(hex: "#1A1A1A")
-    /// 强调色 - 纯白色
-    static let accent = Color(hex: "#FFFFFF")
+    /// 强调色 - 蓝色
+    static let accent = Color(hex: "#36309C")
     /// 主文本色 - 白色，不透明度90%
     static let text = Color(hex: "#FFFFFF", alpha: 0.9)
     /// 次要文本色 - 白色，不透明度60%
@@ -105,6 +105,16 @@ enum AppTheme {
     static let cardShadow = Color(hex: "#000000", alpha: 0.0)
     /// 卡片悬停色 - 白色，不透明度8%
     static let cardHover = Color(hex: "#FFFFFF", alpha: 0.08)
+    /// 卡片选中背景色
+    static let cardSelectedBackground = accent.opacity(0.2)
+    /// 卡片选中边框色
+    static let cardSelectedBorder = accent.opacity(0.85)
+    /// 卡片选中边框宽度
+    static let cardSelectedBorderWidth: CGFloat = 2
+    /// 卡片选中阴影色
+    static let cardSelectedShadow = accent.opacity(0.2)
+    /// 卡片选中阴影半径
+    static let cardSelectedShadowRadius: CGFloat = 8
     /// 卡片内边距
     static let cardPadding: CGFloat = 16
     /// 卡片圆角
