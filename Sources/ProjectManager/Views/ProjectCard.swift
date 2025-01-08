@@ -260,7 +260,7 @@ struct ProjectCard_Previews: PreviewProvider {
                 id: UUID(),
                 name: "示例项目",
                 path: "/Users/example/Projects/demo",
-                lastModified: "2024-01-01",
+                lastModified: Date(),
                 tags: ["Swift", "iOS"]
             ),
             tagManager: TagManager(),

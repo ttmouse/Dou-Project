@@ -166,6 +166,7 @@ struct Project: Identifiable, Equatable, Codable {
                     tags: tags
                 )
             }
+            .sorted { $0.lastModified > $1.lastModified }
         
         print("加载完成，共 \(projects.count) 个项目")
         return projects

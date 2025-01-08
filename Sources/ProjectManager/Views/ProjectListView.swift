@@ -5,6 +5,15 @@ struct ProjectListView: View {
     @State private var selectedTags: Set<String> = []
     @State private var isShowingDirectoryPicker = false
     @State private var watchedDirectory: String = "/Users/douba/Downloads/GPT插件"
+    
+    // 排序方式
+    enum SortOption {
+        case timeAsc      // 时间升序
+        case timeDesc     // 时间降序
+        case commitCount  // 提交次数
+    }
+    @State private var sortOption: SortOption = .timeDesc
+    
     @EnvironmentObject var tagManager: TagManager
     
     // 分步过滤
@@ -23,12 +32,56 @@ struct ProjectListView: View {
             }
         }
         
-        // 按修改时间倒序排序
-        return result.sorted { $0.lastModified > $1.lastModified }
+        // 根据排序选项排序
+        return result.sorted { lhs, rhs in
+            switch sortOption {
+            case .timeAsc:
+                return lhs.lastModified < rhs.lastModified
+            case .timeDesc:
+                return lhs.lastModified > rhs.lastModified
+            case .commitCount:
+                let lhsCount = lhs.gitInfo?.commitCount ?? 0
+                let rhsCount = rhs.gitInfo?.commitCount ?? 0
+                return lhsCount > rhsCount
+            }
+        }
     }
     
     private func handleTagSelection(_ tag: String) {
         selectedTags = [tag]  // 直接选择点击的标签
+    }
+    
+    private var searchAndSortBar: some View {
+        HStack(spacing: 8) {
+            SearchBar(text: $searchText)
+            
+            // 时间排序按钮
+            Button(action: {
+                switch sortOption {
+                case .timeDesc: sortOption = .timeAsc
+                case .timeAsc: sortOption = .timeDesc
+                case .commitCount: sortOption = .timeDesc
+                }
+            }) {
+                Image(systemName: sortOption == .timeAsc ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    .foregroundColor(sortOption == .commitCount ? .secondary : .blue)
+                    .font(.system(size: 20))
+            }
+            .buttonStyle(.plain)
+            .help(sortOption == .timeAsc ? "最早的在前" : "最新的在前")
+            
+            // 提交次数排序按钮
+            Button(action: {
+                sortOption = .commitCount
+            }) {
+                Image(systemName: "number.circle.fill")
+                    .foregroundColor(sortOption == .commitCount ? .blue : .secondary)
+                    .font(.system(size: 20))
+            }
+            .buttonStyle(.plain)
+            .help("按提交次数排序")
+        }
+        .padding()
     }
     
     var body: some View {
@@ -100,8 +153,7 @@ struct ProjectListView: View {
             
             // 主内容
             VStack {
-                SearchBar(text: $searchText)
-                    .padding()
+                searchAndSortBar
                 
                 if filteredProjects.isEmpty {
                     VStack(spacing: 20) {
