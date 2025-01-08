@@ -2,40 +2,29 @@ import SwiftUI
 
 struct SearchBar: View {
     @Binding var text: String
-    @FocusState private var isFocused: Bool
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(AppTheme.secondaryText)
-                .font(.system(size: 14))
+                .foregroundColor(AppTheme.titleBarIcon)
             
             TextField("搜索项目...", text: $text)
                 .textFieldStyle(.plain)
-                .focused($isFocused)
-                .font(.system(size: 14))
-                .foregroundColor(AppTheme.text)
+                .foregroundColor(AppTheme.titleBarText)
             
             if !text.isEmpty {
-                Button(action: {
-                    text = ""
-                    isFocused = true
-                }) {
+                Button(action: { text = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(AppTheme.secondaryText)
-                        .font(.system(size: 14))
+                        .foregroundColor(AppTheme.titleBarIcon)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(AppTheme.secondaryBackground)
-        )
+        .padding(8)
+        .background(AppTheme.searchBarBackground)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isFocused ? AppTheme.accent : AppTheme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(AppTheme.searchBarBorder, lineWidth: 1)
         )
     }
 }

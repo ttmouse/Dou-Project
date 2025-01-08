@@ -34,6 +34,24 @@ extension Color {
 
 /// 应用程序主题配置
 enum AppTheme {
+    // MARK: - 字体样式
+    /// 标题字体 - 18号
+    static let titleFont = Font.system(size: 18, weight: .semibold)
+    /// 副标题字体 - 16号
+    static let subtitleFont = Font.system(size: 16, weight: .medium)
+    /// 正文字体 - 14号
+    static let bodyFont = Font.system(size: 14)
+    /// 小字体 - 12号
+    static let captionFont = Font.system(size: 12)
+    /// 标签字体 - 13号
+    static let tagFont = Font.system(size: 13)
+    /// 侧边栏标题字体 - 15号
+    static let sidebarTitleFont = Font.system(size: 15, weight: .semibold)
+    /// 侧边栏标签字体 - 13号
+    static let sidebarTagFont = Font.system(size: 13)
+    /// 搜索栏字体 - 14号
+    static let searchBarFont = Font.system(size: 14)
+    
     // MARK: - 基础颜色
     /// 主背景色 - #171717
     static let background = Color(hex: "#171717")
@@ -47,6 +65,18 @@ enum AppTheme {
     static let secondaryText = Color(hex: "#FFFFFF", alpha: 0.6)
     /// 边框色 - 白色，不透明度10%
     static let border = Color(hex: "#FFFFFF", alpha: 0.1)
+    
+    // MARK: - 标题栏样式
+    /// 标题栏背景色 - #1A1A1A
+    static let titleBarBackground = Color(hex: "#171717")
+    /// 标题栏边框色 - #2D2D2D
+    static let titleBarBorder = Color(hex: "#2D2D2D")
+    /// 标题栏文本色 - 白色，不透明度90%
+    static let titleBarText = Color(hex: "#FFFFFF", alpha: 0.9)
+    /// 标题栏图标色 - 白色，不透明度60%
+    static let titleBarIcon = Color(hex: "#FFFFFF", alpha: 0.6)
+    /// 标题栏按钮悬停背景色
+    static let titleBarButtonHover = Color(hex: "#FFFFFF", alpha: 0.1)
     
     // MARK: - 侧边栏样式
     /// 侧边栏背景色 - #1A1A1A
@@ -143,4 +173,28 @@ enum AppTheme {
     static let scrollBar = Color(hex: "#FFFFFF", alpha: 0.2)
     /// 滚动条悬停色
     static let scrollBarHover = Color(hex: "#FFFFFF", alpha: 0.3)
+    
+    // MARK: - 标签列表样式
+    /// 标签列表整体间距
+    static let tagListSpacing: CGFloat = 8
+    /// 标签行之间的间距
+    static let tagRowSpacing: CGFloat = 2
+    /// 标签行内边距 - 水平
+    static let tagRowPaddingH: CGFloat = 8
+    /// 标签行内边距 - 垂直
+    static let tagRowPaddingV: CGFloat = 4
+    /// 标签行圆角
+    static let tagRowCornerRadius: CGFloat = 0
+    /// 标签计数背景圆角
+    static let tagCountCornerRadius: CGFloat = 4
+    /// 标签计数内边距 - 水平
+    static let tagCountPaddingH: CGFloat = 8
+    /// 标签计数内边距 - 垂直
+    static let tagCountPaddingV: CGFloat = 2
+    /// 标签列表头部内边距 - 水平
+    static let tagListHeaderPaddingH: CGFloat = 12
+    /// 标签列表头部内边距 - 垂直
+    static let tagListHeaderPaddingV: CGFloat = 4
+    /// 标签列表内容区域内边距 - 垂直
+    static let tagListContentPaddingV: CGFloat = 4
 } 

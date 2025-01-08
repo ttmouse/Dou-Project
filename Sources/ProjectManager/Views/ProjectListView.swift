@@ -64,7 +64,7 @@ struct ProjectListView: View {
                 }
             }) {
                 Image(systemName: sortOption == .timeAsc ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                    .foregroundColor(sortOption == .commitCount ? .secondary : .blue)
+                    .foregroundColor(sortOption == .commitCount ? AppTheme.titleBarIcon : AppTheme.accent)
                     .font(.system(size: 20))
             }
             .buttonStyle(.plain)
@@ -75,13 +75,20 @@ struct ProjectListView: View {
                 sortOption = .commitCount
             }) {
                 Image(systemName: "number.circle.fill")
-                    .foregroundColor(sortOption == .commitCount ? .blue : .secondary)
+                    .foregroundColor(sortOption == .commitCount ? AppTheme.accent : AppTheme.titleBarIcon)
                     .font(.system(size: 20))
             }
             .buttonStyle(.plain)
             .help("按提交次数排序")
         }
         .padding()
+        .background(AppTheme.titleBarBackground)
+        .overlay(
+            Rectangle()
+                .fill(AppTheme.titleBarBorder)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
     
     var body: some View {
@@ -113,7 +120,7 @@ struct ProjectListView: View {
                 .padding(.vertical, 8)
                 
                 // 标签列表
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
                     HStack {
                         Text("标签")
                             .font(.headline)
@@ -129,10 +136,11 @@ struct ProjectListView: View {
                         .buttonStyle(.plain)
                         .opacity(selectedTags.isEmpty ? 0.5 : 1)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
+                    .padding(.vertical, AppTheme.tagListHeaderPaddingV)
                     
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 8) {
+                        LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
                             ForEach(Array(tagManager.allTags).sorted { tag1, tag2 in
                                 let count1 = tagManager.getUsageCount(for: tag1)
                                 let count2 = tagManager.getUsageCount(for: tag2)
@@ -145,10 +153,9 @@ struct ProjectListView: View {
                                     action: { handleTagSelection(tag) },
                                     tagManager: tagManager
                                 )
-                                .padding(.horizontal)
                             }
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, AppTheme.tagListContentPaddingV)
                     }
                 }
                 .frame(maxWidth: .infinity)

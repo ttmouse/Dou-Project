@@ -33,7 +33,8 @@ struct ProjectCard: View {
     private var headerView: some View {
         HStack {
             Text(project.name)
-                .font(.headline)
+                .font(AppTheme.titleFont)
+                .foregroundColor(AppTheme.text)
                 .lineLimit(1)
             
             Spacer()
@@ -41,7 +42,7 @@ struct ProjectCard: View {
             // 编辑标签按钮
             Button(action: { isEditingTags = true }) {
                 Image(systemName: "tag")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppTheme.secondaryIcon)
             }
             .buttonStyle(.plain)
             .help("编辑标签")
@@ -49,7 +50,7 @@ struct ProjectCard: View {
             // 在 Cursor 中打开按钮
             Button(action: { openInCursor(path: project.path) }) {
                 Image(systemName: "cursorarrow.rays")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppTheme.secondaryIcon)
             }
             .buttonStyle(.plain)
             .help("在 Cursor 中打开")
@@ -57,7 +58,7 @@ struct ProjectCard: View {
             // 打开文件夹按钮
             Button(action: { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path) }) {
                 Image(systemName: "folder")
-                    .foregroundColor(.blue)
+                    .foregroundColor(AppTheme.folderIcon)
             }
             .buttonStyle(.plain)
             .help("打开文件夹")
@@ -66,8 +67,8 @@ struct ProjectCard: View {
     
     private var pathView: some View {
         Text(project.path)
-            .font(.caption)
-            .foregroundColor(.secondary)
+            .font(AppTheme.captionFont)
+            .foregroundColor(AppTheme.secondaryText)
             .lineLimit(1)
     }
     
@@ -76,30 +77,35 @@ struct ProjectCard: View {
             // 日期信息
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppTheme.secondaryIcon)
                 Text(project.lastModified, style: .date)
                     + Text(" ")
                     + Text(project.lastModified, style: .time)
             }
-            .font(.caption)
-            .foregroundColor(.secondary)
+            .font(AppTheme.captionFont)
+            .foregroundColor(AppTheme.secondaryText)
             
             // Git 提交次数
             if let gitInfo = project.gitInfo {
                 HStack(spacing: 4) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .foregroundColor(.blue)
+                        .foregroundColor(AppTheme.gitIcon)
                     Text("\(gitInfo.commitCount)")
-                        .foregroundColor(.blue)
+                        .foregroundColor(AppTheme.gitIcon)
                         .fontWeight(.medium)
                     Text("次提交")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppTheme.secondaryText)
                 }
-                .font(.caption)
+                // 设置字体大小为12号
+                .font(AppTheme.captionFont)
+                // 水平方向内边距8点
                 .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(4)
+                // 垂直方向内边距2点
+                .padding(.vertical, 4)
+                // 设置背景色为卡片背景色
+                .background(AppTheme.cardBackground)
+                // 不设置圆角
+                .cornerRadius(0)
             }
         }
     }

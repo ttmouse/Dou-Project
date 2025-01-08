@@ -22,18 +22,19 @@ struct TagRow: View {
                 Text("\(count)")
                     .font(.caption)
                     .foregroundColor(isSelected ? AppTheme.accent : AppTheme.sidebarSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, AppTheme.tagCountPaddingH)
+                    .padding(.vertical, AppTheme.tagCountPaddingV)
                     .background(isSelected ? AppTheme.sidebarSelectedBackground : AppTheme.sidebarDirectoryBackground)
-                    .cornerRadius(4)
+                    .cornerRadius(AppTheme.tagCountCornerRadius)
             }
             .contentShape(Rectangle())
-            .padding(.vertical, 4)
-            .padding(.horizontal, 16)
+            .padding(.vertical, AppTheme.tagRowPaddingV)
+            .padding(.horizontal, AppTheme.tagRowPaddingH)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
         .background(isSelected ? AppTheme.sidebarSelectedBackground : Color.clear)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .cornerRadius(AppTheme.tagRowCornerRadius)
     }
 }
 
