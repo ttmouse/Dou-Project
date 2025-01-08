@@ -130,11 +130,16 @@ struct ProjectCard: View {
             tagsView
         }
         .padding()
+        .frame(height: 120)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(.textBackgroundColor))
-                .shadow(radius: 2)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppTheme.cardBackground)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+        )
+        .shadow(color: AppTheme.cardShadow, radius: 4, x: 0, y: 2)
         .sheet(isPresented: $isEditingTags) {
             TagEditorView(project: project, tagManager: tagManager)
         }

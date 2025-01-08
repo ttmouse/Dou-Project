@@ -11,13 +11,17 @@ struct ProjectManagerApp: App {
             ProjectListView()
                 .environmentObject(tagManager)
                 .frame(minWidth: 800, minHeight: 600)
-                .background(Color(.windowBackgroundColor))
+                .background(AppTheme.background)
         }
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let window = NSApplication.shared.windows.first {
+            window.backgroundColor = NSColor(AppTheme.background)
+        }
+        
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

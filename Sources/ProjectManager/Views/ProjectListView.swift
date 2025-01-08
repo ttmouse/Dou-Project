@@ -94,14 +94,19 @@ struct ProjectListView: View {
                 }) {
                     HStack {
                         Image(systemName: "folder")
+                            .foregroundColor(AppTheme.sidebarSecondaryText)
                         Text(watchedDirectory)
+                            .foregroundColor(AppTheme.sidebarTitle)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity)
-                    .background(Color(.controlBackgroundColor))
-                    .cornerRadius(6)
+                    .background(AppTheme.sidebarDirectoryBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(AppTheme.sidebarDirectoryBorder, lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal)
@@ -112,16 +117,16 @@ struct ProjectListView: View {
                     HStack {
                         Text("标签")
                             .font(.headline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppTheme.sidebarTitle)
                         
                         Spacer()
                         
                         Button(action: { selectedTags.removeAll() }) {
                             Text("清除")
                                 .font(.subheadline)
+                                .foregroundColor(selectedTags.isEmpty ? AppTheme.sidebarSecondaryText : AppTheme.accent)
                         }
                         .buttonStyle(.plain)
-                        .foregroundColor(selectedTags.isEmpty ? .secondary : .blue)
                         .opacity(selectedTags.isEmpty ? 0.5 : 1)
                     }
                     .padding(.horizontal)
@@ -149,7 +154,13 @@ struct ProjectListView: View {
                 .frame(maxWidth: .infinity)
             }
             .frame(minWidth: 200, maxWidth: 300)
-            .background(Color(.windowBackgroundColor))
+            .background(AppTheme.sidebarBackground)
+            .overlay(
+                Rectangle()
+                    .fill(AppTheme.sidebarBorder)
+                    .frame(width: 1)
+                    .offset(x: 299)
+            )
             
             // 主内容
             VStack {

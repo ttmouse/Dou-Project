@@ -21,18 +21,18 @@ struct TagRow: View {
                 
                 Text("\(count)")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(isSelected ? AppTheme.accent : AppTheme.sidebarSecondaryText)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Color(.controlBackgroundColor))
+                    .background(isSelected ? AppTheme.sidebarSelectedBackground : AppTheme.sidebarDirectoryBackground)
                     .cornerRadius(4)
             }
             .contentShape(Rectangle())
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 16)
         }
         .buttonStyle(.plain)
-        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        .cornerRadius(6)
+        .background(isSelected ? AppTheme.sidebarSelectedBackground : Color.clear)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 }

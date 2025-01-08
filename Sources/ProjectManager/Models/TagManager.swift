@@ -6,12 +6,70 @@ class TagManager: ObservableObject {
     @Published private(set) var projects: [UUID: Project] = [:]
     @Published private var tagUsageCount: [String: Int] = [:]
     @Published var tagColors: [String: Color] = [:]
+    
+    // 添加排序缓存
+    private var sortedProjects: [Project] = []
+    private var sortCriteria: SortCriteria = .lastModified
+    private var isAscending: Bool = false
     private var tagLastUsed: [String: Date] = [:]
     private let cacheFileName = "project_cache.json"
+    
+    enum SortCriteria {
+        case name
+        case lastModified
+        case gitCommits
+    }
+    
+    // MARK: - 初始化
     
     init() {
         loadSystemTags()
         loadFromCache()
+        updateSortedProjects()
+    }
+    
+    // MARK: - 项目排序
+    
+    private func updateSortedProjects() {
+        let projectArray = Array(projects.values)
+        sortedProjects = projectArray.sorted { p1, p2 in
+            switch sortCriteria {
+            case .lastModified:
+                return isAscending ? p1.lastModified < p2.lastModified : p1.lastModified > p2.lastModified
+            case .name:
+                return isAscending ? p1.name < p2.name : p1.name > p2.name
+            case .gitCommits:
+                let count1 = p1.gitInfo?.commitCount ?? 0
+                let count2 = p2.gitInfo?.commitCount ?? 0
+                return isAscending ? count1 < count2 : count1 > count2
+            }
+        }
+    }
+    
+    func setSortCriteria(_ criteria: SortCriteria, ascending: Bool) {
+        if sortCriteria != criteria || isAscending != ascending {
+            sortCriteria = criteria
+            isAscending = ascending
+            updateSortedProjects()
+            objectWillChange.send()
+        }
+    }
+    
+    // 获取已排序的项目列表
+    func getSortedProjects() -> [Project] {
+        return sortedProjects
+    }
+    
+    // 获取已排序并过滤的项目列表
+    func getFilteredProjects(withTags tags: Set<String>, searchText: String = "") -> [Project] {
+        let filtered = sortedProjects.filter { project in
+            let matchesTags = tags.isEmpty || !tags.isDisjoint(with: project.tags)
+            let matchesSearch = searchText.isEmpty || 
+                project.name.localizedCaseInsensitiveContains(searchText) ||
+                project.path.localizedCaseInsensitiveContains(searchText)
+            return matchesTags && matchesSearch
+        }
+        return filtered
     }
     
     // MARK: - 缓存管理
@@ -99,8 +157,46 @@ class TagManager: ObservableObject {
             addTag(tag)
             incrementUsage(for: tag)
         }
+        
+        // 使用二分查找插入新项目
+        insertProjectInSortedArray(project)
+        
         saveToCache()
         objectWillChange.send()
+    }
+    
+    private func insertProjectInSortedArray(_ project: Project) {
+        let index = binarySearchInsertionIndex(for: project)
+        sortedProjects.insert(project, at: index)
+    }
+    
+    private func binarySearchInsertionIndex(for project: Project) -> Int {
+        var left = 0
+        var right = sortedProjects.count
+        
+        while left < right {
+            let mid = (left + right) / 2
+            if shouldInsertBefore(project, sortedProjects[mid]) {
+                right = mid
+            } else {
+                left = mid + 1
+            }
+        }
+        
+        return left
+    }
+    
+    private func shouldInsertBefore(_ p1: Project, _ p2: Project) -> Bool {
+        switch sortCriteria {
+        case .lastModified:
+            return isAscending ? p1.lastModified < p2.lastModified : p1.lastModified > p2.lastModified
+        case .name:
+            return isAscending ? p1.name < p2.name : p1.name > p2.name
+        case .gitCommits:
+            let count1 = p1.gitInfo?.commitCount ?? 0
+            let count2 = p2.gitInfo?.commitCount ?? 0
+            return isAscending ? count1 < count2 : count1 > count2
+        }
     }
     
     func updateProject(_ project: Project) {
