@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProjectListView: View {
     @State private var searchText = ""
@@ -11,6 +12,7 @@ struct ProjectListView: View {
     @State private var selectedProjects: Set<UUID> = []  // 选中的项目
     @State private var isShowingNewTagDialog = false
     @State private var tagToRename: IdentifiableString? = nil
+    @State private var isDraggingDirectory = false  // 添加拖放状态
 
     // 排序方式
     enum SortOption {
@@ -24,11 +26,14 @@ struct ProjectListView: View {
 
     // 分步过滤
     private var filteredProjects: [Project] {
-        var result = Array(tagManager.projects.values)
+        // 1. 获取所有项目
+        let allProjects = Array(tagManager.projects.values)
 
-        // 搜索过滤
-        if !searchText.isEmpty {
-            result = result.filter { project in
+        // 2. 搜索过滤
+        let searchFiltered =
+            searchText.isEmpty
+            ? allProjects
+            : allProjects.filter { project in
                 // 项目名称匹配
                 if project.name.localizedCaseInsensitiveContains(searchText) {
                     return true
@@ -44,17 +49,20 @@ struct ProjectListView: View {
                 }
                 return false
             }
-        }
 
-        // 标签过滤
-        if !selectedTags.isEmpty {
-            result = result.filter { project in
-                !selectedTags.isDisjoint(with: project.tags)
+        // 3. 标签过滤
+        let tagFiltered =
+            selectedTags.isEmpty
+            ? searchFiltered
+            : searchFiltered.filter { project in
+                if selectedTags.contains("没有标签") {
+                    return project.tags.isEmpty
+                }
+                return !selectedTags.isDisjoint(with: project.tags)
             }
-        }
 
-        // 根据排序选项排序
-        return result.sorted { lhs, rhs in
+        // 4. 排序
+        return tagFiltered.sorted { lhs, rhs in
             switch sortOption {
             case .timeAsc:
                 return lhs.lastModified < rhs.lastModified
@@ -87,13 +95,10 @@ struct ProjectListView: View {
         }
     }
 
-    // 处理拖拽完成
+    // 处$理拖拽完成
     private func handleDrop(tag: String) {
-        for projectId in selectedProjects {
-            if let project = tagManager.projects[projectId] {
-                tagManager.addTagToProject(projectId: project.id, tag: tag)
-            }
-        }
+        // 使用批量添加方法
+        tagManager.addTagToProjects(projectIds: selectedProjects, tag: tag)
         // 清除选中状态
         selectedProjects.removeAll()
     }
@@ -158,39 +163,107 @@ struct ProjectListView: View {
         .opacity(selectedTags.isEmpty ? 0.5 : 1)
     }
 
-    // 目录选择按钮视图
-    private var directoryPickerButton: some View {
-        Button(action: {
-            DispatchQueue.main.async {
-                let panel = NSOpenPanel()
-                panel.canChooseFiles = false
-                panel.canChooseDirectories = true
-                panel.allowsMultipleSelection = false
-                panel.canCreateDirectories = true
-                panel.prompt = "选择"
-                panel.message = "请选择要监视的项目目录"
+    // 目录管理按钮视图
+    private var directoryManageButton: some View {
+        Menu {
+            ForEach(Array(tagManager.watchedDirectories), id: \.self) { path in
+                Menu {
+                    Button(
+                        role: .destructive,
+                        action: {
+                            tagManager.removeWatchedDirectory(path)
+                        }
+                    ) {
+                        Label("移除目录", systemImage: "trash")
+                    }
 
-                panel.begin { response in
-                    if response == .OK {
-                        if let url = panel.url {
+                    Button(action: {
+                        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+                    }) {
+                        Label("在访达中显示", systemImage: "folder")
+                    }
+                } label: {
+                    Text(path)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            if !tagManager.watchedDirectories.isEmpty {
+                Divider()
+            }
+
+            Button(action: {
+                DispatchQueue.main.async {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.canCreateDirectories = true
+                    panel.prompt = "选择"
+                    panel.message = "请选择要添加的工作目录"
+                    panel.level = .modalPanel
+
+                    panel.begin { response in
+                        if response == .OK, let url = panel.url {
                             DispatchQueue.main.async {
-                                self.watchedDirectory = url.path
-                                UserDefaults.standard.set(
-                                    self.watchedDirectory, forKey: "WatchedDirectory")
-                                self.loadProjects()
+                                tagManager.addWatchedDirectory(url.path)
                             }
                         }
                     }
                 }
+            }) {
+                Label("添加工作目录...", systemImage: "folder.badge.plus")
             }
-        }) {
+
+            Button(action: {
+                DispatchQueue.main.async {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = true
+                    panel.canCreateDirectories = false
+                    panel.prompt = "选择"
+                    panel.message = "请选择要添加的项目文件夹"
+                    panel.level = .modalPanel
+
+                    if panel.runModal() == .OK {
+                        for url in panel.urls {
+                            DispatchQueue.main.async {
+                                // 直接添加为项目
+                                let project = Project(name: url.lastPathComponent, path: url.path)
+                                tagManager.registerProject(project)
+                            }
+                        }
+                    }
+                }
+            }) {
+                Label("添加项目文件夹...", systemImage: "plus.rectangle.on.folder")
+            }
+
+            Divider()
+
+            Button(action: {
+                tagManager.reloadAllProjects()
+            }) {
+                Label("刷新所有", systemImage: "arrow.clockwise")
+            }
+        } label: {
             HStack {
                 Image(systemName: "folder")
                     .foregroundColor(AppTheme.sidebarSecondaryText)
-                Text(watchedDirectory)
+                Text("管理目录")
                     .foregroundColor(AppTheme.sidebarTitle)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+
+                Spacer()
+
+                Text("\(tagManager.watchedDirectories.count)")
+                    .font(.caption)
+                    .foregroundColor(AppTheme.sidebarSecondaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppTheme.sidebarDirectoryBackground)
+                    .cornerRadius(4)
             }
             .padding(10)
             .frame(maxWidth: .infinity)
@@ -200,9 +273,37 @@ struct ProjectListView: View {
                     .strokeBorder(AppTheme.sidebarDirectoryBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(
+                    style: StrokeStyle(lineWidth: 2, dash: [4])
+                )
+                .foregroundColor(AppTheme.accent.opacity(0.5))
+                .padding(4)
+                .opacity(isDraggingDirectory ? 1 : 0)
+        )
+        .onDrop(of: ["public.file-url"], isTargeted: $isDraggingDirectory) { providers in
+            guard let provider = providers.first else { return false }
+
+            _ = provider.loadObject(ofClass: NSURL.self) { (url, error) in
+                if let fileURL = url as? URL {
+                    var isDirectory: ObjCBool = false
+                    if FileManager.default.fileExists(
+                        atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue
+                    {
+                        DispatchQueue.main.async {
+                            // 添加为工作目录
+                            tagManager.addWatchedDirectory(fileURL.path)
+                        }
+                    }
+                }
+            }
+            return true
+        }
     }
 
     // 标签列表头部视图
@@ -254,6 +355,17 @@ struct ProjectListView: View {
                     tagManager: tagManager
                 )
 
+                // 添加"没有标签"分类
+                TagRow(
+                    tag: "没有标签",
+                    isSelected: selectedTags.contains("没有标签"),
+                    count: tagManager.projects.values.filter { $0.tags.isEmpty }.count,
+                    action: { selectedTags = ["没有标签"] },
+                    onDrop: nil,
+                    onRename: nil,
+                    tagManager: tagManager
+                )
+
                 ForEach(
                     Array(tagManager.allTags).sorted { tag1, tag2 in
                         let count1 = tagManager.getUsageCount(for: tag1)
@@ -292,7 +404,7 @@ struct ProjectListView: View {
     // 侧边栏视图
     private var sidebarView: some View {
         VStack(spacing: 0) {
-            directoryPickerButton
+            directoryManageButton
 
             // 标签列表
             VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
@@ -334,7 +446,7 @@ struct ProjectListView: View {
 
     // 项目网格视图
     private var projectGridView: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             LazyVGrid(
                 columns: [
                     GridItem(
@@ -352,6 +464,7 @@ struct ProjectListView: View {
                         project: project,
                         isSelected: selectedProjects.contains(project.id),
                         selectedCount: selectedProjects.count,
+                        selectedProjects: selectedProjects,
                         tagManager: tagManager,
                         onTagSelected: handleTagSelection,
                         onSelect: { isShiftPressed in
@@ -366,6 +479,9 @@ struct ProjectListView: View {
                 selectedProjects.removeAll()
             }
         }
+        .overlay(alignment: .trailing) {
+            ScrollIndicatorView()
+        }
     }
 
     // 主内容视图
@@ -377,6 +493,26 @@ struct ProjectListView: View {
             } else {
                 projectGridView
             }
+        }
+        .onDrop(of: ["public.file-url"], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+
+            _ = provider.loadObject(ofClass: NSURL.self) { (url, error) in
+                if let fileURL = url as? URL {
+                    var isDirectory: ObjCBool = false
+                    if FileManager.default.fileExists(
+                        atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue
+                    {
+                        DispatchQueue.main.async {
+                            // 直接添加为项目
+                            let project = Project(
+                                name: fileURL.lastPathComponent, path: fileURL.path)
+                            tagManager.registerProject(project)
+                        }
+                    }
+                }
+            }
+            return true
         }
     }
 

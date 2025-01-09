@@ -10,12 +10,14 @@ struct ProjectManagerApp: App {
             ContentView()
                 .frame(minWidth: 800, minHeight: 600)
                 .background(AppTheme.background)
+                .preferredColorScheme(.dark)
         }
+        .windowStyle(.hiddenTitleBar)
     }
 }
 
 struct ContentView: View {
-    @StateObject private var tagManager = TagManager()
+    @StateObject var tagManager = TagManager()
 
     var body: some View {
         ProjectListView()
@@ -28,20 +30,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApplication.shared.windows.first {
             window.backgroundColor = NSColor(AppTheme.background)
 
+            window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.titlebarSeparatorStyle = .none
-
-            if let titlebar = window.standardWindowButton(.closeButton)?.superview?.superview {
-                titlebar.wantsLayer = true
-                titlebar.layer?.backgroundColor = NSColor(AppTheme.titleBarBackground).cgColor
-            }
-
-            window.title = "项目管理器"
-            if let titleView = window.standardWindowButton(.closeButton)?.superview?.superview?
-                .subviews.first(where: { $0 is NSTextField }) as? NSTextField
-            {
-                titleView.textColor = NSColor(AppTheme.titleBarText)
-            }
+            window.styleMask.insert(.fullSizeContentView)
 
             let buttonTypes: [NSWindow.ButtonType] = [
                 .closeButton, .miniaturizeButton, .zoomButton,
@@ -51,10 +42,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     button.wantsLayer = true
                 }
             }
+
+            if let textView = window.fieldEditor(true, for: nil) as? NSTextView {
+                textView.isAutomaticTextReplacementEnabled = false
+                textView.isAutomaticQuoteSubstitutionEnabled = false
+                textView.isAutomaticDashSubstitutionEnabled = false
+            }
         }
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // 获取 TagManager 实例
+        guard let window = NSApplication.shared.windows.first,
+            let contentView = window.contentViewController as? NSHostingController<ContentView>
+        else {
+            return
+        }
+
+        // 强制保存所有数据
+        contentView.rootView.tagManager.saveAll()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

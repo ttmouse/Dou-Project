@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - 辅助函数
 private func openInCursor(path: String) {
@@ -28,6 +30,7 @@ struct ProjectCard: View {
     let project: Project
     let isSelected: Bool
     let selectedCount: Int  // 添加选中数量
+    let selectedProjects: Set<UUID>  // 添加选中的项目集合
     @ObservedObject var tagManager: TagManager
     @State private var isEditingTags = false
     let onTagSelected: (String) -> Void
@@ -164,7 +167,12 @@ struct ProjectCard: View {
             onSelect(flags.contains(.shift))
         }
         .onDrag {
-            NSItemProvider(object: project.id.uuidString as NSString)
+            // 确保当前项目被选中
+            onSelect(false)
+            // 创建包含所有选中项目的数据
+            let selectedIds = selectedCount > 1 ? selectedProjects : [project.id]
+            let data = try? JSONEncoder().encode(selectedIds)
+            return NSItemProvider(item: data as NSData?, typeIdentifier: UTType.data.identifier)
         } preview: {
             // 拖拽预览
             HStack(spacing: 4) {
@@ -400,6 +408,7 @@ struct TagEditorView: View {
                 ),
                 isSelected: false,
                 selectedCount: 1,
+                selectedProjects: Set(),
                 tagManager: TagManager(),
                 onTagSelected: { _ in },
                 onSelect: { _ in }

@@ -188,9 +188,9 @@ enum AppTheme {
     /// 搜索栏区域边框色
     static let searchBarAreaBorder = Color(hex: "#171717")
     /// 搜索栏区域内边距
-    static let searchBarAreaPadding: CGFloat = 16
+    static let searchBarAreaPadding: CGFloat = 8
     /// 搜索栏区域高度
-    static let searchBarAreaHeight: CGFloat = 55
+    static let searchBarAreaHeight: CGFloat = 45
 
     // MARK: - 霓虹色系
     /// 霓虹蓝 - #6366F1
