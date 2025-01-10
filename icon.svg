@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 背景 -->
+    <rect width="1024" height="1024" fill="white" fill-opacity="0"/>
+    
+    <!-- 主背景渐变 -->
+    <defs>
+        <linearGradient id="bg_gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+    
+    <!-- 主要形状：圆角矩形底座 -->
+    <rect x="112" y="212" width="800" height="600" rx="40" 
+          fill="url(#bg_gradient)" 
+          filter="drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))"/>
+    
+    <!-- 顶部标签栏 -->
+    <rect x="162" y="162" width="700" height="100" rx="20" 
+          fill="#F3F4F6" 
+          filter="drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05))"/>
+    
+    <!-- 三个标签指示器 -->
+    <circle cx="212" cy="212" r="12" fill="#EF4444"/>
+    <circle cx="262" cy="212" r="12" fill="#F59E0B"/>
+    <circle cx="312" cy="212" r="12" fill="#10B981"/>
+    
+    <!-- 内容线条装饰 -->
+    <rect x="192" y="342" width="640" height="16" rx="8" fill="white" fill-opacity="0.3"/>
+    <rect x="192" y="402" width="540" height="16" rx="8" fill="white" fill-opacity="0.3"/>
+    <rect x="192" y="462" width="600" height="16" rx="8" fill="white" fill-opacity="0.3"/>
+    <rect x="192" y="522" width="480" height="16" rx="8" fill="white" fill-opacity="0.3"/>
+    
+    <!-- 右上角标签装饰 -->
+    <path d="M812 212 L862 212 A20 20 0 0 1 882 232 L882 282 L812 212" 
+          fill="#4338CA" 
+          filter="drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))"/>
+</svg> 
