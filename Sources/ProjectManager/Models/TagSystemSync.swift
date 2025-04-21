@@ -2,12 +2,28 @@ import AppKit
 import SwiftUI
 
 class TagSystemSync {
+    private static var lastSyncTags: Set<String>?
+    private static let syncDebounceInterval: TimeInterval = 1.0
+    private static var lastSyncTime: Date?
+
     static func loadSystemTags() -> Set<String> {
         let workspace = NSWorkspace.shared
         return Set(workspace.fileLabels)
     }
 
     static func syncTagsToSystem(_ tags: Set<String>) {
+        // 如果标签集合没有变化，不需要同步
+        if let lastTags = lastSyncTags, lastTags == tags {
+            return
+        }
+
+        // 如果距离上次同步时间不足1秒，不执行同步
+        if let lastSync = lastSyncTime,
+            Date().timeIntervalSince(lastSync) < syncDebounceInterval
+        {
+            return
+        }
+
         // 创建临时文件
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_tag")
         try? "".write(to: tempURL, atomically: true, encoding: .utf8)
@@ -52,7 +68,9 @@ class TagSystemSync {
                 xattrProcess.waitUntilExit()
 
                 if xattrProcess.terminationStatus == 0 {
-                    print("系统标签同步成功: \(tags)")
+                    print("系统标签保存成功: \(tags)")
+                    lastSyncTags = tags
+                    lastSyncTime = Date()
                 }
             }
         } catch {

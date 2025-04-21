@@ -135,7 +135,7 @@ struct Project: Identifiable, Equatable, Codable {
         print("原有标签: \(tags)")
         tags.insert(tag)
         print("更新后标签: \(tags)")
-        saveTagsToSystem()
+        // 不在这里保存，由上层统一处理
     }
 
     mutating func removeTag(_ tag: String) {
@@ -143,7 +143,7 @@ struct Project: Identifiable, Equatable, Codable {
         print("原有标签: \(tags)")
         tags.remove(tag)
         print("更新后标签: \(tags)")
-        saveTagsToSystem()
+        // 不在这里保存，由上层统一处理
     }
 
     func copyWith(tags newTags: Set<String>) -> Project {
@@ -154,13 +154,20 @@ struct Project: Identifiable, Equatable, Codable {
             lastModified: self.lastModified,
             tags: newTags
         )
-        return project  // 初始化时已经保存标签
+        return project
     }
 
     // 保存标签到系统
-    private func saveTagsToSystem() {
+    func saveTagsToSystem() {
         let url = URL(fileURLWithPath: path)
         do {
+            // 获取当前系统标签
+            let currentTags = Self.loadTagsFromSystem(path: path)
+            // 如果标签没有变化，不需要保存
+            if currentTags == tags {
+                return
+            }
+
             try (url as NSURL).setResourceValue(Array(tags), forKey: .tagNamesKey)
             print("系统标签保存成功: \(tags)")
         } catch {
@@ -169,7 +176,7 @@ struct Project: Identifiable, Equatable, Codable {
     }
 
     // 从系统加载标签
-    private static func loadTagsFromSystem(path: String) -> Set<String> {
+    static func loadTagsFromSystem(path: String) -> Set<String> {
         let url = URL(fileURLWithPath: path)
         do {
             let resourceValues = try url.resourceValues(forKeys: Set([.tagNamesKey]))
@@ -213,60 +220,6 @@ struct Project: Identifiable, Equatable, Codable {
         } catch {
             print("运行项目失败: \(error)")
         }
-    }
-
-    static func loadProjects(from directory: String, existingProjects: [UUID: Project] = [:])
-        -> [Project]
-    {
-        print("开始加载项目目录: \(directory)")
-        let fileManager = FileManager.default
-        let directoryURL = URL(fileURLWithPath: directory)
-
-        guard
-            let contents = try? fileManager.contentsOfDirectory(
-                at: directoryURL,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            )
-        else {
-            print("读取目录失败")
-            return []
-        }
-
-        let projects =
-            contents
-            .filter { $0.hasDirectoryPath }
-            .compactMap { url -> Project? in
-                // 检查是否存在缓存的项目
-                if let existingProject = existingProjects.values.first(where: {
-                    $0.path == url.path
-                }) {
-                    // 如果存在且不需要更新，直接使用缓存
-                    if !existingProject.needsUpdate() {
-                        return existingProject
-                    }
-                    // 需要更新，返回更新后的项目
-                    return existingProject.updated()
-                }
-
-                // 新项目，创建新实例
-                guard
-                    let modDate = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                        .contentModificationDate
-                else {
-                    return nil
-                }
-                let tags = loadTagsFromSystem(path: url.path)
-                return Project(
-                    name: url.lastPathComponent,
-                    path: url.path,
-                    lastModified: modDate,
-                    tags: tags
-                )
-            }
-
-        print("加载完成，共 \(projects.count) 个项目")
-        return projects
     }
 
     func openInVSCode() {

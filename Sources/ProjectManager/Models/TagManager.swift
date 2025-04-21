@@ -21,14 +21,18 @@ class TagManager: ObservableObject {
 
     let storage: TagStorage
     let colorManager: TagColorManager
-    let usageTracker: TagUsageTracker
     let sortManager: ProjectSortManager
+    private let projectIndex: ProjectIndex
     lazy var projectOperations: ProjectOperationManager = {
         return ProjectOperationManager(tagManager: self, storage: storage)
     }()
     lazy var directoryWatcher: DirectoryWatcher = {
         return DirectoryWatcher(tagManager: self, storage: storage)
     }()
+
+    // MARK: - 标签统计缓存
+    private var cachedTagUsageCount: [String: Int]?
+    private var lastProjectUpdateTime: Date?
 
     // MARK: - 初始化
 
@@ -38,11 +42,44 @@ class TagManager: ObservableObject {
         // 初始化基础组件
         storage = TagStorage()
         colorManager = TagColorManager(storage: storage)
-        usageTracker = TagUsageTracker()
         sortManager = ProjectSortManager()
+        projectIndex = ProjectIndex(storage: storage)
 
         // 加载数据
         loadAllData()
+    }
+
+    // MARK: - 标签统计
+
+    private var tagUsageCount: [String: Int] {
+        // 如果项目数据没有更新，直接返回缓存
+        if let cached = cachedTagUsageCount,
+            let lastUpdate = lastProjectUpdateTime,
+            Date().timeIntervalSince(lastUpdate) < 1.0
+        {
+            return cached
+        }
+
+        // 重新计算并缓存
+        var counts: [String: Int] = [:]
+        for project in projects.values {
+            for tag in project.tags {
+                counts[tag, default: 0] += 1
+            }
+        }
+
+        cachedTagUsageCount = counts
+        lastProjectUpdateTime = Date()
+        return counts
+    }
+
+    func getUsageCount(for tag: String) -> Int {
+        return tagUsageCount[tag] ?? 0
+    }
+
+    func invalidateTagUsageCache() {
+        cachedTagUsageCount = nil
+        lastProjectUpdateTime = nil
     }
 
     // MARK: - 数据加载
@@ -73,16 +110,19 @@ class TagManager: ObservableObject {
     }
 
     func getColor(for tag: String) -> Color {
-        return colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors.randomElement()?.color
-            ?? AppTheme.accent
+        // 检查是否已有颜色
+        if let existingColor = colorManager.getColor(for: tag) {
+            return existingColor
+        }
+        
+        // 如果没有颜色，随机分配一个并保存
+        let randomColor = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
+        colorManager.setColor(randomColor, for: tag)
+        return randomColor
     }
 
     func setColor(_ color: Color, for tag: String) {
         colorManager.setColor(color, for: tag)
-    }
-
-    func getUsageCount(for tag: String) -> Int {
-        return usageTracker.getUsageCount(for: tag)
     }
 
     func getSortedProjects() -> [Project] {
@@ -102,11 +142,17 @@ class TagManager: ObservableObject {
     func reloadProjects() {
         projects.removeAll()
         sortManager.updateSortedProjects([])
+        invalidateTagUsageCache()
+
+        // 扫描所有监视目录
         for directory in watchedDirectories {
-            let loadedProjects = Project.loadProjects(from: directory)
-            for project in loadedProjects {
-                projectOperations.registerProject(project)
-            }
+            projectIndex.scanDirectory(directory)
+        }
+
+        // 从索引加载项目
+        let loadedProjects = projectIndex.loadProjects(existingProjects: projects)
+        for project in loadedProjects {
+            projectOperations.registerProject(project)
         }
     }
 
@@ -114,37 +160,49 @@ class TagManager: ObservableObject {
 
     func addTag(_ tag: String) {
         print("添加标签: \(tag)")
-        allTags.insert(tag)
-        saveAll()
+        if !allTags.contains(tag) {
+            allTags.insert(tag)
+            needsSave = true
+            saveAll()
+        }
     }
 
     func removeTag(_ tag: String) {
         print("移除标签: \(tag)")
-        allTags.remove(tag)
-        colorManager.removeColor(for: tag)
-        usageTracker.clearUsage(for: tag)
+        if allTags.contains(tag) {
+            allTags.remove(tag)
+            colorManager.removeColor(for: tag)
 
-        // 从所有项目中移除该标签
-        for (id, project) in projects {
-            if project.tags.contains(tag) {
-                var updatedProject = project
-                updatedProject.removeTag(tag)
-                projects[id] = updatedProject
-                sortManager.updateProject(updatedProject)
+            // 从所有项目中移除该标签
+            for (id, project) in projects {
+                if project.tags.contains(tag) {
+                    var updatedProject = project
+                    updatedProject.removeTag(tag)
+                    projects[id] = updatedProject
+                    sortManager.updateProject(updatedProject)
+                }
             }
-        }
 
-        saveAll()
+            invalidateTagUsageCache()
+            needsSave = true
+            saveAll()
+        }
     }
 
     func addTagToProject(projectId: UUID, tag: String) {
         print("添加标签 '\(tag)' 到项目 \(projectId)")
         if var project = projects[projectId] {
-            project.addTag(tag)
-            projects[projectId] = project
-            sortManager.updateProject(project)
-            usageTracker.incrementUsage(for: tag)
-            saveAll()
+            if !project.tags.contains(tag) {
+                project.addTag(tag)
+                projects[projectId] = project
+                sortManager.updateProject(project)
+                invalidateTagUsageCache()
+
+                // 保存到系统
+                project.saveTagsToSystem()
+                needsSave = true
+                saveAll()
+            }
         }
     }
 
@@ -154,7 +212,10 @@ class TagManager: ObservableObject {
             project.removeTag(tag)
             projects[projectId] = project
             sortManager.updateProject(project)
-            usageTracker.decrementUsage(for: tag)
+            invalidateTagUsageCache()
+
+            // 保存到系统
+            project.saveTagsToSystem()
             saveAll()
         }
     }
@@ -171,15 +232,45 @@ class TagManager: ObservableObject {
 
         // 批量处理项目
         for projectId in projectIds {
-            addTagToProject(projectId: projectId, tag: tag)
+            if var project = projects[projectId] {
+                project.addTag(tag)
+                projects[projectId] = project
+                sortManager.updateProject(project)
+            }
+        }
+
+        // 统一处理缓存和保存
+        invalidateTagUsageCache()
+        saveAll()
+
+        // 批量保存系统标签
+        for projectId in projectIds {
+            if let project = projects[projectId] {
+                project.saveTagsToSystem()
+            }
         }
     }
 
     // MARK: - 数据保存
 
+    private var needsSave = false
+    private var saveDebounceTimer: Timer?
+
     func saveAll() {
+        // 如果已经有定时器在运行，取消它
+        saveDebounceTimer?.invalidate()
+
+        // 设置新的定时器，延迟1秒执行保存
+        saveDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) {
+            [weak self] _ in
+            self?.performSave()
+        }
+    }
+
+    private func performSave() {
         storage.saveTags(allTags)
         directoryWatcher.saveWatchedDirectories()
+        needsSave = false
     }
 
     // MARK: - 项目管理
@@ -220,13 +311,6 @@ class TagManager: ObservableObject {
             colorManager.removeColor(for: oldName)
         }
 
-        // 更新使用统计
-        let usageCount = usageTracker.getUsageCount(for: oldName)
-        usageTracker.clearUsage(for: oldName)
-        for _ in 0..<usageCount {
-            usageTracker.incrementUsage(for: newName)
-        }
-
         // 保存更改
         saveAll()
     }
@@ -243,5 +327,10 @@ class TagManager: ObservableObject {
 
     func reloadAllProjects() {
         reloadProjects()
+    }
+    
+    // 清除缓存并重新加载所有项目
+    func clearCacheAndReloadProjects() {
+        directoryWatcher.clearCacheAndReloadProjects()
     }
 }

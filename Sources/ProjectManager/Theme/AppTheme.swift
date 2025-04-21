@@ -254,6 +254,5 @@ enum AppTheme {
         ("绿色", Color(hex: "#69DB7C")),
         ("蓝色", Color(hex: "#4DABF7")),
         ("紫色", Color(hex: "#DA77F2")),
-        ("灰色", Color(hex: "#868E96")),
     ]
 }
