@@ -13,6 +13,9 @@ struct ProjectListView: View {
     @State private var isShowingNewTagDialog = false
     @State private var tagToRename: IdentifiableString? = nil
     @State private var isDraggingDirectory = false  // 添加拖放状态
+    
+    // 添加对SearchBar的引用
+    @State private var searchBarRef: SearchBar? = nil
 
     // 排序方式
     enum SortOption {
@@ -77,11 +80,22 @@ struct ProjectListView: View {
     }
 
     private func handleTagSelection(_ tag: String) {
+        // 移除任何现有焦点
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        // 清除搜索框焦点
+        searchBarRef?.clearFocus()
+        
+        // 选择点击的标签
         selectedTags = [tag]  // 直接选择点击的标签
     }
 
     // 处理项目选中
     private func handleProjectSelection(_ project: Project, isShiftPressed: Bool) {
+        // 移除任何现有焦点
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        // 清除搜索框焦点
+        searchBarRef?.clearFocus()
+        
         if isShiftPressed {
             // Shift 键按下时，切换选中状态
             if selectedProjects.contains(project.id) {
@@ -95,7 +109,7 @@ struct ProjectListView: View {
         }
     }
 
-    // 处$理拖拽完成
+    // 处理拖拽完成
     private func handleDrop(tag: String) {
         // 使用批量添加方法
         tagManager.addTagToProjects(projectIds: selectedProjects, tag: tag)
@@ -106,6 +120,7 @@ struct ProjectListView: View {
     private var searchAndSortBar: some View {
         HStack(spacing: 8) {
             SearchBar(text: $searchText)
+                .modifier(ViewReferenceSetter(reference: $searchBarRef))
 
             // 时间排序按钮
             Button(action: {
@@ -400,8 +415,8 @@ struct ProjectListView: View {
                     title: "新建标签",
                     isPresented: $isShowingNewTagDialog,
                     tagManager: tagManager
-                ) { name in
-                    tagManager.addTag(name)
+                ) { name, color in
+                    tagManager.addTag(name, color: color)
                 }
             }
 
@@ -420,7 +435,13 @@ struct ProjectListView: View {
                     tag: "全部",
                     isSelected: selectedTags.isEmpty,
                     count: tagManager.projects.count,
-                    action: { selectedTags.removeAll() },
+                    action: { 
+                        // 移除任何现有焦点
+                        NSApp.keyWindow?.makeFirstResponder(nil)
+                        // 清除搜索框焦点
+                        searchBarRef?.clearFocus()
+                        selectedTags.removeAll() 
+                    },
                     onDrop: nil,
                     onRename: nil,
                     tagManager: tagManager
@@ -431,7 +452,13 @@ struct ProjectListView: View {
                     tag: "没有标签",
                     isSelected: selectedTags.contains("没有标签"),
                     count: tagManager.projects.values.filter { $0.tags.isEmpty }.count,
-                    action: { selectedTags = ["没有标签"] },
+                    action: { 
+                        // 移除任何现有焦点
+                        NSApp.keyWindow?.makeFirstResponder(nil)
+                        // 清除搜索框焦点
+                        searchBarRef?.clearFocus()
+                        selectedTags = ["没有标签"] 
+                    },
                     onDrop: nil,
                     onRename: nil,
                     tagManager: tagManager
@@ -539,6 +566,8 @@ struct ProjectListView: View {
                         tagManager: tagManager,
                         onTagSelected: handleTagSelection,
                         onSelect: { isShiftPressed in
+                            // 确保在点击卡片时，移除现有焦点
+                            NSApp.keyWindow?.makeFirstResponder(nil)
                             handleProjectSelection(project, isShiftPressed: isShiftPressed)
                         }
                     )
@@ -547,12 +576,29 @@ struct ProjectListView: View {
             .padding(AppTheme.cardGridPadding)
             .contentShape(Rectangle())
             .onTapGesture {
+                // 确保在点击空白区域时，移除现有焦点
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                // 清除搜索框焦点
+                searchBarRef?.clearFocus()
                 selectedProjects.removeAll()
             }
         }
         .overlay(alignment: .trailing) {
             ScrollIndicatorView()
         }
+    }
+
+    // 添加全选功能方法
+    private func selectAllProjects() {
+        // 清空当前选择
+        selectedProjects.removeAll()
+        
+        // 选择所有筛选出的项目
+        for project in filteredProjects {
+            selectedProjects.insert(project.id)
+        }
+        
+        print("已选择 \(selectedProjects.count) 个项目")
     }
 
     // 主内容视图
@@ -596,12 +642,13 @@ struct ProjectListView: View {
     }
 
     var body: some View {
-        NavigationView {
+        HSplitView {
             sidebarView
             mainContentView
         }
         .onAppear {
             loadProjects()
+            setupSelectAllMenuCommand()
         }
         .sheet(item: $tagToRename) { identifiableTag in
             TagEditDialog(
@@ -612,28 +659,163 @@ struct ProjectListView: View {
                     set: { if !$0 { tagToRename = nil } }
                 ),
                 tagManager: tagManager
-            ) { newName in
+            ) { newName, color in
                 DispatchQueue.main.async {
-                    tagManager.renameTag(identifiableTag.value, to: newName)
+                    tagManager.renameTag(identifiableTag.value, to: newName, color: color)
                     tagToRename = nil
                 }
             }
         }
+        .toast()  // 添加 Toast 修饰符
     }
 
     private func loadProjects() {
-        let cachedProjects = tagManager.projects.values.filter {
-            $0.path.hasPrefix(watchedDirectory)
-        }
-        if !cachedProjects.isEmpty {
-            print("使用缓存的 \(cachedProjects.count) 个项目")
-        }
-
+        // 立即加载缓存的项目数据
+        print("立即加载已缓存的项目数据")
+        
         // 使用防抖动延迟加载
-        let debounceTime: TimeInterval = 2.0  // 2秒延迟
+        let debounceTime: TimeInterval = 0.5  // 减少延迟
         DispatchQueue.main.asyncAfter(deadline: .now() + debounceTime) {
-            // 触发目录重新扫描和项目加载
-            tagManager.directoryWatcher.reloadAllProjects()
+            // 触发目录重新扫描和项目加载（后台进行）
+            tagManager.directoryWatcher.incrementallyReloadProjects()
+        }
+    }
+
+    // 设置全选菜单命令（通过主菜单实现⌘A）
+    private func setupSelectAllMenuCommand() {
+        DispatchQueue.main.async {
+            // 1. 检查是否已经有我们自己的全局监听器处理了
+            if SelectAllHandler.shared != nil {
+                return // 已经设置过了
+            }
+            
+            // 2. 创建全局事件监听器（不依赖于菜单项）
+            let handler = SelectAllHandler { [self] in
+                // 检查当前第一响应者
+                if let firstResponder = NSApp.mainWindow?.firstResponder {
+                    let className = String(describing: type(of: firstResponder))
+                    
+                    // 如果焦点在文本控件上，不执行我们的全选
+                    if className.contains("Text") || className.contains("Field") || 
+                       className.contains("SearchField") || className.contains("TextView") ||
+                       className.contains("Input") || className.contains("Editor") {
+                        // 不处理，让系统默认行为生效
+                        return
+                    }
+                }
+                
+                // 执行我们的卡片全选功能
+                selectAllProjects()
+            }
+            
+            // 保存到全局变量
+            SelectAllHandler.shared = handler
+            
+            // 3. 添加全局事件监听
+            handler.setupGlobalKeyMonitor()
+            
+            // 4. 检查菜单项（作为备用方案）
+            if let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu ?? 
+                              NSApp.mainMenu?.item(withTitle: "编辑")?.submenu {
+                
+                // 检查是否有全选菜单项
+                let selectAllTitle = "全选"
+                let englishTitle = "Select All"
+                
+                if let selectAllItem = editMenu.item(withTitle: selectAllTitle) ?? editMenu.item(withTitle: englishTitle) {
+                    print("找到全选菜单项: \(selectAllItem.title)")
+                    
+                    // 保存原始动作
+                    handler.originalSelector = selectAllItem.action
+                    
+                    // 添加我们自己的动作作为菜单项的备选
+                    let newAction = #selector(SelectAllHandler.menuItemPerformSelectAll(_:))
+                    
+                    // 替换动作
+                    selectAllItem.action = newAction
+                    selectAllItem.target = handler
+                }
+            }
+        }
+    }
+}
+
+// ViewModifier方式获取视图引用
+struct ViewReferenceSetter<T: View>: ViewModifier {
+    @Binding var reference: T?
+    
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                // 当视图出现时保存引用
+                reference = content as? T
+            }
+            .onDisappear {
+                // 当视图消失时移除引用
+                reference = nil
+            }
+    }
+}
+
+// 处理全选操作的类（必须是类才能使用@objc）
+class SelectAllHandler: NSObject {
+    var action: () -> Void
+    var eventMonitor: Any?
+    var originalSelector: Selector?
+    
+    // 保持一个全局引用以避免释放
+    static var shared: SelectAllHandler?
+    
+    init(action: @escaping () -> Void) {
+        self.action = action
+        super.init()
+    }
+    
+    // 设置全局键盘事件监听器
+    func setupGlobalKeyMonitor() {
+        // 移除现有监听器
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+        
+        // 添加全局键盘监听
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // 检测 ⌘A 快捷键
+            if event.modifierFlags.contains(.command) && event.keyCode == 0 {
+                // 检查第一响应者
+                if let firstResponder = NSApp.keyWindow?.firstResponder {
+                    let className = String(describing: type(of: firstResponder))
+                    
+                    // 如果焦点在文本控件上，不干扰原始事件
+                    if className.contains("Text") || className.contains("Field") || 
+                       className.contains("SearchField") || className.contains("TextView") ||
+                       className.contains("Input") || className.contains("Editor") {
+                        return event // 让事件继续传递
+                    }
+                }
+                
+                // 执行我们的全选动作
+                self?.action()
+                return nil // 事件已处理
+            }
+            return event // 让事件继续传递
+        }
+    }
+    
+    // 用于菜单项的动作
+    @objc func menuItemPerformSelectAll(_ sender: Any?) {
+        action()
+    }
+    
+    // 用于全局事件的动作
+    @objc func performSelectAll() {
+        action()
+    }
+    
+    deinit {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
         }
     }
 }

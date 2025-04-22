@@ -258,6 +258,50 @@ struct Project: Identifiable, Equatable, Codable {
     static func isProjectExists(path: String, in projects: [UUID: Project]) -> Bool {
         return projects.values.contains { $0.path == path }
     }
+
+    // 静态方法：创建项目
+    static func createProject(at path: String, existingProjects: [UUID: Project] = [:]) -> Project? {
+        // 检查路径是否存在
+        guard FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+        
+        // 获取目录名作为项目名
+        let url = URL(fileURLWithPath: path)
+        let name = url.lastPathComponent
+        
+        // 获取目录修改时间
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let modificationDate = attributes?[.modificationDate] as? Date ?? Date()
+        
+        // 检查是否已有现有项目
+        for (_, existingProject) in existingProjects {
+            if existingProject.path == path {
+                // 使用现有项目的ID和标签，但更新修改时间
+                return Project(
+                    id: existingProject.id,
+                    name: name,
+                    path: path,
+                    lastModified: modificationDate,
+                    tags: existingProject.tags
+                )
+            }
+        }
+        
+        // 创建新项目
+        return Project(
+            id: UUID(),
+            name: name,
+            path: path,
+            lastModified: modificationDate,
+            tags: loadTagsFromSystem(path: path)
+        )
+    }
+
+    // 检查是否是项目目录 - 简化版本，所有目录都是项目
+    static func isProjectDirectory(at path: String) -> Bool {
+        return FileManager.default.fileExists(atPath: path)
+    }
 }
 
 private enum ProjectType {

@@ -387,7 +387,9 @@ struct TagEditorView: View {
     private func addNewTag(_ text: String) {
         let tag = text.trimmingCharacters(in: .whitespaces)
         if !tag.isEmpty {
-            tagManager.addTag(tag)
+            // 使用随机预设颜色
+            let color = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
+            tagManager.addTag(tag, color: color)
             tagManager.addTagToProject(projectId: currentProject.id, tag: tag)
             currentProject = tagManager.projects[currentProject.id] ?? currentProject
             searchText = ""

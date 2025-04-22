@@ -5,6 +5,7 @@ struct TagView: View {
     let color: Color
     let fontSize: CGFloat
     var isSelected: Bool = false
+    var isPreview: Bool = false  // 新增：是否为预览状态（新建标签时）
     var onDelete: (() -> Void)? = nil
 
     @State private var isHovered = false
@@ -13,7 +14,7 @@ struct TagView: View {
         HStack(spacing: 4) {
             Text(tag)
                 .font(.system(size: fontSize))
-                .foregroundColor(isSelected ? .white : color)
+                .foregroundColor(textColor)
 
             if isHovered && onDelete != nil {
                 Button(action: {
@@ -21,7 +22,7 @@ struct TagView: View {
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: fontSize))
-                        .foregroundColor(isSelected ? .white.opacity(0.8) : color.opacity(0.8))
+                        .foregroundColor(textColor.opacity(0.8))
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)
@@ -31,7 +32,7 @@ struct TagView: View {
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? color : color.opacity(0.15))
+                .fill(backgroundColor)
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -39,23 +40,68 @@ struct TagView: View {
             }
         }
     }
+    
+    // 计算文字颜色
+    private var textColor: Color {
+        if isSelected {
+            return .white
+        } else if isPreview {
+            // 预览状态下使用更高对比度的文字颜色
+            return color.opacity(1.0)
+        } else {
+            return color.opacity(0.9)
+        }
+    }
+    
+    // 计算背景颜色
+    private var backgroundColor: Color {
+        if isSelected {
+            return color
+        } else if isPreview {
+            // 预览状态下使用更高对比度的背景颜色
+            return color.opacity(0.3)
+        } else {
+            return color.opacity(0.2)
+        }
+    }
 }
 
 #if DEBUG
     struct TagView_Previews: PreviewProvider {
         static var previews: some View {
-            VStack(spacing: 20) {
-                TagView(tag: "iOS", color: .blue, fontSize: 13)
-                TagView(tag: "Swift", color: .orange, fontSize: 13)
-                TagView(tag: "Selected", color: .green, fontSize: 13, isSelected: true)
-                TagView(
-                    tag: "Deletable",
-                    color: .purple,
-                    fontSize: 13,
-                    onDelete: {}
-                )
+            Group {
+                // 浅色背景预览
+                VStack(spacing: 20) {
+                    TagView(tag: "iOS", color: .blue, fontSize: 13)
+                    TagView(tag: "Swift", color: .orange, fontSize: 13)
+                    TagView(tag: "Selected", color: .green, fontSize: 13, isSelected: true)
+                    TagView(tag: "Preview", color: .purple, fontSize: 13, isPreview: true)
+                    TagView(
+                        tag: "Deletable",
+                        color: .purple,
+                        fontSize: 13,
+                        onDelete: {}
+                    )
+                }
+                .padding()
+                .background(Color.white)
+                
+                // 深色背景预览
+                VStack(spacing: 20) {
+                    TagView(tag: "iOS", color: .blue, fontSize: 13)
+                    TagView(tag: "Swift", color: .orange, fontSize: 13)
+                    TagView(tag: "Selected", color: .green, fontSize: 13, isSelected: true)
+                    TagView(tag: "Preview", color: .purple, fontSize: 13, isPreview: true)
+                    TagView(
+                        tag: "Deletable",
+                        color: .purple,
+                        fontSize: 13,
+                        onDelete: {}
+                    )
+                }
+                .padding()
+                .background(AppTheme.background)
             }
-            .padding()
         }
     }
 #endif

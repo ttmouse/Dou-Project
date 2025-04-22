@@ -85,22 +85,98 @@ class TagManager: ObservableObject {
     // MARK: - 数据加载
 
     private func loadAllData() {
-        // 加载标签
+        print("开始加载所有数据...")
+        
+        // 1. 加载标签
         allTags = storage.loadTags()
+        print("已加载标签: \(allTags)")
 
-        // 加载监视目录
-        directoryWatcher.loadWatchedDirectories()
-
-        // 加载系统标签
+        // 2. 加载系统标签并合并
         let systemTags = TagSystemSync.loadSystemTags()
-        for tag in systemTags {
-            if !allTags.contains(tag) {
-                allTags.insert(tag)
+        allTags.formUnion(systemTags)
+        print("合并系统标签后: \(allTags)")
+
+        // 3. 加载项目缓存
+        if let cachedProjects = loadProjectsFromCache() {
+            print("从缓存加载了 \(cachedProjects.count) 个项目")
+            for project in cachedProjects {
+                projects[project.id] = project
             }
+            sortManager.updateSortedProjects(cachedProjects)
+            
+            // 将项目标签添加到全部标签集合中
+            for project in cachedProjects {
+                allTags.formUnion(project.tags)
+            }
+            
+            // 保存到缓存，确保数据一致性
+            projectOperations.saveAllToCache()
         }
 
-        // 加载所有目录中的项目
-        reloadProjects()
+        // 4. 加载监视目录
+        directoryWatcher.loadWatchedDirectories()
+        
+        // 5. 后台更新（而不是立即重新加载，避免清空UI）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.backgroundRefreshProjects()
+        }
+    }
+    
+    // 后台刷新项目，不清空现有UI
+    private func backgroundRefreshProjects() {
+        directoryWatcher.incrementallyReloadProjects()
+    }
+
+    private func loadProjectsFromCache() -> [Project]? {
+        let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            let decoder = JSONDecoder()
+            let projects = try decoder.decode([Project].self, from: data)
+            print("成功从缓存加载项目数据")
+            return projects
+        } catch {
+            print("加载项目缓存失败（可能是首次运行）: \(error)")
+            return nil
+        }
+    }
+
+    func reloadProjects() {
+        print("开始重新加载项目...")
+        
+        // 保存现有的项目数据
+        let existingProjects = projects
+        
+        // 清空当前项目列表
+        projects.removeAll()
+        sortManager.updateSortedProjects([])
+        invalidateTagUsageCache()
+
+        // 扫描所有监视目录
+        for directory in watchedDirectories {
+            projectIndex.scanDirectory(directory)
+        }
+
+        // 从索引加载项目，使用现有的项目数据作为参考
+        let loadedProjects = projectIndex.loadProjects(existingProjects: existingProjects)
+        
+        // 注册新项目
+        for var project in loadedProjects {
+            // 检查是否有系统标签
+            let systemTags = Project.loadTagsFromSystem(path: project.path)
+            if !systemTags.isEmpty {
+                project = Project(
+                    id: project.id,
+                    name: project.name,
+                    path: project.path,
+                    lastModified: project.lastModified,
+                    tags: systemTags
+                )
+            }
+            projectOperations.registerProject(project)
+        }
+        
+        print("完成重新加载，现有 \(projects.count) 个项目")
     }
 
     // MARK: - 公共接口
@@ -139,29 +215,13 @@ class TagManager: ObservableObject {
         }
     }
 
-    func reloadProjects() {
-        projects.removeAll()
-        sortManager.updateSortedProjects([])
-        invalidateTagUsageCache()
-
-        // 扫描所有监视目录
-        for directory in watchedDirectories {
-            projectIndex.scanDirectory(directory)
-        }
-
-        // 从索引加载项目
-        let loadedProjects = projectIndex.loadProjects(existingProjects: projects)
-        for project in loadedProjects {
-            projectOperations.registerProject(project)
-        }
-    }
-
     // MARK: - 标签操作
 
-    func addTag(_ tag: String) {
+    func addTag(_ tag: String, color: Color) {
         print("添加标签: \(tag)")
         if !allTags.contains(tag) {
             allTags.insert(tag)
+            colorManager.setColor(color, for: tag)
             needsSave = true
             saveAll()
         }
@@ -227,7 +287,7 @@ class TagManager: ObservableObject {
 
         // 如果标签不存在，先添加标签
         if !allTags.contains(tag) {
-            addTag(tag)
+            addTag(tag, color: getColor(for: tag))
         }
 
         // 批量处理项目
@@ -285,34 +345,31 @@ class TagManager: ObservableObject {
 
     // MARK: - 标签操作
 
-    func renameTag(_ oldName: String, to newName: String) {
+    func renameTag(_ oldName: String, to newName: String, color: Color) {
         print("重命名标签: \(oldName) -> \(newName)")
-        guard oldName != newName else { return }
-        guard !allTags.contains(newName) else { return }
-
-        // 从所有项目中更新标签
-        for (id, project) in projects {
-            if project.tags.contains(oldName) {
-                var updatedProject = project
-                updatedProject.removeTag(oldName)
-                updatedProject.addTag(newName)
-                projects[id] = updatedProject
-                sortManager.updateProject(updatedProject)
-            }
-        }
-
-        // 更新标签相关数据
-        allTags.remove(oldName)
-        allTags.insert(newName)
-
-        // 更新颜色
-        if let oldColor = colorManager.getColor(for: oldName) {
-            colorManager.setColor(oldColor, for: newName)
+        if allTags.contains(oldName) && !allTags.contains(newName) {
+            allTags.remove(oldName)
+            allTags.insert(newName)
+            
+            // 更新颜色
             colorManager.removeColor(for: oldName)
-        }
+            colorManager.setColor(color, for: newName)
 
-        // 保存更改
-        saveAll()
+            // 更新所有项目中的标签
+            for (id, project) in projects {
+                if project.tags.contains(oldName) {
+                    var updatedProject = project
+                    updatedProject.removeTag(oldName)
+                    updatedProject.addTag(newName)
+                    projects[id] = updatedProject
+                    sortManager.updateProject(updatedProject)
+                }
+            }
+
+            invalidateTagUsageCache()
+            needsSave = true
+            saveAll()
+        }
     }
 
     // MARK: - 目录管理

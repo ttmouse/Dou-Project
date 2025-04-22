@@ -168,110 +168,201 @@ class DirectoryWatcher {
     private let storage: TagStorage
     private let projectIndex: ProjectIndex
     private let queue = DispatchQueue(label: "com.example.DirectoryWatcherQueue", attributes: [])
-
+    
     init(tagManager: TagManager, storage: TagStorage) {
         self.tagManager = tagManager
         self.storage = storage
         self.projectIndex = ProjectIndex(storage: storage)
     }
-
+    
+    // 扫描目录并收集项目
+    private func scanAndCollectProjects(_ path: String, force: Bool = false) -> [Project] {
+        print("扫描目录: \(path)")
+        
+        // 执行二级扫描，处理父目录和子目录
+        self.projectIndex.scanDirectoryTwoLevels(path, force: force)
+        
+        // 加载项目
+        let newProjects = self.projectIndex.loadProjects(
+            existingProjects: self.tagManager.projects,
+            fromWatchedDirectories: [path]
+        )
+        
+        print("在目录 \(path) 中找到 \(newProjects.count) 个项目")
+        
+        // 处理系统标签
+        var processedProjects: [Project] = []
+        for var project in newProjects {
+            // 从系统加载标签
+            let systemTags = Project.loadTagsFromSystem(path: project.path)
+            if !systemTags.isEmpty {
+                project = Project(
+                    id: project.id,
+                    name: project.name,
+                    path: project.path,
+                    lastModified: project.lastModified,
+                    tags: systemTags
+                )
+            }
+            processedProjects.append(project)
+        }
+        
+        return processedProjects
+    }
+    
     func loadWatchedDirectories() {
+        let directoriesURL = storage.appSupportURL.appendingPathComponent("directories.json")
+        
+        // 尝试加载保存的目录
+        if let savedDirectories = loadSavedDirectories() {
+            tagManager.watchedDirectories = Set(savedDirectories)
+            print("从文件加载监视目录: \(savedDirectories)")
+            
+            // 后台加载所有目录
+            loadAllDirectories(savedDirectories)
+            return
+        }
+        
+        print("没有找到保存的目录配置，设置默认目录...")
+        setupDefaultDirectories()
+    }
+    
+    // 在后台加载所有目录，完成后一次性更新UI
+    private func loadAllDirectories(_ directories: [String]) {
+        queue.async {
+            print("开始后台加载所有目录: \(directories.count) 个")
+            
+            var allProjects: [Project] = []
+            let existingProjectsSnapshot = self.tagManager.projects
+            
+            // 收集所有目录中的项目
+            for directory in directories {
+                let projects = self.scanAndCollectProjects(directory)
+                allProjects.append(contentsOf: projects)
+            }
+            
+            print("所有目录加载完成，共找到 \(allProjects.count) 个项目")
+            
+            // 检查是否有变化
+            let existingCount = existingProjectsSnapshot.count
+            let newPaths = Set(allProjects.map { $0.path })
+            let existingPaths = Set(existingProjectsSnapshot.values.map { $0.path })
+            
+            let hasChanges = existingCount != allProjects.count || newPaths != existingPaths
+            
+            if !hasChanges && !existingProjectsSnapshot.isEmpty {
+                print("项目数据没有变化，保持现有显示")
+                return
+            }
+            
+            // 一次性更新UI
+            DispatchQueue.main.async {
+                // 只有在有变化时才清空和更新
+                if hasChanges {
+                    // 清空现有项目
+                    self.tagManager.projects.removeAll()
+                    
+                    // 注册所有新项目
+                    for project in allProjects {
+                        self.tagManager.projectOperations.registerProject(project)
+                    }
+                    
+                    // 保存到缓存
+                    self.tagManager.projectOperations.saveAllToCache()
+                    
+                    print("已更新界面显示 \(allProjects.count) 个项目")
+                }
+            }
+        }
+    }
+    
+    private func loadSavedDirectories() -> [String]? {
         let directoriesURL = storage.appSupportURL.appendingPathComponent("directories.json")
         do {
             let data = try Data(contentsOf: directoriesURL)
             let decoder = JSONDecoder()
             let directories = try decoder.decode([String].self, from: data)
-            tagManager.watchedDirectories = Set(directories)
-            print("从文件加载监视目录: \(directories)")
-
-            // 初始扫描所有监视目录
-            for directory in directories {
-                projectIndex.scanDirectory(directory)
-            }
-        } catch {
-            print("加载监视目录失败（可能是首次运行）: \(error)")
-            // 设置默认目录
-            let fileManager = FileManager.default
-            var defaultDirectories = Set<String>()
-
-            // 添加桌面目录
-            if let desktop = fileManager.urls(for: .desktopDirectory, in: .userDomainMask).first?
-                .path
-            {
-                defaultDirectories.insert(desktop)
-            }
-
-            // 添加文档目录
-            if let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?
-                .path
-            {
-                defaultDirectories.insert(documents)
-            }
-
-            // 添加下载目录
-            if let downloads = fileManager.urls(for: .downloadsDirectory, in: .userDomainMask)
-                .first?.path
-            {
-                defaultDirectories.insert(downloads)
-            }
-
-            // 添加用户主目录下的常用开发目录
-            if let home = ProcessInfo.processInfo.environment["HOME"] {
-                let devDirs = [
-                    "Projects",
-                    "Developer",
-                    "Development",
-                    "Code",
-                    "Workspace",
-                    "Git",
-                    "GitHub",
-                    "gitlab",
-                    "work",
-                ]
-
-                for dir in devDirs {
-                    let path = (home as NSString).appendingPathComponent(dir)
-                    if fileManager.fileExists(atPath: path) {
-                        defaultDirectories.insert(path)
-                    }
+            
+            // 验证目录是否存在
+            let existingDirectories = directories.filter { path in
+                let exists = FileManager.default.fileExists(atPath: path)
+                if !exists {
+                    print("警告：目录不存在: \(path)")
                 }
+                return exists
             }
-
-            // 更新监视目录
-            tagManager.watchedDirectories = defaultDirectories
-
-            // 初始扫描所有默认目录
-            for directory in defaultDirectories {
-                projectIndex.scanDirectory(directory)
+            
+            if existingDirectories.isEmpty {
+                print("所有保存的目录都不存在")
+                return nil
             }
-
-            // 保存默认目录配置
-            saveWatchedDirectories()
-            print("已设置默认监视目录: \(defaultDirectories)")
+            
+            return existingDirectories
+        } catch {
+            print("加载监视目录失败: \(error)")
+            return nil
         }
     }
-
+    
+    private func setupDefaultDirectories() {
+        let fileManager = FileManager.default
+        var defaultDirectories = Set<String>()
+        
+        // 添加用户主目录作为监视目录
+        if let home = ProcessInfo.processInfo.environment["HOME"] {
+            defaultDirectories.insert(home)
+        }
+        
+        // 更新监视目录
+        tagManager.watchedDirectories = defaultDirectories
+        
+        // 保存默认目录配置
+        saveWatchedDirectories()
+        print("已设置默认监视目录: \(defaultDirectories)")
+        
+        // 加载默认目录
+        loadAllDirectories(Array(defaultDirectories))
+    }
+    
     func saveWatchedDirectories() {
         let directoriesURL = storage.appSupportURL.appendingPathComponent("directories.json")
         do {
             let encoder = JSONEncoder()
             let data = try encoder.encode(Array(tagManager.watchedDirectories))
             try data.write(to: directoriesURL)
-            print("保存监视目录列表: \(Array(tagManager.watchedDirectories))")
+            print("保存监视目录到文件: \(Array(tagManager.watchedDirectories))")
         } catch {
             print("保存监视目录失败: \(error)")
         }
     }
-
+    
     func addWatchedDirectory(_ path: String) {
         if !tagManager.watchedDirectories.contains(path) {
+            // 更新监视目录集合
             tagManager.watchedDirectories.insert(path)
+            
+            // 保存更新后的目录列表
             saveWatchedDirectories()
-            projectIndex.scanDirectory(path)
-            loadProjectsFromDirectory(path)
+            
+            // 只加载新添加的目录
+            queue.async {
+                let newProjects = self.scanAndCollectProjects(path, force: true)
+                
+                // 更新UI
+                DispatchQueue.main.async {
+                    for project in newProjects {
+                        self.tagManager.projectOperations.registerProject(project)
+                    }
+                    
+                    // 保存到缓存
+                    self.tagManager.projectOperations.saveAllToCache()
+                    
+                    print("已添加目录并加载 \(newProjects.count) 个新项目")
+                }
+            }
         }
     }
-
+    
     func removeWatchedDirectory(_ path: String) {
         if tagManager.watchedDirectories.contains(path) {
             tagManager.watchedDirectories.remove(path)
@@ -279,86 +370,90 @@ class DirectoryWatcher {
             removeProjectsInDirectory(path)
         }
     }
-
+    
     private func removeProjectsInDirectory(_ path: String) {
+        // 删除该目录下的所有项目
         let projectsToRemove = tagManager.projects.values.filter { $0.path.hasPrefix(path) }
-        for project in projectsToRemove {
-            tagManager.projectOperations.removeProject(project.id)
-        }
-    }
-
-    private func loadProjectsFromDirectory(_ path: String) {
-        // 等待扫描完成后再加载项目
-        queue.sync {
-            let loadedProjects = self.projectIndex.loadProjects(
-                existingProjects: self.tagManager.projects,
-                fromWatchedDirectories: [path])
-            DispatchQueue.main.async {
-                for project in loadedProjects {
-                    self.tagManager.projectOperations.registerProject(project)
-                }
-            }
-        }
-    }
-
-    func reloadAllProjects() {
-        queue.async {
-            // 强制重新扫描所有目录
-            for directory in self.tagManager.watchedDirectories {
-                self.projectIndex.scanDirectory(directory, force: true)
-            }
-
-            // 加载所有项目
-            let allProjects = self.projectIndex.loadProjects(
-                existingProjects: self.tagManager.projects,
-                fromWatchedDirectories: self.tagManager.watchedDirectories)
-
-            // 更新项目列表
-            DispatchQueue.main.async {
-                self.tagManager.projects.removeAll()
-                for project in allProjects {
-                    self.tagManager.projectOperations.registerProject(project)
-                }
+        DispatchQueue.main.async {
+            for project in projectsToRemove {
+                self.tagManager.projectOperations.removeProject(project.id)
             }
         }
     }
     
-    // 清除缓存并重新加载所有项目
+    func reloadAllProjects() {
+        queue.async {
+            print("开始重新加载所有项目...")
+            
+            // 获取所有监视目录
+            let directories = Array(self.tagManager.watchedDirectories)
+            
+            var allProjects: [Project] = []
+            
+            // 清除索引缓存强制重新扫描
+            self.projectIndex.clearIndexCache()
+            
+            // 收集所有目录中的项目
+            for directory in directories {
+                let projects = self.scanAndCollectProjects(directory, force: true)
+                allProjects.append(contentsOf: projects)
+            }
+            
+            print("重新加载完成，共找到 \(allProjects.count) 个项目")
+            
+            // 一次性更新UI
+            DispatchQueue.main.async {
+                // 清空现有项目
+                self.tagManager.projects.removeAll()
+                self.tagManager.sortManager.updateSortedProjects([])
+                
+                // 注册所有新项目
+                for project in allProjects {
+                    self.tagManager.projectOperations.registerProject(project)
+                }
+                
+                // 保存到缓存
+                self.tagManager.projectOperations.saveAllToCache()
+                
+                // 显示提示
+                NotificationCenter.default.post(
+                    name: .init("ShowToast"),
+                    object: nil,
+                    userInfo: [
+                        "message": "已重新加载所有项目",
+                        "duration": 2.0
+                    ]
+                )
+            }
+        }
+    }
+    
     func clearCacheAndReloadProjects() {
         queue.async {
             print("开始清除缓存并重新加载...")
             
-            // 确保清空内存中的项目集合
-            DispatchQueue.main.async {
-                self.tagManager.projects.removeAll()
-                self.tagManager.sortManager.updateSortedProjects([])
-                print("已清空内存中的项目集合")
-            }
-            
             // 清除项目数据缓存
             let projectsCacheURL = self.storage.appSupportURL.appendingPathComponent("projects.json")
-            do {
-                if FileManager.default.fileExists(atPath: projectsCacheURL.path) {
-                    try FileManager.default.removeItem(at: projectsCacheURL)
-                    print("已清除项目数据缓存")
-                }
-            } catch {
-                print("清除项目数据缓存失败: \(error)")
-            }
+            try? FileManager.default.removeItem(at: projectsCacheURL)
             
             // 清除项目索引缓存
             self.projectIndex.clearIndexCache()
             
-            // 确保UI更新完成
-            Thread.sleep(forTimeInterval: 0.5)
+            // 过滤出存在的目录
+            let existingDirectories = self.tagManager.watchedDirectories.filter {
+                FileManager.default.fileExists(atPath: $0)
+            }
             
-            // 如果没有监视目录，不需要继续处理
-            if self.tagManager.watchedDirectories.isEmpty {
-                print("没有监视目录，加载完成")
+            if existingDirectories.isEmpty {
+                print("没有可用的监视目录")
                 DispatchQueue.main.async {
+                    // 清空项目列表
+                    self.tagManager.projects.removeAll()
+                    self.tagManager.sortManager.updateSortedProjects([])
+                    
                     let alert = NSAlert()
-                    alert.messageText = "加载完成"
-                    alert.informativeText = "没有设置监视目录，请添加监视目录"
+                    alert.messageText = "没有可用目录"
+                    alert.informativeText = "请添加要监视的目录"
                     alert.alertStyle = .informational
                     alert.addButton(withTitle: "确定")
                     alert.runModal()
@@ -366,61 +461,150 @@ class DirectoryWatcher {
                 return
             }
             
-            print("开始重新扫描目录...")
+            var allProjects: [Project] = []
             
-            // 同步扫描所有目录（不使用异步队列）
-            for directory in self.tagManager.watchedDirectories {
-                print("扫描目录: \(directory)")
-                if FileManager.default.fileExists(atPath: directory) {
-                    // 直接同步扫描
-                    self.projectIndex.performScanSync(directory, force: true)
-                } else {
-                    print("目录不存在，跳过扫描: \(directory)")
-                }
+            // 收集所有目录中的项目
+            for directory in existingDirectories {
+                let projects = self.scanAndCollectProjects(directory, force: true)
+                allProjects.append(contentsOf: projects)
             }
             
-            print("开始重新加载项目...")
-            // 重新加载所有项目，使用空的项目字典以强制从文件系统重新读取
-            let allProjects = self.projectIndex.loadProjects(
-                existingProjects: [:],
-                fromWatchedDirectories: self.tagManager.watchedDirectories)
+            print("缓存清理和重新加载完成，共找到 \(allProjects.count) 个项目")
             
-            print("加载了 \(allProjects.count) 个项目")
-            
-            // 更新项目列表
+            // 一次性更新UI
             DispatchQueue.main.async {
-                // 确保列表是空的
+                // 清空现有项目
                 self.tagManager.projects.removeAll()
                 self.tagManager.sortManager.updateSortedProjects([])
                 
-                // 添加新项目，确保从系统加载标签
-                for var project in allProjects {
-                    // 从系统加载标签
-                    let systemTags = Project.loadTagsFromSystem(path: project.path)
-                    if !systemTags.isEmpty {
-                        project = Project(
-                            id: project.id,
-                            name: project.name,
-                            path: project.path,
-                            lastModified: project.lastModified,
-                            tags: systemTags
-                        )
-                    }
+                // 注册所有新项目
+                for project in allProjects {
                     self.tagManager.projectOperations.registerProject(project)
                 }
-                print("已更新项目列表，现有 \(self.tagManager.projects.count) 个项目")
                 
                 // 保存到缓存
                 self.tagManager.projectOperations.saveAllToCache()
                 
-                // 显示结果提示
+                // 显示提示
+                NotificationCenter.default.post(
+                    name: .init("ShowToast"),
+                    object: nil,
+                    userInfo: [
+                        "message": "已加载 \(allProjects.count) 个项目",
+                        "duration": 2.0
+                    ]
+                )
+            }
+        }
+    }
+
+    // 增量更新项目方法 - 只有检测到变化时才更新UI
+    func incrementallyReloadProjects() {
+        queue.async {
+            print("开始后台增量更新项目...")
+            
+            // 获取所有监视目录
+            let directories = Array(self.tagManager.watchedDirectories)
+            
+            // 保存当前项目的快照（用于比较变化）
+            let existingProjects = self.tagManager.projects
+            let existingPaths = Set(existingProjects.values.map { $0.path })
+            
+            var allProjects: [Project] = []
+            
+            // 收集所有目录中的项目
+            for directory in directories {
+                let projects = self.scanAndCollectProjects(directory, force: false)
+                allProjects.append(contentsOf: projects)
+            }
+            
+            print("增量更新扫描完成，共找到 \(allProjects.count) 个项目")
+            
+            // 确定新增、删除和修改的项目
+            let newPaths = Set(allProjects.map { $0.path })
+            
+            // 检查是否有变化
+            if newPaths == existingPaths && existingProjects.count == allProjects.count {
+                print("项目数据没有变化，保持现有显示")
+                return
+            }
+            
+            // 找出已添加、已删除和保持不变的项目
+            let addedPaths = newPaths.subtracting(existingPaths)
+            let removedPaths = existingPaths.subtracting(newPaths)
+            
+            // 只有在有变化时才更新UI
+            if !addedPaths.isEmpty || !removedPaths.isEmpty {
+                print("检测到项目变化，增量更新UI...")
+                print("新增项目: \(addedPaths.count) 个, 移除项目: \(removedPaths.count) 个")
+                
                 DispatchQueue.main.async {
-                    let alert = NSAlert()
-                    alert.messageText = "重新加载完成"
-                    alert.informativeText = "已加载 \(allProjects.count) 个项目"
-                    alert.alertStyle = .informational
-                    alert.addButton(withTitle: "确定")
-                    alert.runModal()
+                    // 1. 删除已移除的项目
+                    for path in removedPaths {
+                        if let project = existingProjects.values.first(where: { $0.path == path }) {
+                            self.tagManager.projectOperations.removeProject(project.id)
+                        }
+                    }
+                    
+                    // 2. 添加新项目
+                    for project in allProjects {
+                        if addedPaths.contains(project.path) {
+                            self.tagManager.projectOperations.registerProject(project)
+                        } else {
+                            // 3. 更新可能已修改的现有项目（比如修改时间或标签变化）
+                            if let existingProject = existingProjects.values.first(where: { $0.path == project.path }),
+                               (existingProject.lastModified != project.lastModified || 
+                                existingProject.tags != project.tags) {
+                                self.tagManager.projectOperations.registerProject(project)
+                            }
+                        }
+                    }
+                    
+                    // 保存到缓存
+                    self.tagManager.projectOperations.saveAllToCache()
+                    
+                    if addedPaths.count > 0 || removedPaths.count > 0 {
+                        // 显示提示
+                        NotificationCenter.default.post(
+                            name: .init("ShowToast"),
+                            object: nil,
+                            userInfo: [
+                                "message": "项目已更新: +\(addedPaths.count) -\(removedPaths.count)",
+                                "duration": 2.0
+                            ]
+                        )
+                    }
+                }
+            } else {
+                print("没有项目添加或删除，检查是否有项目内容更新...")
+                
+                // 检查是否有项目内容更新（如修改时间或标签变化）
+                var updatedProjectsCount = 0
+                
+                DispatchQueue.main.async {
+                    for project in allProjects {
+                        if let existingProject = existingProjects.values.first(where: { $0.path == project.path }),
+                           (existingProject.lastModified != project.lastModified || 
+                            existingProject.tags != project.tags) {
+                            self.tagManager.projectOperations.registerProject(project)
+                            updatedProjectsCount += 1
+                        }
+                    }
+                    
+                    if updatedProjectsCount > 0 {
+                        // 保存到缓存
+                        self.tagManager.projectOperations.saveAllToCache()
+                        
+                        // 显示提示
+                        NotificationCenter.default.post(
+                            name: .init("ShowToast"),
+                            object: nil,
+                            userInfo: [
+                                "message": "已更新 \(updatedProjectsCount) 个项目内容",
+                                "duration": 2.0
+                            ]
+                        )
+                    }
                 }
             }
         }

@@ -3,6 +3,11 @@ import SwiftUI
 struct SearchBar: View {
     @Binding var text: String
     @FocusState private var isFocused: Bool
+    
+    // 添加一个方法来清除焦点
+    func clearFocus() {
+        isFocused = false
+    }
 
     var body: some View {
         HStack(spacing: 8) {
