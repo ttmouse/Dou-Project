@@ -325,10 +325,6 @@ class TagManager: ObservableObject {
         directoryWatcher.removeWatchedDirectory(path)
     }
 
-    func reloadAllProjects() {
-        reloadProjects()
-    }
-    
     // 清除缓存并重新加载所有项目
     func clearCacheAndReloadProjects() {
         directoryWatcher.clearCacheAndReloadProjects()

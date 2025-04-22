@@ -1,6 +1,24 @@
 import AppKit
 import SwiftUI
 
+/// TagSystemSync 负责管理与 macOS 系统标签的同步
+///
+/// ⚠️ 警告：
+/// 1. 此类直接操作系统标签元数据，修改时需要特别谨慎
+/// 2. 不当的修改可能导致项目标签信息丢失
+/// 3. 在修改此类之前，建议：
+///    - 完整阅读 README.md 中的标签系统警告部分
+///    - 确保理解 macOS 文件系统的标签机制
+///    - 在测试环境中验证修改的影响
+///
+/// 关键方法：
+/// - `loadSystemTags()`: 从系统加载所有标签
+/// - `syncTagsToSystem()`: 将标签同步到系统
+///
+/// 数据流：
+/// 1. 项目标签存储在文件系统的 `com.apple.metadata:_kMDItemUserTags` 属性中
+/// 2. 标签更改需要通过 `xattr` 命令写入
+/// 3. 标签同步使用临时文件和 plist 转换确保原子性
 class TagSystemSync {
     private static var lastSyncTags: Set<String>?
     private static let syncDebounceInterval: TimeInterval = 1.0

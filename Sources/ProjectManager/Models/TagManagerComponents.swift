@@ -94,6 +94,12 @@ class ProjectOperationManager {
     }
 
     func registerProject(_ project: Project) {
+        // 检查项目是否已存在
+        if Project.isProjectExists(path: project.path, in: tagManager.projects) {
+            print("项目已存在，跳过注册: \(project.name)")
+            return
+        }
+
         print("注册项目: \(project.name), 标签: \(project.tags)")
         tagManager.projects[project.id] = project
 
@@ -374,7 +380,7 @@ class DirectoryWatcher {
             }
             
             print("开始重新加载项目...")
-            // 重新加载所有项目，完全不使用任何现有项目
+            // 重新加载所有项目，使用空的项目字典以强制从文件系统重新读取
             let allProjects = self.projectIndex.loadProjects(
                 existingProjects: [:],
                 fromWatchedDirectories: self.tagManager.watchedDirectories)
@@ -387,8 +393,19 @@ class DirectoryWatcher {
                 self.tagManager.projects.removeAll()
                 self.tagManager.sortManager.updateSortedProjects([])
                 
-                // 添加新项目
-                for project in allProjects {
+                // 添加新项目，确保从系统加载标签
+                for var project in allProjects {
+                    // 从系统加载标签
+                    let systemTags = Project.loadTagsFromSystem(path: project.path)
+                    if !systemTags.isEmpty {
+                        project = Project(
+                            id: project.id,
+                            name: project.name,
+                            path: project.path,
+                            lastModified: project.lastModified,
+                            tags: systemTags
+                        )
+                    }
                     self.tagManager.projectOperations.registerProject(project)
                 }
                 print("已更新项目列表，现有 \(self.tagManager.projects.count) 个项目")

@@ -1,6 +1,17 @@
 import AppKit
 import Foundation
 
+/// 项目模型，代表文件系统中的一个项目目录
+///
+/// ⚠️ 标签系统警告：
+/// 1. 项目的标签信息直接存储在文件系统的元数据中
+/// 2. 标签的加载和保存操作需要特别注意数据完整性
+/// 3. 在修改标签相关代码时，请参考 README.md 中的警告说明
+///
+/// 标签处理流程：
+/// 1. `loadTagsFromSystem`: 从文件系统加载标签
+/// 2. 标签修改后需要确保同步回系统
+/// 3. 避免在未同步完成前执行其他标签操作
 struct Project: Identifiable, Equatable, Codable {
     let id: UUID
     let name: String
@@ -241,6 +252,11 @@ struct Project: Identifiable, Equatable, Codable {
 
     func openInFinder() {
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+    }
+
+    // 检查项目是否已存在
+    static func isProjectExists(path: String, in projects: [UUID: Project]) -> Bool {
+        return projects.values.contains { $0.path == path }
     }
 }
 

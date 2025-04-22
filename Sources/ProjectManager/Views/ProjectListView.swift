@@ -69,7 +69,9 @@ struct ProjectListView: View {
             case .timeDesc:
                 return lhs.lastModified > rhs.lastModified
             case .commitCount:
-                return false
+                let count1 = lhs.gitInfo?.commitCount ?? 0
+                let count2 = rhs.gitInfo?.commitCount ?? 0
+                return count1 > count2  // 按提交次数降序排序
             }
         }
     }
@@ -113,14 +115,9 @@ struct ProjectListView: View {
                 case .commitCount: sortOption = .timeDesc
                 }
             }) {
-                Image(
-                    systemName: sortOption == .timeAsc
-                        ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
-                )
-                .foregroundColor(
-                    sortOption == .commitCount ? AppTheme.titleBarIcon : AppTheme.accent
-                )
-                .font(.system(size: 20))
+                Image(systemName: sortOption == .timeAsc ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    .foregroundColor(sortOption == .commitCount ? AppTheme.titleBarIcon : AppTheme.accent)
+                    .font(.system(size: 20))
             }
             .buttonStyle(.plain)
             .help(sortOption == .timeAsc ? "最早的在前" : "最新的在前")
@@ -130,9 +127,7 @@ struct ProjectListView: View {
                 sortOption = .commitCount
             }) {
                 Image(systemName: "number.circle.fill")
-                    .foregroundColor(
-                        sortOption == .commitCount ? AppTheme.accent : AppTheme.titleBarIcon
-                    )
+                    .foregroundColor(sortOption == .commitCount ? AppTheme.accent : AppTheme.titleBarIcon)
                     .font(.system(size: 20))
             }
             .buttonStyle(.plain)
@@ -319,13 +314,7 @@ struct ProjectListView: View {
                 Button(action: {
                     tagManager.clearCacheAndReloadProjects()
                 }) {
-                    Label("清除缓存并重新加载", systemImage: "arrow.triangle.2.circlepath")
-                }
-                
-                Button(action: {
-                    tagManager.reloadAllProjects()
-                }) {
-                    Label("刷新项目（保留缓存）", systemImage: "arrow.clockwise")
+                    Label("刷新项目", systemImage: "arrow.triangle.2.circlepath")
                 }
             } label: {
                 Label("刷新与重载", systemImage: "arrow.clockwise")
