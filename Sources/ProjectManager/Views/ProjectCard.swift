@@ -168,7 +168,15 @@ struct ProjectCard: View {
         }
         .onDrag {
             // 确保当前项目被选中
-            onSelect(false)
+            let flags = NSEvent.modifierFlags
+            let isShiftPressed = flags.contains(.shift)
+            let isCommandPressed = flags.contains(.command)
+            
+            // 如果没有按下修饰键，且当前项目未被选中，则只选中当前项目
+            if !isShiftPressed && !isCommandPressed && !isSelected {
+                onSelect(false)
+            }
+            
             // 创建包含所有选中项目的数据
             let selectedIds = selectedCount > 1 ? selectedProjects : [project.id]
             let data = try? JSONEncoder().encode(selectedIds)
