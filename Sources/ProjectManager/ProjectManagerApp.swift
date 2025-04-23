@@ -63,7 +63,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // 强制保存所有数据
-        contentView.rootView.tagManager.saveAll()
+        contentView.rootView.tagManager.saveAll(force: true)
+        
+        // 等待一小段时间确保数据写入
+        Thread.sleep(forTimeInterval: 0.5)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

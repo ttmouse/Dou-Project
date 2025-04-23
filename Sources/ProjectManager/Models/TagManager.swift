@@ -260,8 +260,7 @@ class TagManager: ObservableObject {
 
                 // 保存到系统
                 project.saveTagsToSystem()
-                needsSave = true
-                saveAll()
+                saveAll(force: true)  // 强制保存
             }
         }
     }
@@ -276,7 +275,7 @@ class TagManager: ObservableObject {
 
             // 保存到系统
             project.saveTagsToSystem()
-            saveAll()
+            saveAll(force: true)  // 强制保存
         }
     }
 
@@ -301,7 +300,7 @@ class TagManager: ObservableObject {
 
         // 统一处理缓存和保存
         invalidateTagUsageCache()
-        saveAll()
+        saveAll(force: true)  // 强制保存
 
         // 批量保存系统标签
         for projectId in projectIds {
@@ -316,7 +315,13 @@ class TagManager: ObservableObject {
     private var needsSave = false
     private var saveDebounceTimer: Timer?
 
-    func saveAll() {
+    func saveAll(force: Bool = false) {
+        // 如果强制保存，立即执行
+        if force {
+            performSave()
+            return
+        }
+
         // 如果已经有定时器在运行，取消它
         saveDebounceTimer?.invalidate()
 
@@ -328,9 +333,25 @@ class TagManager: ObservableObject {
     }
 
     private func performSave() {
+        // 保存标签
         storage.saveTags(allTags)
+        
+        // 保存监视目录
         directoryWatcher.saveWatchedDirectories()
+        
+        // 保存项目数据
+        projectOperations.saveAllToCache()
+        
+        // 同步系统标签
+        TagSystemSync.syncTagsToSystem(allTags)
+        
+        // 保存所有项目的系统标签
+        for project in projects.values {
+            project.saveTagsToSystem()
+        }
+        
         needsSave = false
+        print("所有数据保存完成")
     }
 
     // MARK: - 项目管理
