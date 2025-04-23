@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 class TagManager: ObservableObject {
     // MARK: - 类型定义
@@ -23,6 +24,7 @@ class TagManager: ObservableObject {
     let colorManager: TagColorManager
     let sortManager: ProjectSortManager
     private let projectIndex: ProjectIndex
+    private var cancellables = Set<AnyCancellable>()
     lazy var projectOperations: ProjectOperationManager = {
         return ProjectOperationManager(tagManager: self, storage: storage)
     }()
@@ -45,8 +47,33 @@ class TagManager: ObservableObject {
         sortManager = ProjectSortManager()
         projectIndex = ProjectIndex(storage: storage)
 
+        // 监听 colorManager 的变化
+        colorManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
         // 加载数据
         loadAllData()
+        
+        // 确保所有标签都有颜色
+        initializeTagColors()
+    }
+    
+    // 初始化标签颜色
+    private func initializeTagColors() {
+        for tag in allTags {
+            if colorManager.getColor(for: tag) == nil {
+                // 使用标签名称的哈希值来确定性地选择颜色
+                let hash = abs(tag.hashValue)
+                let colorIndex = hash % AppTheme.tagPresetColors.count
+                let color = AppTheme.tagPresetColors[colorIndex].color
+                colorManager.setColor(color, for: tag)
+            }
+        }
+        // 保存颜色
+        saveAll(force: true)
     }
 
     // MARK: - 标签统计
@@ -186,19 +213,36 @@ class TagManager: ObservableObject {
     }
 
     func getColor(for tag: String) -> Color {
-        // 检查是否已有颜色
-        if let existingColor = colorManager.getColor(for: tag) {
-            return existingColor
+        // 为"全部"标签返回固定颜色
+        if tag == "全部" {
+            return AppTheme.accent
         }
         
-        // 如果没有颜色，随机分配一个并保存
-        let randomColor = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
-        colorManager.setColor(randomColor, for: tag)
-        return randomColor
+        // 为"没有标签"返回固定颜色
+        if tag == "没有标签" {
+            return AppTheme.accent.opacity(0.7)
+        }
+        
+        // 直接使用 colorManager 的颜色，如果没有则生成新的
+        if let color = colorManager.getColor(for: tag) {
+            return color
+        }
+        
+        // 如果没有颜色，使用标签名称的哈希值来确定性地选择颜色
+        let hash = abs(tag.hashValue)
+        let colorIndex = hash % AppTheme.tagPresetColors.count
+        let color = AppTheme.tagPresetColors[colorIndex].color
+        
+        // 保存颜色以便后续使用
+        colorManager.setColor(color, for: tag)
+        
+        return color
     }
 
     func setColor(_ color: Color, for tag: String) {
         colorManager.setColor(color, for: tag)
+        // 通知观察者有更新
+        objectWillChange.send()
     }
 
     func getSortedProjects() -> [Project] {

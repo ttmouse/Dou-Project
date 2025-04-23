@@ -25,6 +25,7 @@ struct TagRow: View {
         .onDrop(of: [.data], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
     }
 
     // MARK: - View Components

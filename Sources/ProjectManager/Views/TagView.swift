@@ -10,6 +10,11 @@ struct TagView: View {
 
     @State private var isHovered = false
 
+    // 添加一个 id 来强制视图更新
+    private var viewId: String {
+        "\(tag)-\(color.description)-\(isSelected)-\(isPreview)"
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             Text(tag)
@@ -39,6 +44,7 @@ struct TagView: View {
                 isHovered = hovering
             }
         }
+        .id(viewId)  // 使用动态 id 确保视图更新
     }
     
     // 计算文字颜色

@@ -46,13 +46,27 @@ class TagStorage {
         }
     }
 
+    // 用于保存颜色组件的结构
+    private struct ColorComponents: Codable {
+        let red: CGFloat
+        let green: CGFloat
+        let blue: CGFloat
+        let alpha: CGFloat
+    }
+
     func loadTagColors() -> [String: Color] {
         do {
             let data = try Data(contentsOf: tagColorsFileURL)
             let decoder = JSONDecoder()
-            let decodedColors = try decoder.decode([String: String].self, from: data)
-            print("成功解码标签颜色: \(decodedColors)")
-            return decodedColors.mapValues { Color(hex: $0) }
+            let decodedColors = try decoder.decode([String: ColorComponents].self, from: data)
+            print("成功解码标签颜色")
+            return decodedColors.mapValues { components in
+                Color(.sRGB,
+                      red: components.red,
+                      green: components.green,
+                      blue: components.blue,
+                      opacity: components.alpha)
+            }
         } catch {
             print("加载标签颜色失败（可能是首次运行）: \(error)")
             return [:]
@@ -61,14 +75,17 @@ class TagStorage {
 
     func saveTagColors(_ colors: [String: Color]) {
         do {
-            let colorData = colors.compactMapValues { color -> String? in
-                let nsColor = NSColor(color)
-                let red = Int(round(nsColor.redComponent * 255))
-                let green = Int(round(nsColor.greenComponent * 255))
-                let blue = Int(round(nsColor.blueComponent * 255))
-                return String(format: "#%02X%02X%02X", red, green, blue)
+            let colorData = colors.mapValues { color -> ColorComponents in
+                let nsColor = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+                return ColorComponents(
+                    red: nsColor.redComponent,
+                    green: nsColor.greenComponent,
+                    blue: nsColor.blueComponent,
+                    alpha: nsColor.alphaComponent
+                )
             }
             let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(colorData)
             try data.write(to: tagColorsFileURL)
             print("保存标签颜色成功")

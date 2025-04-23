@@ -5,8 +5,8 @@ rm -rf .build/release
 rm -rf ProjectManager.app
 rm -f ProjectManager.dmg
 
-# 如果存在 icon.png，则生成图标
-if [ -f "icon.png" ]; then
+# 只在图标文件不存在时生成图标
+if [ -f "icon.png" ] && [ ! -f "ProjectManager.icns" ]; then
     echo "生成应用图标..."
     ./make_icon.sh
 fi

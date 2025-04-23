@@ -128,6 +128,7 @@ struct ProjectCard: View {
                     .onTapGesture {
                         onTagSelected(tag)
                     }
+                    .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
                 }
             }
             .padding(.vertical, 4)
