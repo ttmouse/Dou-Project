@@ -2,31 +2,10 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - 辅助函数
-private func openInCursor(path: String) {
-    let task = Process()
-    task.executableURL = URL(fileURLWithPath: "/usr/local/bin/cursor")
-    task.arguments = [path]
-
-    do {
-        try task.run()
-    } catch {
-        print("Error opening Cursor: \(error)")
-
-        // 如果直接打开失败，尝试使用 open 命令
-        let openTask = Process()
-        openTask.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        openTask.arguments = ["-a", "Cursor", path]
-
-        do {
-            try openTask.run()
-        } catch {
-            print("Error using open command: \(error)")
-        }
-    }
-}
-
+/// 项目卡片组件，用于在网格视图中显示项目信息
 struct ProjectCard: View {
+    // MARK: - 属性
+    
     let project: Project
     let isSelected: Bool
     let selectedCount: Int  // 添加选中数量
@@ -36,6 +15,9 @@ struct ProjectCard: View {
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
 
+    // MARK: - 子视图
+    
+    /// 头部视图，包含项目名称和操作按钮
     private var headerView: some View {
         HStack {
             Text(project.name)
@@ -54,7 +36,7 @@ struct ProjectCard: View {
             .help("编辑标签")
 
             // 在 Cursor 中打开按钮
-            Button(action: { openInCursor(path: project.path) }) {
+            Button(action: { AppOpenHelper.openInCursor(path: project.path) }) {
                 Image(systemName: "cursorarrow.rays")
                     .foregroundColor(AppTheme.secondaryIcon)
             }
@@ -62,9 +44,7 @@ struct ProjectCard: View {
             .help("在 Cursor 中打开")
 
             // 打开文件夹按钮
-            Button(action: {
-                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path)
-            }) {
+            Button(action: { AppOpenHelper.openInFinder(path: project.path) }) {
                 Image(systemName: "folder")
                     .foregroundColor(AppTheme.folderIcon)
             }
@@ -73,6 +53,7 @@ struct ProjectCard: View {
         }
     }
 
+    /// 路径视图，显示项目路径
     private var pathView: some View {
         Text(project.path)
             .font(AppTheme.captionFont)
@@ -80,6 +61,7 @@ struct ProjectCard: View {
             .lineLimit(1)
     }
 
+    /// 信息视图，显示项目日期和Git提交次数
     private var infoView: some View {
         HStack {
             // 日期信息
@@ -113,37 +95,61 @@ struct ProjectCard: View {
         }
     }
 
+    /// 标签视图，显示项目相关标签
     private var tagsView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(Array(project.tags).sorted(), id: \.self) { tag in
-                    TagView(
-                        tag: tag,
-                        color: tagManager.getColor(for: tag),
-                        fontSize: 13,
-                        onDelete: {
-                            tagManager.removeTagFromProject(projectId: project.id, tag: tag)
+        Group {
+            if !project.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(project.tags).sorted(), id: \.self) { tag in
+                            TagView(
+                                tag: tag,
+                                color: tagManager.getColor(for: tag),
+                                fontSize: 13,
+                                onDelete: {
+                                    tagManager.removeTagFromProject(projectId: project.id, tag: tag)
+                                }
+                            )
+                            .onTapGesture {
+                                onTagSelected(tag)
+                            }
+                            .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
                         }
-                    )
-                    .onTapGesture {
-                        onTagSelected(tag)
                     }
-                    .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
                 }
+            } else {
+                EmptyView()
             }
-            .padding(.vertical, 4)
         }
     }
 
+    // MARK: - 主视图
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
+            // 标题部分 - 固定于顶部位置
             headerView
+                .padding(.bottom, 8)
+                .padding(.top, 16) // 固定标题到顶部的距离
+            
+            // 路径部分
             pathView
+                .padding(.bottom, 8)
+            
+            // 信息部分
             infoView
-            tagsView
+                .padding(.bottom, 8)
+            
+            // 标签部分（如果有）
+            if !project.tags.isEmpty {
+                tagsView
+                    .padding(.bottom, 4)
+            }
+            
             Spacer(minLength: 0)
         }
-        .padding(AppTheme.cardPadding)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
         .frame(height: AppTheme.cardHeight)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
@@ -208,223 +214,25 @@ struct ProjectCard: View {
     }
 }
 
-// MARK: - 标签编辑器视图
-struct TagEditorView: View {
-    @State private var currentProject: Project
-    @ObservedObject var tagManager: TagManager
-    @Environment(\.dismiss) private var dismiss
-    @State private var searchText = ""
-
-    init(project: Project, tagManager: TagManager) {
-        _currentProject = State(initialValue: project)
-        self.tagManager = tagManager
-    }
-
-    private var filteredTags: [String] {
-        let allTags = Array(tagManager.allTags).sorted()
-        if searchText.isEmpty {
-            return allTags
-        }
-        return allTags.filter { $0.localizedCaseInsensitiveContains(searchText) }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // 顶部栏
-            HStack {
-                // 搜索框
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(AppTheme.sidebarSecondaryText)
-                    TextField("搜索或创建新标签", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(AppTheme.searchBarFont)
-                        .foregroundColor(AppTheme.searchBarText)
-                        .onSubmit {
-                            if !searchText.isEmpty {
-                                addNewTag(searchText)
-                            }
-                        }
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(AppTheme.sidebarSecondaryText)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(8)
-                .background(AppTheme.sidebarDirectoryBackground)
-                .cornerRadius(6)
-
-                // 确认按钮
-                Button("确定") {
-                    dismiss()
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(AppTheme.sidebarDirectoryBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(AppTheme.sidebarDirectoryBorder, lineWidth: 1)
-                )
-            }
-            .padding()
-            .background(AppTheme.sidebarBackground)
-
-            // 标签列表
-            if #available(macOS 13.0, *) {
-                List {
-                    ForEach(filteredTags, id: \.self) { tag in
-                        HStack {
-                            TagView(
-                                tag: tag,
-                                color: tagManager.getColor(for: tag),
-                                fontSize: 13,
-                                isSelected: currentProject.tags.contains(tag)
-                            )
-                            Spacer()
-                            if currentProject.tags.contains(tag) {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(AppTheme.accent)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .listRowBackground(
-                            currentProject.tags.contains(tag)
-                                ? AppTheme.sidebarSelectedBackground : AppTheme.sidebarBackground
-                        )
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                        .onTapGesture {
-                            if currentProject.tags.contains(tag) {
-                                tagManager.removeTagFromProject(
-                                    projectId: currentProject.id, tag: tag)
-                            } else {
-                                tagManager.addTagToProject(projectId: currentProject.id, tag: tag)
-                            }
-                            currentProject =
-                                tagManager.projects[currentProject.id] ?? currentProject
-                        }
-                    }
-                    .listRowSeparator(.hidden)
-
-                    // 如果搜索的标签不存在，显示创建选项
-                    if !searchText.isEmpty
-                        && !tagManager.allTags.contains(
-                            searchText.trimmingCharacters(in: .whitespaces))
-                    {
-                        Button(action: { addNewTag(searchText) }) {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                Text("创建标签「\(searchText)」")
-                            }
-                            .foregroundColor(AppTheme.accent)
-                        }
-                        .listRowBackground(AppTheme.sidebarBackground)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                        .listRowSeparator(.hidden)
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(AppTheme.sidebarBackground)
-            } else {
-                // 旧版本 macOS 的实现
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(filteredTags, id: \.self) { tag in
-                            HStack {
-                                TagView(
-                                    tag: tag,
-                                    color: tagManager.getColor(for: tag),
-                                    fontSize: 13,
-                                    isSelected: currentProject.tags.contains(tag)
-                                )
-                                Spacer()
-                                if currentProject.tags.contains(tag) {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(AppTheme.accent)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(
-                                currentProject.tags.contains(tag)
-                                    ? AppTheme.sidebarSelectedBackground
-                                    : AppTheme.sidebarBackground
-                            )
-                            .onTapGesture {
-                                if currentProject.tags.contains(tag) {
-                                    tagManager.removeTagFromProject(
-                                        projectId: currentProject.id, tag: tag)
-                                } else {
-                                    tagManager.addTagToProject(
-                                        projectId: currentProject.id, tag: tag)
-                                }
-                                currentProject =
-                                    tagManager.projects[currentProject.id] ?? currentProject
-                            }
-                        }
-
-                        // 如果搜索的标签不存在，显示创建选项
-                        if !searchText.isEmpty
-                            && !tagManager.allTags.contains(
-                                searchText.trimmingCharacters(in: .whitespaces))
-                        {
-                            Button(action: { addNewTag(searchText) }) {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("创建标签「\(searchText)」")
-                                }
-                                .foregroundColor(AppTheme.accent)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                            }
-                        }
-                    }
-                }
-                .background(AppTheme.sidebarBackground)
-            }
-        }
-        .frame(width: 300, height: 400)
-        .background(AppTheme.sidebarBackground)
-    }
-
-    private func addNewTag(_ text: String) {
-        let tag = text.trimmingCharacters(in: .whitespaces)
-        if !tag.isEmpty {
-            // 使用随机预设颜色
-            let color = AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
-            tagManager.addTag(tag, color: color)
-            tagManager.addTagToProject(projectId: currentProject.id, tag: tag)
-            currentProject = tagManager.projects[currentProject.id] ?? currentProject
-            searchText = ""
-        }
+#if DEBUG
+struct ProjectCard_Previews: PreviewProvider {
+    static var previews: some View {
+        ProjectCard(
+            project: Project(
+                id: UUID(),
+                name: "示例项目",
+                path: "/Users/example/Projects/demo",
+                lastModified: Date(),
+                tags: ["Swift", "iOS"]
+            ),
+            isSelected: false,
+            selectedCount: 1,
+            selectedProjects: Set(),
+            tagManager: TagManager(),
+            onTagSelected: { _ in },
+            onSelect: { _ in }
+        )
+        .padding()
     }
 }
-
-#if DEBUG
-    struct ProjectCard_Previews: PreviewProvider {
-        static var previews: some View {
-            ProjectCard(
-                project: Project(
-                    id: UUID(),
-                    name: "示例项目",
-                    path: "/Users/example/Projects/demo",
-                    lastModified: Date(),
-                    tags: ["Swift", "iOS"]
-                ),
-                isSelected: false,
-                selectedCount: 1,
-                selectedProjects: Set(),
-                tagManager: TagManager(),
-                onTagSelected: { _ in },
-                onSelect: { _ in }
-            )
-            .padding()
-        }
-    }
 #endif

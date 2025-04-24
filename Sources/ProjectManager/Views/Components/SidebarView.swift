@@ -32,13 +32,13 @@ struct SidebarView: View {
             )
             .layoutPriority(1) // 给予更高的布局优先级
         }
-        .frame(minWidth: 200, maxWidth: 300)
+        .frame(minWidth: AppTheme.sidebarMinWidth, maxWidth: AppTheme.sidebarMaxWidth)
         .background(AppTheme.sidebarBackground)
         .overlay(
             Rectangle()
                 .fill(AppTheme.sidebarBorder)
                 .frame(width: 1)
-                .offset(x: 299)
+                .offset(x: AppTheme.sidebarBorderOffset)
         )
         .sheet(isPresented: $isShowingNewTagDialog) {
             TagEditDialog(

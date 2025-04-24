@@ -95,6 +95,12 @@ enum AppTheme {
     static let sidebarDirectoryBackground = Color(hex: "#1C1C1C")
     /// 侧边栏目录按钮边框色
     static let sidebarDirectoryBorder = Color(hex: "#2D2D2D")
+    /// 侧边栏最小宽度
+    static let sidebarMinWidth: CGFloat = 200
+    /// 侧边栏最大宽度
+    static let sidebarMaxWidth: CGFloat = 220
+    /// 侧边栏边框线位置偏移量
+    static let sidebarBorderOffset: CGFloat = 219
 
     // MARK: - 卡片样式
     /// 卡片背景色 - #1B1B1B
@@ -212,7 +218,7 @@ enum AppTheme {
 
     // MARK: - 分割线
     /// 分割线颜色
-    static let divider = Color(hex: "#FFFFFF", alpha: 0.1)
+    static let divider = Color(hex: "#FFFFFF", alpha: 0.05)
 
     // MARK: - 滚动条
     /// 滚动条颜色
@@ -224,7 +230,7 @@ enum AppTheme {
     /// 标签列表整体间距
     static let tagListSpacing: CGFloat = 8
     /// 标签行之间的间距
-    static let tagRowSpacing: CGFloat = 2
+    static let tagRowSpacing: CGFloat = 0
     /// 标签行内边距 - 水平
     static let tagRowPaddingH: CGFloat = 8
     /// 标签行内边距 - 垂直
