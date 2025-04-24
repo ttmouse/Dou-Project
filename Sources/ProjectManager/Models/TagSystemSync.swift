@@ -24,11 +24,140 @@ class TagSystemSync {
     private static let syncDebounceInterval: TimeInterval = 1.0
     private static var lastSyncTime: Date?
 
+    // 系统标准标签映射
+    private static let systemTagMapping: [String: String] = [
+        "green": "绿色",
+        "绿色": "绿色",
+        "red": "红色",
+        "红色": "红色",
+        "orange": "橙色",
+        "橙色": "橙色",
+        "yellow": "黄色",
+        "黄色": "黄色",
+        "blue": "蓝色",
+        "蓝色": "蓝色",
+        "purple": "紫色",
+        "紫色": "紫色",
+        "gray": "灰色",
+        "grey": "灰色",
+        "灰色": "灰色"
+    ]
+
+    /// 从系统加载全局标签列表
     static func loadSystemTags() -> Set<String> {
         let workspace = NSWorkspace.shared
-        return Set(workspace.fileLabels)
+        let systemTags = workspace.fileLabels
+        
+        // 标准化系统标签
+        let standardizedTags = systemTags.map { tag -> String in
+            if let standardTag = systemTagMapping[tag.lowercased()] {
+                return standardTag
+            }
+            return tag
+        }
+        
+        print("从系统加载标签: \(standardizedTags)")
+        return Set(standardizedTags)
     }
 
+    /// 从文件加载标签
+    static func loadTagsFromFile(at path: String) -> Set<String> {
+        let url = URL(fileURLWithPath: path)
+        do {
+            let resourceValues = try url.resourceValues(forKeys: Set([.tagNamesKey]))
+            if let tags = resourceValues.tagNames {
+                // 标准化标签
+                let standardizedTags = tags.map { tag -> String in
+                    if let standardTag = systemTagMapping[tag.lowercased()] {
+                        return standardTag
+                    }
+                    return tag
+                }
+                
+                // 获取标签颜色
+                if let colors = try? (url as NSURL).resourceValues(forKeys: [.labelColorKey])[.labelColorKey] as? [NSColor] {
+                    // 将标签和颜色对应起来
+                    for (index, tag) in standardizedTags.enumerated() where index < colors.count {
+                        let nsColor = colors[index]
+                        let color = Color(nsColor)
+                        // 发送颜色更新通知
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: .init("UpdateTagColor"),
+                                object: nil,
+                                userInfo: ["tag": tag, "color": color]
+                            )
+                        }
+                    }
+                }
+                
+                return Set(standardizedTags)
+            }
+        } catch {
+            print("从文件加载标签失败: \(error)")
+        }
+        return []
+    }
+
+    /// 保存标签到文件
+    static func saveTagsToFile(_ tags: Set<String>, at path: String) {
+        let url = URL(fileURLWithPath: path)
+        do {
+            // 获取当前标签和颜色
+            let currentTags = Array(loadTagsFromFile(at: path))
+            let currentColors = try? (url as NSURL).resourceValues(forKeys: [.labelColorKey])[.labelColorKey] as? [NSColor]
+            
+            // 标准化标签
+            let standardizedTags = tags.map { tag -> String in
+                if let standardTag = systemTagMapping[tag.lowercased()] {
+                    return standardTag
+                }
+                return tag
+            }
+            
+            // 如果标签没有变化，不需要保存
+            if Set(standardizedTags) == Set(currentTags) {
+                return
+            }
+
+            // 保存标签名称
+            try (url as NSURL).setResourceValue(Array(standardizedTags), forKey: .tagNamesKey)
+            
+            // 获取系统预定义的标签颜色
+            let tagColors = standardizedTags.map { tag -> NSColor in
+                // 如果是系统标准标签，使用预定义颜色
+                switch tag {
+                case "红色": return NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)
+                case "橙色": return NSColor(red: 1.0, green: 0.58, blue: 0.0, alpha: 1.0)
+                case "黄色": return NSColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)
+                case "绿色": return NSColor(red: 0.3, green: 0.85, blue: 0.39, alpha: 1.0)
+                case "蓝色": return NSColor(red: 0.0, green: 0.48, blue: 0.98, alpha: 1.0)
+                case "紫色": return NSColor(red: 0.69, green: 0.32, blue: 0.87, alpha: 1.0)
+                case "灰色": return NSColor(red: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
+                default:
+                    // 如果标签已经存在且有颜色，保持原有颜色
+                    if let index = currentTags.firstIndex(of: tag),
+                       let colors = currentColors,
+                       index < colors.count {
+                        return colors[index]
+                    }
+                    // 对于自定义标签，使用 TagManager 中的颜色
+                    if let color = TagManager.shared?.getColor(for: tag) {
+                        return NSColor(color)
+                    }
+                    return NSColor(red: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
+                }
+            }
+            
+            // 保存标签颜色
+            try (url as NSURL).setResourceValue(tagColors, forKey: .labelColorKey)
+            print("标签和颜色保存到文件成功: \(standardizedTags)")
+        } catch {
+            print("保存标签到文件失败: \(error)")
+        }
+    }
+
+    /// 同步标签到系统全局标签列表
     static func syncTagsToSystem(_ tags: Set<String>) {
         // 如果标签集合没有变化，不需要同步
         if let lastTags = lastSyncTags, lastTags == tags {
@@ -42,62 +171,26 @@ class TagSystemSync {
             return
         }
 
-        // 创建临时文件
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_tag")
-        try? "".write(to: tempURL, atomically: true, encoding: .utf8)
-
-        // 创建 plist 文件
-        let plistURL = tempURL.deletingPathExtension().appendingPathExtension("plist")
-        let binaryPlistURL = plistURL.deletingPathExtension().appendingPathExtension("binary.plist")
-
-        // 生成包含所有标签的 plist
-        let tagsArray = tags.map { "\($0)\n6" }.joined(separator: "</string>\n<string>")
-        let plist = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <array>
-                <string>\(tagsArray)</string>
-            </array>
-            </plist>
-            """
-
-        try? plist.write(to: plistURL, atomically: true, encoding: .utf8)
-
-        do {
-            // 转换为二进制 plist
-            let plutilProcess = Process()
-            plutilProcess.executableURL = URL(fileURLWithPath: "/usr/bin/plutil")
-            plutilProcess.arguments = [
-                "-convert", "binary1", "-o", binaryPlistURL.path, plistURL.path,
-            ]
-            try plutilProcess.run()
-            plutilProcess.waitUntilExit()
-
-            if plutilProcess.terminationStatus == 0 {
-                // 设置系统标签
-                let xattrProcess = Process()
-                xattrProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-                xattrProcess.arguments = [
-                    "-wx", "com.apple.metadata:_kMDItemUserTags", "@\(binaryPlistURL.path)",
-                    tempURL.path,
-                ]
-                try xattrProcess.run()
-                xattrProcess.waitUntilExit()
-
-                if xattrProcess.terminationStatus == 0 {
-                    print("系统标签保存成功: \(tags)")
-                    lastSyncTags = tags
-                    lastSyncTime = Date()
-                }
+        // 标准化标签
+        let standardizedTags = tags.map { tag -> String in
+            if let standardTag = systemTagMapping[tag.lowercased()] {
+                return standardTag
             }
-        } catch {
-            print("同步系统标签失败: \(error)")
+            return tag
         }
 
-        // 清理临时文件
-        try? FileManager.default.removeItem(at: tempURL)
-        try? FileManager.default.removeItem(at: plistURL)
-        try? FileManager.default.removeItem(at: binaryPlistURL)
+        // 获取当前系统标签
+        let workspace = NSWorkspace.shared
+        let currentSystemTags = workspace.fileLabels
+        
+        // 合并标签，确保不会删除系统标签
+        var mergedTags = Set(currentSystemTags)
+        mergedTags.formUnion(standardizedTags)
+        
+        // 更新同步状态
+        lastSyncTags = mergedTags
+        lastSyncTime = Date()
+        
+        print("同步标签到系统: \(mergedTags)")
     }
 }

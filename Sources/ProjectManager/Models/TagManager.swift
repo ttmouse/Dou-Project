@@ -12,6 +12,10 @@ class TagManager: ObservableObject {
         case gitCommits
     }
 
+    // MARK: - 静态实例
+    
+    static weak var shared: TagManager?
+
     // MARK: - 公共属性
 
     @Published var allTags: Set<String> = []
@@ -46,6 +50,9 @@ class TagManager: ObservableObject {
         colorManager = TagColorManager(storage: storage)
         sortManager = ProjectSortManager()
         projectIndex = ProjectIndex(storage: storage)
+        
+        // 设置静态实例
+        Self.shared = self
 
         // 监听 colorManager 的变化
         colorManager.objectWillChange

@@ -8,6 +8,34 @@ class TagColorManager: ObservableObject {
     init(storage: TagStorage) {
         self.storage = storage
         self.tagColors = storage.loadTagColors()
+        
+        // 监听标签颜色更新通知
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTagColorUpdate(_:)),
+            name: .init("UpdateTagColor"),
+            object: nil
+        )
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func handleTagColorUpdate(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let tag = userInfo["tag"] as? String,
+              let color = userInfo["color"] as? Color else {
+            return
+        }
+        
+        // 如果颜色已存在且相同，不做更新
+        if let existingColor = tagColors[tag], existingColor == color {
+            return
+        }
+        
+        // 更新颜色
+        setColor(color, for: tag)
     }
 
     func getColor(for tag: String) -> Color? {

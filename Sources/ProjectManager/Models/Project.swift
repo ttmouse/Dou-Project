@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 /// 项目模型，代表文件系统中的一个项目目录
 ///
@@ -36,17 +37,37 @@ struct Project: Identifiable, Equatable, Codable {
     }
 
     init(
-        id: UUID = UUID(), name: String, path: String, lastModified: Date = Date(),
+        id: UUID = UUID(),
+        name: String,
+        path: String,
+        lastModified: Date = Date(),
         tags: Set<String> = []
     ) {
         self.id = id
         self.name = name
         self.path = path
         self.lastModified = lastModified
-        self.tags = tags
         self.fileSystemInfo = Self.loadFileSystemInfo(path: path)
         self.gitInfo = Self.loadGitInfo(path: path)
-        saveTagsToSystem()
+        
+        // 总是从系统加载标签
+        let systemTags = Self.loadTagsFromSystem(path: path)
+        if !systemTags.isEmpty {
+            // 如果系统有标签，优先使用系统标签
+            self.tags = systemTags
+            // 不要在这里保存标签，避免覆盖系统标签
+        } else if !tags.isEmpty {
+            // 如果系统没有标签，但提供了标签，则使用提供的标签并保存到系统
+            self.tags = tags
+            // 直接调用静态方法保存标签
+            let finalTags = tags
+            DispatchQueue.main.async {
+                Self.saveTagsToSystem(path: path, tags: finalTags)
+            }
+        } else {
+            // 都没有标签，使用空集合
+            self.tags = []
+        }
     }
 
     private static func loadFileSystemInfo(path: String) -> FileSystemInfo {
@@ -168,37 +189,60 @@ struct Project: Identifiable, Equatable, Codable {
         return project
     }
 
-    // 保存标签到系统
-    func saveTagsToSystem() {
-        let url = URL(fileURLWithPath: path)
-        do {
-            // 获取当前系统标签
-            let currentTags = Self.loadTagsFromSystem(path: path)
-            // 如果标签没有变化，不需要保存
-            if currentTags == tags {
-                return
-            }
-
-            try (url as NSURL).setResourceValue(Array(tags), forKey: .tagNamesKey)
-            print("系统标签保存成功: \(tags)")
-        } catch {
-            print("保存系统标签失败: \(error)")
-        }
-    }
-
     // 从系统加载标签
     static func loadTagsFromSystem(path: String) -> Set<String> {
-        let url = URL(fileURLWithPath: path)
-        do {
-            let resourceValues = try url.resourceValues(forKeys: Set([.tagNamesKey]))
-            if let tags = resourceValues.tagNames {
-                print("从系统加载标签: \(tags)")
-                return Set(tags)
-            }
-        } catch {
-            print("加载系统标签失败: \(error)")
+        // 使用 TagSystemSync 加载标签
+        let tags = TagSystemSync.loadTagsFromFile(at: path)
+        print("从系统加载标签: \(path) -> \(tags)")
+        return tags
+    }
+
+    // 系统标准标签映射
+    private static let systemTagMapping: [String: String] = [
+        "green": "绿色",
+        "绿色": "绿色",
+        "red": "红色",
+        "红色": "红色",
+        "orange": "橙色",
+        "橙色": "橙色",
+        "yellow": "黄色",
+        "黄色": "黄色",
+        "blue": "蓝色",
+        "蓝色": "蓝色",
+        "purple": "紫色",
+        "紫色": "紫色",
+        "gray": "灰色",
+        "grey": "灰色",
+        "灰色": "灰色"
+    ]
+
+    // 保存标签到系统（改为静态方法）
+    static func saveTagsToSystem(path: String, tags: Set<String>) {
+        // 获取当前系统标签
+        let currentTags = loadTagsFromSystem(path: path)
+        
+        // 如果当前有系统标签，不要覆盖它们
+        if !currentTags.isEmpty {
+            print("文件已有系统标签，不覆盖: \(currentTags)")
+            return
         }
-        return []
+        
+        // 保存标签到系统
+        print("保存标签到系统: \(path) -> \(tags)")
+        TagSystemSync.saveTagsToFile(tags, at: path)
+    }
+
+    // 实例方法调用静态方法
+    func saveTagsToSystem() {
+        // 获取当前系统标签
+        let currentTags = Self.loadTagsFromSystem(path: path)
+        
+        // 合并标签，确保不会删除系统标签
+        var mergedTags = currentTags
+        mergedTags.formUnion(tags)
+        
+        // 保存合并后的标签
+        Self.saveTagsToSystem(path: path, tags: mergedTags)
     }
 
     private var projectType: ProjectType {
@@ -275,17 +319,14 @@ struct Project: Identifiable, Equatable, Codable {
         let modificationDate = attributes?[.modificationDate] as? Date ?? Date()
         
         // 检查是否已有现有项目
-        for (_, existingProject) in existingProjects {
-            if existingProject.path == path {
-                // 使用现有项目的ID和标签，但更新修改时间
-                return Project(
-                    id: existingProject.id,
-                    name: name,
-                    path: path,
-                    lastModified: modificationDate,
-                    tags: existingProject.tags
-                )
-            }
+        if let existingProject = existingProjects.values.first(where: { $0.path == path }) {
+            // 使用现有项目的ID，但重新从系统加载标签
+            return Project(
+                id: existingProject.id,
+                name: name,
+                path: path,
+                lastModified: modificationDate
+            )
         }
         
         // 创建新项目
@@ -293,8 +334,7 @@ struct Project: Identifiable, Equatable, Codable {
             id: UUID(),
             name: name,
             path: path,
-            lastModified: modificationDate,
-            tags: loadTagsFromSystem(path: path)
+            lastModified: modificationDate
         )
     }
 
