@@ -7,20 +7,30 @@ struct SidebarView: View {
     @Binding var isDraggingDirectory: Bool
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
+    @Binding var selectedDirectory: String?
     
     var body: some View {
         VStack(spacing: 0) {
-            DirectoryManageButton(
-                tagManager: tagManager, 
-                isDraggingDirectory: $isDraggingDirectory
+            // 添加目录列表
+            DirectoryListView(
+                tagManager: tagManager,
+                selectedDirectory: $selectedDirectory,
+                onDirectorySelected: clearSelectedTags // 添加目录选择的回调
             )
+            .padding(.bottom, 8)
             
+            Divider()
+                .background(AppTheme.divider)
+                .padding(.bottom, 8)
+            
+            // 标签列表使用剩余空间
             TagListView(
                 selectedTags: $selectedTags,
                 searchBarRef: $searchBarRef,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename
             )
+            .layoutPriority(1) // 给予更高的布局优先级
         }
         .frame(minWidth: 200, maxWidth: 300)
         .background(AppTheme.sidebarBackground)
@@ -41,6 +51,11 @@ struct SidebarView: View {
                 isShowingNewTagDialog = false
             }
         }
+    }
+    
+    // 清除选中的标签
+    private func clearSelectedTags() {
+        selectedTags.removeAll()
     }
 }
 
@@ -432,7 +447,8 @@ struct SidebarView_Previews: PreviewProvider {
             searchBarRef: .constant(nil),
             isDraggingDirectory: .constant(false),
             isShowingNewTagDialog: .constant(false),
-            tagToRename: .constant(nil)
+            tagToRename: .constant(nil),
+            selectedDirectory: .constant(nil)
         )
         .environmentObject(TagManager())
     }

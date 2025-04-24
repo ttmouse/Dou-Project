@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 清理控制台
+clear
+
 # 清理旧的构建文件
 rm -rf .build/release
 rm -rf ProjectManager.app

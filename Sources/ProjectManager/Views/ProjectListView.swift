@@ -16,6 +16,7 @@ struct ProjectListView: View {
     @State private var isDraggingDirectory = false
     @State private var searchBarRef: SearchBar? = nil
     @State private var sortOption: SortOption = .timeDesc
+    @State private var selectedDirectory: String? = nil
 
     @EnvironmentObject var tagManager: TagManager
 
@@ -28,51 +29,43 @@ struct ProjectListView: View {
 
     // MARK: - 计算属性
     private var filteredProjects: [Project] {
-        // 1. 获取所有项目
-        let allProjects = Array(tagManager.projects.values)
-
-        // 2. 搜索过滤
-        let searchFiltered =
-            searchText.isEmpty
-            ? allProjects
-            : allProjects.filter { project in
-                // 项目名称匹配
-                if project.name.localizedCaseInsensitiveContains(searchText) {
-                    return true
+        // 将 Dictionary.Values 转换为 Array
+        var projects = Array(tagManager.projects.values)
+        
+        // 目录筛选
+        if let selectedDirectory = selectedDirectory {
+            projects = projects.filter { $0.path.hasPrefix(selectedDirectory) }
+        }
+        
+        // 标签筛选
+        if !selectedTags.isEmpty {
+            if selectedTags.contains("没有标签") {
+                projects = projects.filter { $0.tags.isEmpty }
+            } else {
+                projects = projects.filter { project in
+                    selectedTags.isSubset(of: project.tags)
                 }
-                // 路径匹配
-                if project.path.localizedCaseInsensitiveContains(searchText) {
-                    return true
-                }
-                // 标签匹配
-                if project.tags.contains(where: { $0.localizedCaseInsensitiveContains(searchText) })
-                {
-                    return true
-                }
-                return false
             }
-
-        // 3. 标签过滤
-        let tagFiltered =
-            selectedTags.isEmpty
-            ? searchFiltered
-            : searchFiltered.filter { project in
-                if selectedTags.contains("没有标签") {
-                    return project.tags.isEmpty
-                }
-                return !selectedTags.isDisjoint(with: project.tags)
+        }
+        
+        // 搜索文本筛选
+        if !searchText.isEmpty {
+            projects = projects.filter { project in
+                project.name.localizedCaseInsensitiveContains(searchText) ||
+                project.path.localizedCaseInsensitiveContains(searchText)
             }
-
-        // 4. 排序
-        return tagFiltered.sorted { lhs, rhs in
+        }
+        
+        // 排序
+        return projects.sorted { (p1: Project, p2: Project) in
             switch sortOption {
-            case .timeAsc:
-                return lhs.lastModified < rhs.lastModified
             case .timeDesc:
-                return lhs.lastModified > rhs.lastModified
+                return p1.lastModified > p2.lastModified
+            case .timeAsc:
+                return p1.lastModified < p2.lastModified
             case .commitCount:
-                let count1 = lhs.gitInfo?.commitCount ?? 0
-                let count2 = rhs.gitInfo?.commitCount ?? 0
+                let count1 = p1.gitInfo?.commitCount ?? 0
+                let count2 = p2.gitInfo?.commitCount ?? 0
                 return count1 > count2
             }
         }
@@ -86,7 +79,8 @@ struct ProjectListView: View {
                 searchBarRef: $searchBarRef,
                 isDraggingDirectory: $isDraggingDirectory,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
-                tagToRename: $tagToRename
+                tagToRename: $tagToRename,
+                selectedDirectory: $selectedDirectory
             )
             
             MainContentView(
