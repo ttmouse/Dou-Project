@@ -40,6 +40,10 @@ class TagManager: ObservableObject {
     private var cachedTagUsageCount: [String: Int]?
     private var lastProjectUpdateTime: Date?
 
+    // MARK: - 标签选择
+    
+    @Published var selectedTag: String?
+
     // MARK: - 初始化
 
     init() {

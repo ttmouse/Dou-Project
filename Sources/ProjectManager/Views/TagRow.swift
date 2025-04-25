@@ -11,17 +11,59 @@ struct TagRow: View {
     @ObservedObject var tagManager: TagManager
     @State private var isTargeted = false
     @State private var showingContextMenu = false
+    @State var isEditing = false
+    @State var tempName = ""
+    @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            rowContent
+        Button {
+            action()
+        } label: {
+            HStack {
+                TagView(
+                    tag: tag,
+                    color: tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors
+                        .randomElement()?.color ?? AppTheme.accent,
+                    fontSize: 13,
+                    isSelected: isSelected
+                )
+
+                Spacer()
+
+                if isEditing {
+                    TextField("重命名标签", text: $tempName)
+                }
+
+                Spacer()
+
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
+                    .padding(.horizontal, AppTheme.tagCountPaddingH)
+                    .padding(.vertical, AppTheme.tagCountPaddingV)
+                    .background(
+                        isSelected
+                            ? AppTheme.accent.opacity(0.2)
+                            : AppTheme.sidebarDirectoryBackground
+                    )
+                    .cornerRadius(AppTheme.tagCountCornerRadius)
+            }
+            .padding(.horizontal, AppTheme.tagRowPaddingH)
+            .padding(.vertical, AppTheme.tagRowPaddingV)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
+                    .fill(
+                        isSelected ? AppTheme.sidebarSelectedBackground : 
+                        (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
+                    )
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .background(backgroundShape)
-        .overlay(overlayShape)
-        .animation(.easeInOut(duration: 0.2), value: isTargeted)
         .contextMenu { contextMenuContent }
+        .onHover { hovering in
+            self.isHovered = hovering
+        }
         .onDrop(of: [.data], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
@@ -29,56 +71,6 @@ struct TagRow: View {
     }
 
     // MARK: - View Components
-
-    private var rowContent: some View {
-        HStack {
-            TagView(
-                tag: tag,
-                color: tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors
-                    .randomElement()?.color ?? AppTheme.accent,
-                fontSize: 13,
-                isSelected: isSelected
-            )
-
-            Spacer()
-
-            tagCountView
-        }
-        .contentShape(Rectangle())
-        .padding(.vertical, AppTheme.tagRowPaddingV)
-        .padding(.horizontal, AppTheme.tagRowPaddingH)
-    }
-
-    private var tagCountView: some View {
-        Text("\(count)")
-            .font(.caption)
-            .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
-            .padding(.horizontal, AppTheme.tagCountPaddingH)
-            .padding(.vertical, AppTheme.tagCountPaddingV)
-            .background(
-                isSelected
-                    ? AppTheme.accent.opacity(0.2)
-                    : AppTheme.sidebarDirectoryBackground
-            )
-            .cornerRadius(AppTheme.tagCountCornerRadius)
-    }
-
-    private var backgroundShape: some View {
-        RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
-            .fill(
-                isTargeted
-                    ? AppTheme.accent.opacity(0.2)
-                    : (isSelected ? AppTheme.sidebarSelectedBackground : Color.clear)
-            )
-    }
-
-    private var overlayShape: some View {
-        RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
-            .strokeBorder(
-                isTargeted ? AppTheme.accent : Color.clear,
-                lineWidth: 1
-            )
-    }
 
     private var contextMenuContent: some View {
         Group {

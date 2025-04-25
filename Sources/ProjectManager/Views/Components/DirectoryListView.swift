@@ -207,6 +207,7 @@ struct DirectoryRow: View {
     let count: Int
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovered = false
     
     var body: some View {
         Button(action: action) {
@@ -239,10 +240,16 @@ struct DirectoryRow: View {
             .padding(.vertical, AppTheme.tagRowPaddingV)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
-                    .fill(isSelected ? AppTheme.sidebarSelectedBackground : Color.clear)
+                    .fill(
+                        isSelected ? AppTheme.sidebarSelectedBackground : 
+                        (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
+                    )
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            self.isHovered = hovering
+        }
     }
 }
 
