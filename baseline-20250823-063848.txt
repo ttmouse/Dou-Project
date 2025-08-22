@@ -1,0 +1,19 @@
+ProjectManager Baseline - Sat Aug 23 06:38:48 +07 2025
+================================
+Total Swift files: 27
+Singleton instances: 12
+God objects: 3
+Total lines: 4761
+Test files: 0
+
+Largest files:
+     612 Sources/ProjectManager/Models/TagManagerComponents.swift
+     465 Sources/ProjectManager/Models/TagManager.swift
+     455 Sources/ProjectManager/Views/Components/SidebarView.swift
+     351 Sources/ProjectManager/Models/Project.swift
+     266 Sources/ProjectManager/Views/Components/DirectoryListView.swift
+     265 Sources/ProjectManager/Theme/AppTheme.swift
+     238 Sources/ProjectManager/Views/ProjectCard.swift
+     221 Sources/ProjectManager/Models/ProjectIndex.swift
+     213 Sources/ProjectManager/Views/TagEditorView.swift
+     208 Sources/ProjectManager/Views/ProjectListView.swift

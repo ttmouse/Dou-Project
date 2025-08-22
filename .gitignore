@@ -103,3 +103,4 @@ tasks/
 .env
 .cursor
 .gitignore
+.claude/
