@@ -13,6 +13,18 @@ struct ProjectManagerApp: App {
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(after: .toolbar) {
+                Button("全选") {
+                    NotificationCenter.default.post(name: NSNotification.Name("selectAll"), object: nil)
+                }
+                .keyboardShortcut("a")
+            }
+        }
+        
+        Settings {
+            SettingsView()
+        }
     }
 }
 

@@ -121,6 +121,9 @@ struct ProjectListView: View {
             loadProjects()
             setupSelectAllMenuCommand()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("selectAll"))) { _ in
+            selectAllProjects()
+        }
         .sheet(item: $tagToRename) { identifiableTag in
             TagEditDialog(
                 title: "重命名标签",

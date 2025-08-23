@@ -122,6 +122,102 @@ struct ProjectCard: View {
             }
         }
     }
+    
+    // MARK: - 右键菜单
+    
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        // 打开方式菜单
+        Menu("打开方式") {
+            let sortedEditors = AppOpenHelper.editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }
+            let _ = print("🎯 构建右键菜单，编辑器数量: \(sortedEditors.count)")
+            let _ = print("📋 编辑器列表: \(sortedEditors.map { "\($0.name)(\($0.isEnabled ? "✓" : "✗"))" })")
+            
+            ForEach(sortedEditors, id: \.id) { editor in
+                Button(action: {
+                    AppOpenHelper.openInEditor(editor, path: project.path)
+                }) {
+                    HStack {
+                        Label(editor.name, systemImage: getEditorIcon(for: editor))
+                        Spacer()
+                        
+                        // 状态指示器
+                        if !editor.isEnabled {
+                            Image(systemName: "minus.circle")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        } else if !editor.isAvailable {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.orange)
+                                .font(.caption)
+                        } else {
+                            Image(systemName: "checkmark.circle")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                        }
+                    }
+                }
+                .disabled(!editor.isEnabled || !editor.isAvailable)
+            }
+            
+            if AppOpenHelper.editorManager.editors.isEmpty {
+                Divider()
+                Text("无配置的编辑器")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+        }
+        
+        Divider()
+        
+        // 系统操作
+        Button(action: {
+            AppOpenHelper.performSystemAction(.openInTerminal, path: project.path)
+        }) {
+            Label("在终端打开", systemImage: "terminal")
+        }
+        
+        Button(action: {
+            AppOpenHelper.performSystemAction(.showInFinder, path: project.path)
+        }) {
+            Label("在Finder中显示", systemImage: "folder")
+        }
+        
+        Button(action: {
+            AppOpenHelper.performSystemAction(.copyPath, path: project.path)
+        }) {
+            Label("复制路径", systemImage: "doc.on.doc")
+        }
+        
+        Button(action: {
+            AppOpenHelper.performSystemAction(.copyProjectInfo, path: project.path)
+        }) {
+            Label("复制项目信息", systemImage: "info.circle")
+        }
+    }
+    
+    // MARK: - 辅助方法
+    
+    private func getEditorIcon(for editor: EditorConfig) -> String {
+        switch editor.name.lowercased() {
+        case "cursor":
+            return "cursorarrow.rays"
+        case "visual studio code", "vscode", "code":
+            return "chevron.left.slash.chevron.right"
+        case "sublime text":
+            return "doc.text"
+        case "atom":
+            return "atom"
+        case "intellij idea", "idea":
+            return "lightbulb"
+        case "trae ai", "trae":
+            return "brain.head.profile"
+        case "ghostty":
+            return "terminal.fill"
+        default:
+            return "app"
+        }
+    }
 
     // MARK: - 主视图
     
@@ -207,6 +303,9 @@ struct ProjectCard: View {
             .background(AppTheme.cardBackground)
             .cornerRadius(4)
             .frame(maxWidth: 200)
+        }
+        .contextMenu {
+            contextMenuContent
         }
         .sheet(isPresented: $isEditingTags) {
             TagEditorView(project: project, tagManager: tagManager)
