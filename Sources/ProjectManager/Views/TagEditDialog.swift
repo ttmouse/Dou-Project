@@ -9,13 +9,13 @@ struct TagEditDialog: View {
     @State private var tagName: String
     @State private var errorMessage: String = ""
     @State private var selectedColor: Color = .blue
-    @ObservedObject var tagManager: TagManagerAdapter
+    @ObservedObject var tagManager: TagManager
 
     init(
         title: String,
         originalName: String = "",
         isPresented: Binding<Bool>,
-        tagManager: TagManagerAdapter,
+        tagManager: TagManager,
         onSubmit: @escaping (String, Color) -> Void
     ) {
         self.title = title

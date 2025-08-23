@@ -17,20 +17,11 @@ struct ProjectManagerApp: App {
 }
 
 struct ContentView: View {
-    @StateObject var serviceContainer = ServiceContainer()
-    @StateObject var tagManager: TagManagerAdapter
-
-    init() {
-        let container = ServiceContainer()
-        let adapter = container.createTagManagerAdapter()
-        self._serviceContainer = StateObject(wrappedValue: container)
-        self._tagManager = StateObject(wrappedValue: adapter)
-    }
+    @StateObject var tagManager = TagManager()
 
     var body: some View {
         ProjectListView()
             .environmentObject(tagManager)
-            .environmentObject(serviceContainer)
     }
 }
 

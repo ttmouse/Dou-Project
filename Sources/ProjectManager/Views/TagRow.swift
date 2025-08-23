@@ -8,7 +8,7 @@ struct TagRow: View {
     let action: () -> Void
     let onDrop: ((String) -> Void)?
     let onRename: (() -> Void)?
-    @ObservedObject var tagManager: TagManagerAdapter
+    @ObservedObject var tagManager: TagManager
     @State private var isTargeted = false
     @State private var showingContextMenu = false
     @State var isEditing = false
@@ -174,8 +174,8 @@ struct TagRow: View {
                     onDrop: nil,
                     onRename: {},
                     tagManager: {
-                        let container = ServiceContainer()
-                        return container.createTagManagerAdapter()
+                        let container = TagManager()
+                        return TagManager()
                     }()
                 )
                 TagRow(
@@ -186,8 +186,8 @@ struct TagRow: View {
                     onDrop: nil,
                     onRename: {},
                     tagManager: {
-                        let container = ServiceContainer()
-                        return container.createTagManagerAdapter()
+                        let container = TagManager()
+                        return TagManager()
                     }()
                 )
             }

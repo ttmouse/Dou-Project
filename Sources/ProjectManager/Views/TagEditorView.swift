@@ -3,11 +3,11 @@ import SwiftUI
 /// 标签编辑器视图，用于管理项目的标签
 struct TagEditorView: View {
     @State private var currentProject: Project
-    @ObservedObject var tagManager: TagManagerAdapter
+    @ObservedObject var tagManager: TagManager
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
 
-    init(project: Project, tagManager: TagManagerAdapter) {
+    init(project: Project, tagManager: TagManager) {
         _currentProject = State(initialValue: project)
         self.tagManager = tagManager
     }
@@ -208,8 +208,8 @@ struct TagEditorView_Previews: PreviewProvider {
                 tags: ["Swift", "iOS"]
             ),
             tagManager: {
-                let container = ServiceContainer()
-                return container.createTagManagerAdapter()
+                let container = TagManager()
+                return TagManager()
             }()
         )
     }

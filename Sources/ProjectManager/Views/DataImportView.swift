@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// 
 /// 提供用户友好的数据导入界面，支持文件选择、导入选项配置和结果展示
 struct DataImportView: View {
-    @EnvironmentObject private var tagManager: TagManagerAdapter
+    @EnvironmentObject private var tagManager: TagManager
     @Environment(\.dismiss) private var dismiss
     
     // MARK: - 状态
@@ -368,6 +368,6 @@ struct DataImportView: View {
 struct DataImportView_Previews: PreviewProvider {
     static var previews: some View {
         DataImportView()
-            .environmentObject(TagManagerAdapter(originalTagManager: TagManager()))
+            .environmentObject(TagManager())
     }
 }

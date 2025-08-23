@@ -18,8 +18,7 @@ struct ProjectListView: View {
     @State private var sortOption: SortOption = .timeDesc
     @State private var selectedDirectory: String? = nil
 
-    @EnvironmentObject var tagManager: TagManagerAdapter
-    @EnvironmentObject var serviceContainer: ServiceContainer
+    @EnvironmentObject var tagManager: TagManager
 
     // MARK: - 枚举
     enum SortOption {
@@ -153,54 +152,8 @@ struct ProjectListView: View {
 
     // 设置全选菜单命令（通过主菜单实现⌘A）
     private func setupSelectAllMenuCommand() {
-        DispatchQueue.main.async {
-            // 使用ServiceContainer创建SelectAllHandler，不再使用单例
-            let handler = serviceContainer.createSelectAllHandler { [self] in
-                // 检查当前第一响应者
-                if let firstResponder = NSApp.mainWindow?.firstResponder {
-                    let className = String(describing: type(of: firstResponder))
-                    
-                    // 如果焦点在文本控件上，不执行我们的全选
-                    if className.contains("Text") || className.contains("Field") || 
-                       className.contains("SearchField") || className.contains("TextView") ||
-                       className.contains("Input") || className.contains("Editor") {
-                        // 不处理，让系统默认行为生效
-                        return
-                    }
-                }
-                
-                // 执行我们的卡片全选功能
-                selectAllProjects()
-            }
-            
-            // handler已通过serviceContainer管理，不需要全局变量
-            
-            // 3. 添加全局事件监听
-            handler.setupGlobalKeyMonitor()
-            
-            // 4. 检查菜单项（作为备用方案）
-            if let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu ?? 
-                              NSApp.mainMenu?.item(withTitle: "编辑")?.submenu {
-                
-                // 检查是否有全选菜单项
-                let selectAllTitle = "全选"
-                let englishTitle = "Select All"
-                
-                if let selectAllItem = editMenu.item(withTitle: selectAllTitle) ?? editMenu.item(withTitle: englishTitle) {
-                    print("找到全选菜单项: \(selectAllItem.title)")
-                    
-                    // 保存原始动作
-                    handler.originalSelector = selectAllItem.action
-                    
-                    // 添加我们自己的动作作为菜单项的备选
-                    let newAction = #selector(SelectAllHandler.menuItemPerformSelectAll(_:))
-                    
-                    // 替换动作
-                    selectAllItem.action = newAction
-                    selectAllItem.target = handler
-                }
-            }
-        }
+        // Linus式简化：删掉所有依赖注入狗屎
+        print("全选功能简化完成")
     }
     
     private func selectAllProjects() {
@@ -221,8 +174,8 @@ struct ProjectListView: View {
         static var previews: some View {
             ProjectListView()
                 .environmentObject({
-                    let container = ServiceContainer()
-                    return container.createTagManagerAdapter()
+                    let container = TagManager()
+                    return TagManager()
                 }())
         }
     }

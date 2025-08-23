@@ -10,7 +10,7 @@ struct ProjectCard: View {
     let isSelected: Bool
     let selectedCount: Int  // 添加选中数量
     let selectedProjects: Set<UUID>  // 添加选中的项目集合
-    @ObservedObject var tagManager: TagManagerAdapter
+    @ObservedObject var tagManager: TagManager
     @State private var isEditingTags = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
@@ -229,8 +229,8 @@ struct ProjectCard_Previews: PreviewProvider {
             selectedCount: 1,
             selectedProjects: Set(),
             tagManager: {
-                let container = ServiceContainer()
-                return container.createTagManagerAdapter()
+                let container = TagManager()
+                return TagManager()
             }(),
             onTagSelected: { _ in },
             onSelect: { _ in }

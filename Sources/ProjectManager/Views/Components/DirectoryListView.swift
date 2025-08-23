@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DirectoryListView: View {
-    @ObservedObject var tagManager: TagManagerAdapter
+    @ObservedObject var tagManager: TagManager
     @Binding var selectedDirectory: String?
     var onDirectorySelected: (() -> Void)? = nil // 添加目录选择的回调
     
@@ -347,8 +347,8 @@ struct DirectoryListView_Previews: PreviewProvider {
     static var previews: some View {
         DirectoryListView(
             tagManager: {
-                let container = ServiceContainer()
-                return container.createTagManagerAdapter()
+                let container = TagManager()
+                return TagManager()
             }(),
             selectedDirectory: .constant(nil)
         )
