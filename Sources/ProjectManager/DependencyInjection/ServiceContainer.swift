@@ -70,8 +70,8 @@ class ServiceContainer: ObservableObject {
     /// 创建兼容TagManager接口的适配器
     /// 这允许现有代码逐步迁移，而不是一次性破坏所有东西
     func createTagManagerAdapter() -> TagManagerAdapter {
-        // 暂时使用原始的TagManager直到新架构完全实现
-        return TagManagerAdapter(originalTagManager: TagManager())
+        // 使用新的模块化TagManager
+        return TagManagerAdapter(modularTagManager: TagManagerModular())
     }
     
     // MARK: - 测试支持
@@ -105,15 +105,30 @@ class ServiceContainer: ObservableObject {
 /// 2. 逐步迁移到新架构
 /// 3. 避免大爆炸式重写
 class TagManagerAdapter: ObservableObject {
-    private let tagManager: TagManager
+    private let tagManager: TagManager?
+    private let modularTagManager: TagManagerModular?
     private var cancellables = Set<AnyCancellable>()
     
-    // 新构造器：直接使用原始TagManager
+    // 新构造器：使用模块化TagManager
+    init(modularTagManager: TagManagerModular) {
+        self.modularTagManager = modularTagManager
+        self.tagManager = nil
+        
+        // 转发模块化TagManager的变化通知
+        modularTagManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+    }
+    
+    // 旧构造器：直接使用原始TagManager（向后兼容）
     init(originalTagManager: TagManager) {
         self.tagManager = originalTagManager
+        self.modularTagManager = nil
         
         // 转发TagManager的变化通知
-        tagManager.objectWillChange
+        originalTagManager.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
@@ -123,10 +138,12 @@ class TagManagerAdapter: ObservableObject {
     // 保留旧构造器以防兼容性问题 (废弃)
     init(core: TagManagerCore, operations: TagOperations, events: TagEventHandling) {
         // 创建一个新的TagManager实例作为后备方案
-        self.tagManager = TagManager()
+        let fallbackManager = TagManager()
+        self.tagManager = fallbackManager
+        self.modularTagManager = nil
         
         // 转发变化通知
-        tagManager.objectWillChange
+        fallbackManager.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
@@ -137,154 +154,355 @@ class TagManagerAdapter: ObservableObject {
     
     // 色彩管理器适配
     var colorManager: TagColorManagerAdapter {
-        return TagColorManagerAdapter(tagManager: tagManager)
+        if let modular = modularTagManager {
+            return TagColorManagerAdapter(modularTagManager: modular)
+        } else if let original = tagManager {
+            return TagColorManagerAdapter(tagManager: original)
+        } else {
+            fatalError("No TagManager available")
+        }
     }
     
     // 基本数据访问
     var allTags: Set<String> { 
-        get { tagManager.allTags }
-        set { tagManager.allTags = newValue }
+        get { 
+            if let modular = modularTagManager {
+                return modular.allTags
+            } else if let original = tagManager {
+                return original.allTags
+            } else {
+                return []
+            }
+        }
+        set { 
+            if let modular = modularTagManager {
+                modular.allTags = newValue
+            } else if let original = tagManager {
+                original.allTags = newValue
+            }
+        }
     }
     
     var projects: [UUID: Project] {
-        get { tagManager.projects }
-        set { tagManager.projects = newValue }
+        get { 
+            if let modular = modularTagManager {
+                return modular.projects
+            } else if let original = tagManager {
+                return original.projects
+            } else {
+                return [:]
+            }
+        }
+        set { 
+            if let modular = modularTagManager {
+                modular.projects = newValue
+            } else if let original = tagManager {
+                original.projects = newValue
+            }
+        }
     }
     
     var watchedDirectories: Set<String> {
-        get { tagManager.watchedDirectories }
-        set { tagManager.watchedDirectories = newValue }
+        get { 
+            if let modular = modularTagManager {
+                return modular.watchedDirectories
+            } else if let original = tagManager {
+                return original.watchedDirectories
+            } else {
+                return []
+            }
+        }
+        set { 
+            if let modular = modularTagManager {
+                modular.watchedDirectories = newValue
+            } else if let original = tagManager {
+                original.watchedDirectories = newValue
+            }
+        }
     }
     
     var selectedTag: String? {
-        get { tagManager.selectedTag }
-        set { tagManager.selectedTag = newValue }
+        get { 
+            if let modular = modularTagManager {
+                return modular.selectedTag
+            } else if let original = tagManager {
+                return original.selectedTag
+            } else {
+                return nil
+            }
+        }
+        set { 
+            if let modular = modularTagManager {
+                modular.selectedTag = newValue
+            } else if let original = tagManager {
+                original.selectedTag = newValue
+            }
+        }
     }
     
     // 方法转发
     func getColor(for tag: String) -> Color {
-        return tagManager.getColor(for: tag)
+        if let modular = modularTagManager {
+            return modular.getColor(for: tag)
+        } else if let original = tagManager {
+            return original.getColor(for: tag)
+        } else {
+            return AppTheme.accent
+        }
     }
     
     func setColor(_ color: Color, for tag: String) {
-        tagManager.setColor(color, for: tag)
+        if let modular = modularTagManager {
+            modular.setColor(color, for: tag)
+        } else if let original = tagManager {
+            original.setColor(color, for: tag)
+        }
     }
     
     func getUsageCount(for tag: String) -> Int {
-        return tagManager.getUsageCount(for: tag)
+        if let modular = modularTagManager {
+            return modular.getUsageCount(for: tag)
+        } else if let original = tagManager {
+            return original.getUsageCount(for: tag)
+        } else {
+            return 0
+        }
     }
     
     func invalidateTagUsageCache() {
-        tagManager.invalidateTagUsageCache()
+        if let modular = modularTagManager {
+            modular.invalidateTagUsageCache()
+        } else if let original = tagManager {
+            original.invalidateTagUsageCache()
+        }
     }
     
     func getSortedProjects() -> [Project] {
-        return tagManager.getSortedProjects()
+        if let modular = modularTagManager {
+            return modular.getSortedProjects()
+        } else if let original = tagManager {
+            return original.getSortedProjects()
+        } else {
+            return []
+        }
     }
     
     func getFilteredProjects(withTags tags: Set<String>, searchText: String = "") -> [Project] {
-        return tagManager.getFilteredProjects(withTags: tags, searchText: searchText)
+        if let modular = modularTagManager {
+            return modular.getFilteredProjects(withTags: tags, searchText: searchText)
+        } else if let original = tagManager {
+            return original.getFilteredProjects(withTags: tags, searchText: searchText)
+        } else {
+            return []
+        }
     }
     
     func setSortCriteria(_ criteria: TagManager.SortCriteria, ascending: Bool) {
-        tagManager.setSortCriteria(criteria, ascending: ascending)
+        if let modular = modularTagManager {
+            let modularCriteria: TagManagerModular.SortCriteria
+            switch criteria {
+            case .name:
+                modularCriteria = .name
+            case .lastModified:
+                modularCriteria = .lastModified
+            case .gitCommits:
+                modularCriteria = .gitCommits
+            }
+            modular.setSortCriteria(modularCriteria, ascending: ascending)
+        } else if let original = tagManager {
+            original.setSortCriteria(criteria, ascending: ascending)
+        }
     }
     
     // 标签操作
     func addTag(_ tag: String, color: Color) {
-        tagManager.addTag(tag, color: color)
+        if let modular = modularTagManager {
+            modular.addTag(tag, color: color)
+        } else if let original = tagManager {
+            original.addTag(tag, color: color)
+        }
     }
     
     func removeTag(_ tag: String) {
-        tagManager.removeTag(tag)
+        if let modular = modularTagManager {
+            modular.removeTag(tag)
+        } else if let original = tagManager {
+            original.removeTag(tag)
+        }
     }
     
     func renameTag(_ oldName: String, to newName: String, color: Color) {
-        tagManager.renameTag(oldName, to: newName, color: color)
+        if let modular = modularTagManager {
+            modular.renameTag(oldName, to: newName, color: color)
+        } else if let original = tagManager {
+            original.renameTag(oldName, to: newName, color: color)
+        }
     }
     
     func addTagToProject(projectId: UUID, tag: String) {
-        tagManager.addTagToProject(projectId: projectId, tag: tag)
+        if let modular = modularTagManager {
+            modular.addTagToProject(projectId: projectId, tag: tag)
+        } else if let original = tagManager {
+            original.addTagToProject(projectId: projectId, tag: tag)
+        }
     }
     
     func removeTagFromProject(projectId: UUID, tag: String) {
-        tagManager.removeTagFromProject(projectId: projectId, tag: tag)
+        if let modular = modularTagManager {
+            modular.removeTagFromProject(projectId: projectId, tag: tag)
+        } else if let original = tagManager {
+            original.removeTagFromProject(projectId: projectId, tag: tag)
+        }
     }
     
     func addTagToProjects(projectIds: Set<UUID>, tag: String) {
-        tagManager.addTagToProjects(projectIds: projectIds, tag: tag)
+        if let modular = modularTagManager {
+            modular.addTagToProjects(projectIds: projectIds, tag: tag)
+        } else if let original = tagManager {
+            original.addTagToProjects(projectIds: projectIds, tag: tag)
+        }
     }
     
     // 标签隐藏功能
     func toggleTagVisibility(_ tag: String) {
-        tagManager.toggleTagVisibility(tag)
+        if let modular = modularTagManager {
+            modular.toggleTagVisibility(tag)
+        } else if let original = tagManager {
+            original.toggleTagVisibility(tag)
+        }
     }
     
     func isTagHidden(_ tag: String) -> Bool {
-        return tagManager.isTagHidden(tag)
+        if let modular = modularTagManager {
+            return modular.isTagHidden(tag)
+        } else if let original = tagManager {
+            return original.isTagHidden(tag)
+        } else {
+            return false
+        }
     }
     
     var hiddenTags: Set<String> {
-        get { tagManager.hiddenTags }
-        set { tagManager.hiddenTags = newValue }
+        get { 
+            if let modular = modularTagManager {
+                return modular.hiddenTags
+            } else if let original = tagManager {
+                return original.hiddenTags
+            } else {
+                return []
+            }
+        }
+        set { 
+            if let modular = modularTagManager {
+                modular.hiddenTags = newValue
+            } else if let original = tagManager {
+                original.hiddenTags = newValue
+            }
+        }
     }
     
     // 项目和目录管理
     func registerProject(_ project: Project) {
-        tagManager.registerProject(project)
+        if let modular = modularTagManager {
+            modular.registerProject(project)
+        } else if let original = tagManager {
+            original.registerProject(project)
+        }
     }
     
     func removeProject(_ id: UUID) {
-        tagManager.removeProject(id)
+        if let modular = modularTagManager {
+            modular.removeProject(id)
+        } else if let original = tagManager {
+            original.removeProject(id)
+        }
     }
     
     func addWatchedDirectory(_ path: String) {
-        tagManager.addWatchedDirectory(path)
+        if let modular = modularTagManager {
+            modular.addWatchedDirectory(path)
+        } else if let original = tagManager {
+            original.addWatchedDirectory(path)
+        }
     }
     
     func removeWatchedDirectory(_ path: String) {
-        tagManager.removeWatchedDirectory(path)
+        if let modular = modularTagManager {
+            modular.removeWatchedDirectory(path)
+        } else if let original = tagManager {
+            original.removeWatchedDirectory(path)
+        }
     }
     
     func reloadProjects() {
-        tagManager.reloadProjects()
+        if let modular = modularTagManager {
+            modular.reloadProjects()
+        } else if let original = tagManager {
+            original.reloadProjects()
+        }
     }
     
     func clearCacheAndReloadProjects() {
-        tagManager.clearCacheAndReloadProjects()
+        if let modular = modularTagManager {
+            modular.clearCacheAndReloadProjects()
+        } else if let original = tagManager {
+            original.clearCacheAndReloadProjects()
+        }
     }
     
     func saveAll(force: Bool = false) {
-        tagManager.saveAll(force: force)
+        if let modular = modularTagManager {
+            modular.saveAll(force: force)
+        } else if let original = tagManager {
+            original.saveAll(force: force)
+        }
     }
     
     /// 增量更新项目列表 - 不会清空现有项目，只在后台检查变化
     func incrementalRefreshProjects() {
-        // 检查是否启用了自动增量更新
-        if tagManager.enableAutoIncrementalUpdate {
-            tagManager.directoryWatcher.incrementallyReloadProjects()
-        } else {
-            print("自动增量更新已关闭")
+        if let modular = modularTagManager {
+            modular.manualIncrementalUpdate()
+        } else if let original = tagManager {
+            // 检查是否启用了自动增量更新
+            if original.enableAutoIncrementalUpdate {
+                original.directoryWatcher.incrementallyReloadProjects()
+            } else {
+                print("自动增量更新已关闭")
+            }
         }
     }
     
     /// 手动触发增量更新 - 忽略自动更新设置
     func manualIncrementalRefresh() {
         print("手动触发增量更新")
-        tagManager.directoryWatcher.incrementallyReloadProjects()
+        if let modular = modularTagManager {
+            modular.manualIncrementalUpdate()
+        } else if let original = tagManager {
+            original.directoryWatcher.incrementallyReloadProjects()
+        }
     }
     
     /// 导入数据的公共接口
     func importData(
         from fileURL: URL,
-        strategy: DataImporter.ImportStrategy = .merge,
-        conflictResolution: DataImporter.ConflictResolution = .mergeData
-    ) -> DataImporter.ImportResult {
-        return tagManager.importData(
-            from: fileURL,
-            strategy: strategy,
-            conflictResolution: conflictResolution
-        )
+        strategy: String = "merge",
+        conflictResolution: String = "mergeData"
+    ) -> String {
+        if let modular = modularTagManager {
+            return modular.importData(
+                from: fileURL,
+                strategy: strategy,
+                conflictResolution: conflictResolution
+            )
+        } else if let original = tagManager {
+            return original.importData(
+                from: fileURL,
+                strategy: strategy,
+                conflictResolution: conflictResolution
+            )
+        } else {
+            return "未实现"
+        }
     }
 }
 
@@ -292,17 +510,34 @@ class TagManagerAdapter: ObservableObject {
 
 /// TagColorManagerAdapter - 色彩管理器的适配器
 class TagColorManagerAdapter {
-    private let tagManager: TagManager
+    private let tagManager: TagManager?
+    private let modularTagManager: TagManagerModular?
+    
+    init(modularTagManager: TagManagerModular) {
+        self.modularTagManager = modularTagManager
+        self.tagManager = nil
+    }
     
     init(tagManager: TagManager) {
         self.tagManager = tagManager
+        self.modularTagManager = nil
     }
     
     func getColor(for tag: String) -> Color? {
-        return tagManager.colorManager.getColor(for: tag)
+        if let modular = modularTagManager {
+            return modular.getColor(for: tag)
+        } else if let original = tagManager {
+            return original.colorManager.getColor(for: tag)
+        } else {
+            return nil
+        }
     }
     
     func setColor(_ color: Color, for tag: String) {
-        tagManager.colorManager.setColor(color, for: tag)
+        if let modular = modularTagManager {
+            modular.setColor(color, for: tag)
+        } else if let original = tagManager {
+            original.colorManager.setColor(color, for: tag)
+        }
     }
 }

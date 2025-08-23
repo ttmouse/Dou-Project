@@ -32,6 +32,12 @@ class ProjectSortManager: SortManagerDelegate {
         insertProject(project)
     }
 
+    func removeProject(_ project: Project) {
+        if let index = sortedProjects.firstIndex(where: { $0.id == project.id }) {
+            sortedProjects.remove(at: index)
+        }
+    }
+
     func getSortedProjects() -> [Project] {
         return sortedProjects
     }
@@ -403,8 +409,28 @@ class DirectoryWatcher {
                 // 清空现有项目
                 delegate.projects.removeAll()
                 
-                // 批量注册所有新项目
-                self.operationManager?.registerProjects(allProjects)
+                // 为每个项目从系统恢复标签
+                var projectsWithTags: [Project] = []
+                for var project in allProjects {
+                    let systemTags = TagSystemSync.loadTagsFromFile(at: project.path)
+                    if !systemTags.isEmpty {
+                        // 使用新的标签创建项目副本
+                        let projectWithTags = Project(
+                            id: project.id,
+                            name: project.name,
+                            path: project.path,
+                            lastModified: project.lastModified,
+                            tags: systemTags
+                        )
+                        projectsWithTags.append(projectWithTags)
+                        print("恢复项目 '\(project.name)' 的标签: \(systemTags)")
+                    } else {
+                        projectsWithTags.append(project)
+                    }
+                }
+                
+                // 批量注册所有项目（已恢复标签）
+                self.operationManager?.registerProjects(projectsWithTags)
             }
         }
     }

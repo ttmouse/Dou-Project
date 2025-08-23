@@ -17,7 +17,7 @@ struct DataImportView: View {
     @State private var conflictResolution: DataImporter.ConflictResolution = .mergeData
     
     @State private var isImporting: Bool = false
-    @State private var importResult: DataImporter.ImportResult?
+    @State private var importResult: String?
     @State private var showingFileImporter: Bool = false
     
     // MARK: - 计算属性
@@ -28,9 +28,9 @@ struct DataImportView: View {
     
     private var resultColor: Color {
         guard let result = importResult else { return .primary }
-        if result.isSuccessful {
+        if result.contains("成功") {
             return .green
-        } else if result.errors.isEmpty && result.skippedProjects > 0 {
+        } else if result.contains("未实现") {
             return .orange
         } else {
             return .red
@@ -205,42 +205,15 @@ struct DataImportView: View {
         }
     }
     
-    private func resultView(_ result: DataImporter.ImportResult) -> some View {
+    private func resultView(_ result: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("导入结果", systemImage: result.isSuccessful ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            Label("导入结果", systemImage: result.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundColor(resultColor)
             
-            VStack(spacing: 8) {
-                resultStatRow("总项目数", value: "\(result.totalProjects)")
-                resultStatRow("成功导入", value: "\(result.importedProjects)", color: .green)
-                
-                if result.skippedProjects > 0 {
-                    resultStatRow("跳过项目", value: "\(result.skippedProjects)", color: .orange)
-                }
-                
-                if result.conflictedProjects > 0 {
-                    resultStatRow("冲突处理", value: "\(result.conflictedProjects)", color: .blue)
-                }
-                
-                if !result.newTags.isEmpty {
-                    resultStatRow("新增标签", value: "\(result.newTags.count)", color: .purple)
-                }
-                
-                if !result.errors.isEmpty {
-                    resultStatRow("错误数量", value: "\(result.errors.count)", color: .red)
-                }
-            }
-            
-            // 错误详情
-            if !result.errors.isEmpty {
-                errorDetailsView(result.errors)
-            }
-            
-            // 新标签详情
-            if !result.newTags.isEmpty {
-                newTagsView(result.newTags)
-            }
+            Text(result)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.leading)
         }
         .padding()
         .background(Color(NSColor.controlBackgroundColor))
@@ -326,10 +299,30 @@ struct DataImportView: View {
         
         // 在后台线程执行导入
         DispatchQueue.global(qos: .userInitiated).async {
+            let strategyString: String
+            switch importStrategy {
+            case .merge:
+                strategyString = "merge"
+            case .replace:
+                strategyString = "replace"
+            case .skipExisting:
+                strategyString = "skipExisting"
+            }
+            
+            let conflictString: String
+            switch conflictResolution {
+            case .keepExisting:
+                conflictString = "keepExisting"
+            case .useImported:
+                conflictString = "useImported"
+            case .mergeData:
+                conflictString = "mergeData"
+            }
+            
             let result = tagManager.importData(
                 from: fileURL,
-                strategy: importStrategy,
-                conflictResolution: conflictResolution
+                strategy: strategyString,
+                conflictResolution: conflictString
             )
             
             DispatchQueue.main.async {
