@@ -159,39 +159,34 @@ class TagSystemSync {
     }
 
     /// 同步标签到系统全局标签列表
+    /// 恢复早期版本中真正工作的实现
     static func syncTagsToSystem(_ tags: Set<String>) {
-        // 如果标签集合没有变化，不需要同步
+        // 防抖
         if let lastTags = lastSyncTags, lastTags == tags {
             return
         }
-
-        // 如果距离上次同步时间不足1秒，不执行同步
+        
         if let lastSync = lastSyncTime,
-            Date().timeIntervalSince(lastSync) < syncDebounceInterval
-        {
+            Date().timeIntervalSince(lastSync) < syncDebounceInterval {
             return
         }
-
+        
         // 标准化标签
         let standardizedTags = tags.map { tag -> String in
-            if let standardTag = systemTagMapping[tag.lowercased()] {
-                return standardTag
-            }
-            return tag
+            systemTagMapping[tag.lowercased()] ?? tag
         }
-
-        // 获取当前系统标签
+        
         let workspace = NSWorkspace.shared
-        let currentSystemTags = workspace.fileLabels
+        let currentSystemTags = Set(workspace.fileLabels)
+        let newTags = Set(standardizedTags).subtracting(currentSystemTags)
         
-        // 合并标签，确保不会删除系统标签
-        var mergedTags = Set(currentSystemTags)
-        mergedTags.formUnion(standardizedTags)
+        if !newTags.isEmpty {
+            print("检测到新标签，将通过项目文件设置自动同步到系统: \(newTags)")
+            // 注意：标签会在saveTagsToFile时自动同步到系统
+            // macOS会在文件设置标签时自动将新标签添加到系统标签列表
+        }
         
-        // 更新同步状态
-        lastSyncTags = mergedTags
+        lastSyncTags = Set(standardizedTags)
         lastSyncTime = Date()
-        
-        print("同步标签到系统: \(mergedTags)")
     }
 }

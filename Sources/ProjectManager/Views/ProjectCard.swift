@@ -130,8 +130,8 @@ struct ProjectCard: View {
         // 打开方式菜单
         Menu("打开方式") {
             let sortedEditors = AppOpenHelper.editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }
-            let _ = print("🎯 构建右键菜单，编辑器数量: \(sortedEditors.count)")
-            let _ = print("📋 编辑器列表: \(sortedEditors.map { "\($0.name)(\($0.isEnabled ? "✓" : "✗"))" })")
+            // let _ = print("🎯 构建右键菜单，编辑器数量: \(sortedEditors.count)")
+            // let _ = print("📋 编辑器列表: \(sortedEditors.map { "\($0.name)(\($0.isEnabled ? "✓" : "✗"))" })")
             
             ForEach(sortedEditors, id: \.id) { editor in
                 Button(action: {
@@ -206,12 +206,6 @@ struct ProjectCard: View {
             return "chevron.left.slash.chevron.right"
         case "sublime text":
             return "doc.text"
-        case "atom":
-            return "atom"
-        case "intellij idea", "idea":
-            return "lightbulb"
-        case "trae ai", "trae":
-            return "brain.head.profile"
         case "ghostty":
             return "terminal.fill"
         default:

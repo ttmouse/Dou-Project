@@ -198,23 +198,19 @@ struct Project: Identifiable, Equatable, Codable {
         return project
     }
 
-    // Linus式简化：系统标签功能暂时禁用，专注核心功能
-    // "When in doubt, remove it" - 先让基本功能稳定运行
-    
-    /// 系统标签加载（暂时禁用）
+    // 系统标签读写（启用）：使用 URLResourceValues(.tagNamesKey) 的方式
+    // 参考 /tmp/tag_test_tool.swift 的实现
     static func loadTagsFromSystem(path: String) -> Set<String> {
-        // TODO: 等基础架构稳定后再重新启用
-        return []
+        return TagSystemSyncOptimized.loadTagsFromFile(at: path)
     }
 
-    /// 系统标签保存（暂时禁用）
     static func saveTagsToSystem(path: String, tags: Set<String>) {
-        // TODO: 等基础架构稳定后再重新启用
+        TagSystemSync.saveTagsToFile(tags, at: path)
     }
 
-    /// 实例方法调用静态方法（暂时禁用）
+    /// 将当前项目的标签保存到系统文件标签
     func saveTagsToSystem() {
-        // TODO: 等基础架构稳定后再重新启用
+        Self.saveTagsToSystem(path: path, tags: tags)
     }
 
     private var projectType: ProjectType {

@@ -69,32 +69,11 @@ struct EditorConfig: Codable, Identifiable, Equatable, Hashable {
             displayOrder: 2
         ),
         EditorConfig(
-            name: "Trae AI",
-            bundleId: "com.traetech.trae",
-            commandPath: "/usr/local/bin/trae",
-            arguments: [],
-            displayOrder: 3
-        ),
-        EditorConfig(
             name: "Sublime Text",
             bundleId: "com.sublimetext.4",
             commandPath: "/usr/local/bin/subl",
             arguments: [],
             displayOrder: 4
-        ),
-        EditorConfig(
-            name: "Atom",
-            bundleId: "com.github.atom",
-            commandPath: "/usr/local/bin/atom",
-            arguments: [],
-            displayOrder: 5
-        ),
-        EditorConfig(
-            name: "IntelliJ IDEA",
-            bundleId: "com.jetbrains.intellij",
-            commandPath: "/usr/local/bin/idea",
-            arguments: [],
-            displayOrder: 6
         ),
         EditorConfig(
             name: "Ghostty",
