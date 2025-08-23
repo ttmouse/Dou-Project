@@ -5,7 +5,7 @@ struct MainContentView: View {
     @Binding var sortOption: ProjectListView.SortOption
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
-    @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var tagManager: TagManagerAdapter
     
     let filteredProjects: [Project]
     
@@ -86,7 +86,7 @@ struct ProjectGridView: View {
     let filteredProjects: [Project]
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
-    @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var tagManager: TagManagerAdapter
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -170,7 +170,10 @@ struct MainContentView_Previews: PreviewProvider {
             searchBarRef: .constant(nil),
             filteredProjects: []
         )
-        .environmentObject(TagManager())
+        .environmentObject({
+            let container = ServiceContainer()
+            return container.createTagManagerAdapter()
+        }())
     }
 }
 #endif 

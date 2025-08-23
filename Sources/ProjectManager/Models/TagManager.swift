@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
-class TagManager: ObservableObject {
+class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDelegate {
     // MARK: - 类型定义
 
     enum SortCriteria {
@@ -12,8 +12,9 @@ class TagManager: ObservableObject {
         case gitCommits
     }
 
-    // MARK: - 静态实例
+    // MARK: - 静态实例 (⚰️ DEPRECATED - 单例癌症，即将死亡)
     
+    @available(*, deprecated, message: "Use dependency injection via ServiceContainer instead. This singleton will be removed in future versions.")
     static weak var shared: TagManager?
 
     // MARK: - 公共属性
@@ -21,6 +22,12 @@ class TagManager: ObservableObject {
     @Published var allTags: Set<String> = []
     @Published var projects: [UUID: Project] = [:]
     @Published var watchedDirectories: Set<String> = []
+    
+    // 增量更新控制
+    @Published var enableAutoIncrementalUpdate: Bool = false
+    
+    // 标签隐藏状态管理
+    @Published var hiddenTags: Set<String> = []
 
     // MARK: - 组件
 
@@ -30,10 +37,20 @@ class TagManager: ObservableObject {
     private let projectIndex: ProjectIndex
     private var cancellables = Set<AnyCancellable>()
     lazy var projectOperations: ProjectOperationManager = {
-        return ProjectOperationManager(tagManager: self, storage: storage)
+        let manager = ProjectOperationManager(
+            delegate: self, 
+            sortDelegate: sortManager,
+            storage: storage
+        )
+        return manager
     }()
     lazy var directoryWatcher: DirectoryWatcher = {
-        return DirectoryWatcher(tagManager: self, storage: storage)
+        let watcher = DirectoryWatcher(
+            delegate: self,
+            operationManager: projectOperations,
+            storage: storage
+        )
+        return watcher
     }()
 
     // MARK: - 标签统计缓存
@@ -43,6 +60,21 @@ class TagManager: ObservableObject {
     // MARK: - 标签选择
     
     @Published var selectedTag: String?
+    
+    // MARK: - 标签隐藏管理
+    
+    func toggleTagVisibility(_ tag: String) {
+        if hiddenTags.contains(tag) {
+            hiddenTags.remove(tag)
+        } else {
+            hiddenTags.insert(tag)
+        }
+        saveAll()
+    }
+    
+    func isTagHidden(_ tag: String) -> Bool {
+        return hiddenTags.contains(tag)
+    }
 
     // MARK: - 初始化
 
@@ -55,7 +87,7 @@ class TagManager: ObservableObject {
         sortManager = ProjectSortManager()
         projectIndex = ProjectIndex(storage: storage)
         
-        // 设置静态实例
+        // 设置静态实例 (⚰️ DEPRECATED)
         Self.shared = self
 
         // 监听 colorManager 的变化
@@ -128,11 +160,15 @@ class TagManager: ObservableObject {
         // 1. 加载标签
         allTags = storage.loadTags()
         print("已加载标签: \(allTags)")
+        
+        // 1.5. 加载隐藏标签状态
+        hiddenTags = storage.loadHiddenTags()
+        print("已加载隐藏标签: \(hiddenTags)")
 
-        // 2. 加载系统标签并合并
-        let systemTags = TagSystemSync.loadSystemTags()
-        allTags.formUnion(systemTags)
-        print("合并系统标签后: \(allTags)")
+        // 2. 暂时注销系统标签加载
+        // let systemTags = TagSystemSync.loadSystemTags()
+        // allTags.formUnion(systemTags)
+        print("已注销系统标签加载，当前标签: \(allTags)")
 
         // 3. 加载项目缓存
         if let cachedProjects = loadProjectsFromCache() {
@@ -154,15 +190,20 @@ class TagManager: ObservableObject {
         // 4. 加载监视目录
         directoryWatcher.loadWatchedDirectories()
         
-        // 5. 后台更新（而不是立即重新加载，避免清空UI）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.backgroundRefreshProjects()
-        }
+        // 5. 完全取消启动时的自动加载 - Linus式快速启动
+        // 不执行任何后台更新，让用户手动控制
+        print("启动加载完成，等待用户手动操作...")
     }
     
     // 后台刷新项目，不清空现有UI
     private func backgroundRefreshProjects() {
         directoryWatcher.incrementallyReloadProjects()
+    }
+    
+    // 手动触发增量更新
+    func manualIncrementalUpdate() {
+        print("手动触发增量更新")
+        backgroundRefreshProjects()
     }
 
     private func loadProjectsFromCache() -> [Project]? {
@@ -198,21 +239,8 @@ class TagManager: ObservableObject {
         // 从索引加载项目，使用现有的项目数据作为参考
         let loadedProjects = projectIndex.loadProjects(existingProjects: existingProjects)
         
-        // 注册新项目
-        for var project in loadedProjects {
-            // 检查是否有系统标签
-            let systemTags = Project.loadTagsFromSystem(path: project.path)
-            if !systemTags.isEmpty {
-                project = Project(
-                    id: project.id,
-                    name: project.name,
-                    path: project.path,
-                    lastModified: project.lastModified,
-                    tags: systemTags
-                )
-            }
-            projectOperations.registerProject(project)
-        }
+        // 批量注册新项目（Project初始化时已经处理了系统标签）
+        projectOperations.registerProjects(loadedProjects)
         
         print("完成重新加载，现有 \(projects.count) 个项目")
     }
@@ -391,6 +419,9 @@ class TagManager: ObservableObject {
         // 保存标签
         storage.saveTags(allTags)
         
+        // 保存隐藏标签状态
+        storage.saveHiddenTags(hiddenTags)
+        
         // 保存监视目录
         directoryWatcher.saveWatchedDirectories()
         
@@ -461,5 +492,27 @@ class TagManager: ObservableObject {
     // 清除缓存并重新加载所有项目
     func clearCacheAndReloadProjects() {
         directoryWatcher.clearCacheAndReloadProjects()
+    }
+    
+    // MARK: - ProjectOperationDelegate 实现
+    
+    func notifyProjectsChanged() {
+        // 触发 UI 更新
+        objectWillChange.send()
+    }
+    
+    // MARK: - DirectoryWatcherDelegate 实现
+    
+    // 所有必需的属性已经在类中定义了，不需要额外实现
+    
+    // MARK: - 数据导入功能 (临时占位)
+    
+    func importData(
+        from fileURL: URL,
+        strategy: String = "merge", 
+        conflictResolution: String = "mergeData"
+    ) -> String {
+        print("数据导入功能暂未实现")
+        return "未实现"
     }
 }

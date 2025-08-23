@@ -3,7 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selectedTags: Set<String>
     @Binding var searchBarRef: SearchBar?
-    @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var tagManager: TagManagerAdapter
     @Binding var isDraggingDirectory: Bool
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
@@ -61,7 +61,7 @@ struct SidebarView: View {
 
 // MARK: - 目录管理按钮
 struct DirectoryManageButton: View {
-    @ObservedObject var tagManager: TagManager
+    @ObservedObject var tagManager: TagManagerAdapter
     @Binding var isDraggingDirectory: Bool
     
     var body: some View {
@@ -291,7 +291,7 @@ struct TagListView: View {
     @Binding var searchBarRef: SearchBar?
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
-    @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var tagManager: TagManagerAdapter
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
@@ -450,7 +450,10 @@ struct SidebarView_Previews: PreviewProvider {
             tagToRename: .constant(nil),
             selectedDirectory: .constant(nil)
         )
-        .environmentObject(TagManager())
+        .environmentObject({
+            let container = ServiceContainer()
+            return container.createTagManagerAdapter()
+        }())
     }
 }
 #endif 

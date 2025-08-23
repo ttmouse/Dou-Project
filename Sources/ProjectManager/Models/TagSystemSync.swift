@@ -141,10 +141,11 @@ class TagSystemSync {
                        index < colors.count {
                         return colors[index]
                     }
-                    // 对于自定义标签，使用 TagManager 中的颜色
-                    if let color = TagManager.shared?.getColor(for: tag) {
-                        return NSColor(color)
-                    }
+                    // 对于自定义标签，使用默认颜色
+                    // 注意：TagManager.shared已被弃用，使用TagSystemSyncV2进行新实现
+                    // if let color = TagManager.shared?.getColor(for: tag) {
+                    //     return NSColor(color)
+                    // }
                     return NSColor(red: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
                 }
             }

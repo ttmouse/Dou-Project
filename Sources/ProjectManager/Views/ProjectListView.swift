@@ -18,7 +18,8 @@ struct ProjectListView: View {
     @State private var sortOption: SortOption = .timeDesc
     @State private var selectedDirectory: String? = nil
 
-    @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var tagManager: TagManagerAdapter
+    @EnvironmentObject var serviceContainer: ServiceContainer
 
     // MARK: - 枚举
     enum SortOption {
@@ -37,15 +38,41 @@ struct ProjectListView: View {
             projects = projects.filter { $0.path.hasPrefix(selectedDirectory) }
         }
         
+        // 隐藏标签过滤 - 在所有视图下生效，除非当前正在查看被隐藏的标签本身
+        projects = projects.filter { project in
+            // 获取项目中被隐藏的标签
+            let projectHiddenTags = project.tags.filter { tagManager.isTagHidden($0) }
+            
+            // 如果项目没有隐藏标签，直接显示
+            if projectHiddenTags.isEmpty {
+                return true
+            }
+            
+            // 如果当前选中的标签中包含项目的某个隐藏标签，则显示该项目
+            // 这样用户可以在选择隐藏标签时仍然看到相关项目
+            if !selectedTags.isEmpty && !selectedTags.contains("全部") && !selectedTags.contains("没有标签") {
+                let currentlyViewingHiddenTag = selectedTags.contains { selectedTag in
+                    projectHiddenTags.contains(selectedTag)
+                }
+                if currentlyViewingHiddenTag {
+                    return true
+                }
+            }
+            
+            // 其他情况下，如果项目有隐藏标签，则隐藏该项目
+            return false
+        }
+        
         // 标签筛选
         if !selectedTags.isEmpty {
             if selectedTags.contains("没有标签") {
                 projects = projects.filter { $0.tags.isEmpty }
-            } else {
+            } else if !selectedTags.contains("全部") {
                 projects = projects.filter { project in
                     selectedTags.isSubset(of: project.tags)
                 }
             }
+            // 如果选择的是"全部"，则不进行额外的标签筛选
         }
         
         // 搜索文本筛选
@@ -119,24 +146,16 @@ struct ProjectListView: View {
         // 立即加载缓存的项目数据
         print("立即加载已缓存的项目数据")
         
-        // 使用防抖动延迟加载
-        let debounceTime: TimeInterval = 0.5
-        DispatchQueue.main.asyncAfter(deadline: .now() + debounceTime) {
-            // 触发目录重新扫描和项目加载（后台进行）
-            tagManager.directoryWatcher.incrementallyReloadProjects()
-        }
+        // 不再自动触发增量更新，改为手动控制
+        // 如果需要更新项目，用户可以通过菜单或快捷键手动触发
+        print("自动更新已关闭，如需更新项目列表请手动刷新")
     }
 
     // 设置全选菜单命令（通过主菜单实现⌘A）
     private func setupSelectAllMenuCommand() {
         DispatchQueue.main.async {
-            // 1. 检查是否已经有我们自己的全局监听器处理了
-            if SelectAllHandler.shared != nil {
-                return // 已经设置过了
-            }
-            
-            // 2. 创建全局事件监听器（不依赖于菜单项）
-            let handler = SelectAllHandler { [self] in
+            // 使用ServiceContainer创建SelectAllHandler，不再使用单例
+            let handler = serviceContainer.createSelectAllHandler { [self] in
                 // 检查当前第一响应者
                 if let firstResponder = NSApp.mainWindow?.firstResponder {
                     let className = String(describing: type(of: firstResponder))
@@ -154,8 +173,7 @@ struct ProjectListView: View {
                 selectAllProjects()
             }
             
-            // 保存到全局变量
-            SelectAllHandler.shared = handler
+            // handler已通过serviceContainer管理，不需要全局变量
             
             // 3. 添加全局事件监听
             handler.setupGlobalKeyMonitor()
@@ -202,7 +220,10 @@ struct ProjectListView: View {
     struct ProjectListView_Previews: PreviewProvider {
         static var previews: some View {
             ProjectListView()
-                .environmentObject(TagManager())
+                .environmentObject({
+                    let container = ServiceContainer()
+                    return container.createTagManagerAdapter()
+                }())
         }
     }
 #endif

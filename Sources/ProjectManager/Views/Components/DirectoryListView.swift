@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct DirectoryListView: View {
-    @ObservedObject var tagManager: TagManager
+    @ObservedObject var tagManager: TagManagerAdapter
     @Binding var selectedDirectory: String?
     var onDirectorySelected: (() -> Void)? = nil // 添加目录选择的回调
+    
+    @State private var showingDataImportView = false
+    @State private var isProcessingTagSync = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
@@ -135,6 +138,23 @@ struct DirectoryListView: View {
                     Divider()
                     
                     Button(action: {
+                        batchSyncTagsFromDirectory()
+                    }) {
+                        if isProcessingTagSync {
+                            Label("同步中...", systemImage: "arrow.triangle.2.circlepath")
+                        } else {
+                            Label("从系统同步标签", systemImage: "tag.circle")
+                        }
+                    }
+                    .disabled(isProcessingTagSync)
+                    
+                    Button(action: {
+                        showingDataImportView = true
+                    }) {
+                        Label("导入项目数据", systemImage: "square.and.arrow.down")
+                    }
+                    
+                    Button(action: {
                         tagManager.clearCacheAndReloadProjects()
                     }) {
                         Label("刷新项目", systemImage: "arrow.triangle.2.circlepath")
@@ -197,6 +217,75 @@ struct DirectoryListView: View {
             .padding(.vertical, AppTheme.tagListContentPaddingV)
         }
         .frame(maxWidth: .infinity)
+        .sheet(isPresented: $showingDataImportView) {
+            DataImportView()
+                .environmentObject(tagManager)
+        }
+    }
+    
+    // MARK: - 批量同步标签功能
+    
+    /// 批量同步系统标签到应用数据库
+    private func batchSyncTagsFromDirectory() {
+        guard !isProcessingTagSync else { return }
+        
+        // 直接对所有已知项目进行标签同步
+        self.performTagSyncForAllProjects()
+    }
+    
+    /// 对所有已知项目执行标签同步
+    private func performTagSyncForAllProjects() {
+        isProcessingTagSync = true
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            var syncedProjects = 0
+            var syncedTags = Set<String>()
+            let allProjects = Array(self.tagManager.projects.values)
+            
+            for project in allProjects {
+                // 从系统加载此项目目录的标签
+                let systemTags = TagSystemSync.loadTagsFromFile(at: project.path)
+                
+                if !systemTags.isEmpty {
+                    DispatchQueue.main.async {
+                        // 为项目添加从系统同步的标签
+                        for tag in systemTags {
+                            self.tagManager.addTagToProject(projectId: project.id, tag: tag)
+                        }
+                        syncedTags.formUnion(systemTags)
+                        syncedProjects += 1
+                        
+                        print("从系统同步标签到项目 '\(project.name)': \(systemTags)")
+                    }
+                }
+            }
+            
+            // 同步完成，显示结果
+            DispatchQueue.main.async {
+                self.isProcessingTagSync = false
+                self.showSyncCompletionAlert(projectsCount: syncedProjects, tagsCount: syncedTags.count)
+            }
+        }
+    }
+    
+    /// 显示同步完成提示
+    private func showSyncCompletionAlert(projectsCount: Int, tagsCount: Int) {
+        let alert = NSAlert()
+        alert.messageText = "标签同步完成"
+        alert.informativeText = "已同步 \(projectsCount) 个项目的标签，共发现 \(tagsCount) 个不同标签"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
+    }
+    
+    /// 显示同步错误提示
+    private func showSyncErrorAlert(error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "标签同步失败"
+        alert.informativeText = "同步过程中发生错误: \(error.localizedDescription)"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }
 
@@ -257,7 +346,10 @@ struct DirectoryRow: View {
 struct DirectoryListView_Previews: PreviewProvider {
     static var previews: some View {
         DirectoryListView(
-            tagManager: TagManager(),
+            tagManager: {
+                let container = ServiceContainer()
+                return container.createTagManagerAdapter()
+            }(),
             selectedDirectory: .constant(nil)
         )
         .frame(width: 250)

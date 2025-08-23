@@ -9,13 +9,13 @@ struct TagEditDialog: View {
     @State private var tagName: String
     @State private var errorMessage: String = ""
     @State private var selectedColor: Color = .blue
-    @ObservedObject var tagManager: TagManager
+    @ObservedObject var tagManager: TagManagerAdapter
 
     init(
         title: String,
         originalName: String = "",
         isPresented: Binding<Bool>,
-        tagManager: TagManager,
+        tagManager: TagManagerAdapter,
         onSubmit: @escaping (String, Color) -> Void
     ) {
         self.title = title
@@ -119,17 +119,17 @@ struct CustomButtonStyle: ButtonStyle {
     }
 }
 
-#if DEBUG
-    struct TagEditDialog_Previews: PreviewProvider {
-        static var previews: some View {
-            TagEditDialog(
-                title: "新建标签",
-                isPresented: .constant(true),
-                tagManager: TagManager(),
-                onSubmit: { _, _ in }
-            )
-            .frame(width: 300, height: 200)
-            .background(AppTheme.background)
-        }
-    }
-#endif
+//#if DEBUG
+//    struct TagEditDialog_Previews: PreviewProvider {
+//        static var previews: some View {
+//            TagEditDialog(
+//                title: "新建标签",
+//                isPresented: .constant(true),
+//                tagManager: TagManager(),
+//                onSubmit: { _, _ in }
+//            )
+//            .frame(width: 300, height: 200)
+//            .background(AppTheme.background)
+//        }
+//    }
+//#endif

@@ -1,0 +1,5 @@
+# Tags Backup - Sat Aug 23 06:58:08 +07 2025
+# To restore: xattr -w com.apple.metadata:_kMDItemUserTags <hex_data> <path>
+DIR: .
+TAGS: bplist00£cÛˆLN-d~ÿ‚r
+---

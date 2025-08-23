@@ -5,6 +5,7 @@ class TagStorage {
     let appSupportURL: URL
     private let tagsFileName = "tags.json"
     private let tagColorsFileName = "tag_colors.json"
+    private let hiddenTagsFileName = "hidden_tags.json"
 
     init() {
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -20,6 +21,10 @@ class TagStorage {
 
     private var tagColorsFileURL: URL {
         return appSupportURL.appendingPathComponent(tagColorsFileName)
+    }
+    
+    private var hiddenTagsFileURL: URL {
+        return appSupportURL.appendingPathComponent(hiddenTagsFileName)
     }
 
     func loadTags() -> Set<String> {
@@ -91,6 +96,30 @@ class TagStorage {
             print("保存标签颜色成功")
         } catch {
             print("保存标签颜色失败: \(error)")
+        }
+    }
+    
+    func loadHiddenTags() -> Set<String> {
+        do {
+            let data = try Data(contentsOf: hiddenTagsFileURL)
+            let decoder = JSONDecoder()
+            let hiddenTags = try decoder.decode([String].self, from: data)
+            print("从文件加载隐藏标签列表: \(hiddenTags)")
+            return Set(hiddenTags)
+        } catch {
+            print("加载隐藏标签列表失败（可能是首次运行）: \(error)")
+            return []
+        }
+    }
+    
+    func saveHiddenTags(_ hiddenTags: Set<String>) {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(Array(hiddenTags))
+            try data.write(to: hiddenTagsFileURL)
+            print("保存隐藏标签列表到文件: \(Array(hiddenTags))")
+        } catch {
+            print("保存隐藏标签列表失败: \(error)")
         }
     }
 }

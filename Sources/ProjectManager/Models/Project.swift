@@ -18,9 +18,38 @@ struct Project: Identifiable, Equatable, Codable {
     let name: String
     let path: String
     let lastModified: Date
-    private(set) var tags: Set<String>
+    private var _tags: Set<String>?
+    private var _tagsLoaded: Bool = false
     let gitInfo: GitInfo?
     let fileSystemInfo: FileSystemInfo
+    
+    /// Linus式延迟加载标签
+    /// "Don't do work you don't need to do"
+    var tags: Set<String> {
+        get {
+            // 暂时注销延迟加载，直接返回已有标签，提升启动速度
+            // if !_tagsLoaded {
+            //     // 优先从缓存获取
+            //     if let cachedTags = TagCache.shared.getTags(for: path) {
+            //         _tags = cachedTags
+            //     } else {
+            //         // 缓存未命中，从系统加载
+            //         let systemTags = TagSystemSyncOptimized.loadTagsFromFile(at: path)
+            //         _tags = systemTags
+            //         // 更新缓存
+            //         TagCache.shared.setTags(systemTags, for: path)
+            //     }
+            //     _tagsLoaded = true
+            // }
+            return _tags ?? []
+        }
+        set {
+            _tags = newValue
+            _tagsLoaded = true
+            // 暂时注销缓存更新，减少I/O操作
+            // TagCache.shared.setTags(newValue, for: path)
+        }
+    }
 
     struct GitInfo: Codable, Equatable {
         let commitCount: Int
@@ -50,23 +79,61 @@ struct Project: Identifiable, Equatable, Codable {
         self.fileSystemInfo = Self.loadFileSystemInfo(path: path)
         self.gitInfo = Self.loadGitInfo(path: path)
         
-        // 总是从系统加载标签
-        let systemTags = Self.loadTagsFromSystem(path: path)
-        if !systemTags.isEmpty {
-            // 如果系统有标签，优先使用系统标签
-            self.tags = systemTags
-            // 不要在这里保存标签，避免覆盖系统标签
-        } else if !tags.isEmpty {
-            // 如果系统没有标签，但提供了标签，则使用提供的标签并保存到系统
-            self.tags = tags
-            // 直接调用静态方法保存标签
-            let finalTags = tags
-            DispatchQueue.main.async {
-                Self.saveTagsToSystem(path: path, tags: finalTags)
-            }
+        // Linus式延迟加载 - 只有在需要时才加载标签
+        // "Don't do work you don't need to do"
+        if !tags.isEmpty {
+            // 如果提供了标签，直接使用
+            self._tags = tags
+            self._tagsLoaded = true
+            // 暂时注销缓存更新
+            // TagCache.shared.setTags(tags, for: path)
+        }
+        // 否则保持延迟加载状态，等待首次访问时加载
+    }
+    
+    // MARK: - Codable Support
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, path, lastModified, tags, gitInfo, fileSystemInfo
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        path = try container.decode(String.self, forKey: .path)
+        lastModified = try container.decode(Date.self, forKey: .lastModified)
+        gitInfo = try container.decodeIfPresent(GitInfo.self, forKey: .gitInfo)
+        fileSystemInfo = try container.decode(FileSystemInfo.self, forKey: .fileSystemInfo)
+        
+        // 从缓存中加载标签，但不立即解码
+        let decodedTags = try container.decodeIfPresent(Set<String>.self, forKey: .tags) ?? []
+        if !decodedTags.isEmpty {
+            _tags = decodedTags
+            _tagsLoaded = true
+            // 暂时注销缓存更新
+            // TagCache.shared.setTags(decodedTags, for: path)
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(path, forKey: .path)
+        try container.encode(lastModified, forKey: .lastModified)
+        try container.encodeIfPresent(gitInfo, forKey: .gitInfo)
+        try container.encode(fileSystemInfo, forKey: .fileSystemInfo)
+        
+        // 只有在标签已加载时才编码
+        if _tagsLoaded {
+            try container.encode(_tags ?? [], forKey: .tags)
         } else {
-            // 都没有标签，使用空集合
-            self.tags = []
+            // 如果未加载，编码空集合（暂时不使用缓存）
+            // let currentTags = TagCache.shared.getTags(for: path) ?? []
+            try container.encode([] as Set<String>, forKey: .tags)
         }
     }
 
@@ -191,10 +258,11 @@ struct Project: Identifiable, Equatable, Codable {
 
     // 从系统加载标签
     static func loadTagsFromSystem(path: String) -> Set<String> {
-        // 使用 TagSystemSync 加载标签
-        let tags = TagSystemSync.loadTagsFromFile(at: path)
-        print("从系统加载标签: \(path) -> \(tags)")
-        return tags
+        // 暂时注销系统标签加载，直接返回空集合
+        // let tags = TagSystemSync.loadTagsFromFile(at: path)
+        // print("从系统加载标签: \(path) -> \(tags)")
+        print("系统标签加载已禁用: \(path)")
+        return []
     }
 
     // 系统标准标签映射
@@ -218,31 +286,24 @@ struct Project: Identifiable, Equatable, Codable {
 
     // 保存标签到系统（改为静态方法）
     static func saveTagsToSystem(path: String, tags: Set<String>) {
-        // 获取当前系统标签
-        let currentTags = loadTagsFromSystem(path: path)
-        
-        // 如果当前有系统标签，不要覆盖它们
-        if !currentTags.isEmpty {
-            print("文件已有系统标签，不覆盖: \(currentTags)")
-            return
-        }
-        
-        // 保存标签到系统
-        print("保存标签到系统: \(path) -> \(tags)")
-        TagSystemSync.saveTagsToFile(tags, at: path)
+        // 暂时注销所有系统标签保存操作，避免I/O
+        // let currentTags = loadTagsFromSystem(path: path)
+        // 
+        // if !currentTags.isEmpty {
+        //     print("文件已有系统标签，不覆盖: \(currentTags)")
+        //     return
+        // }
+        // 
+        // print("保存标签到系统: \(path) -> \(tags)")
+        // TagSystemSync.saveTagsToFile(tags, at: path)
+        print("系统标签保存已禁用: \(path)")
     }
 
     // 实例方法调用静态方法
     func saveTagsToSystem() {
-        // 获取当前系统标签
-        let currentTags = Self.loadTagsFromSystem(path: path)
-        
-        // 合并标签，确保不会删除系统标签
-        var mergedTags = currentTags
-        mergedTags.formUnion(tags)
-        
-        // 保存合并后的标签
-        Self.saveTagsToSystem(path: path, tags: mergedTags)
+        // 暂时注销实例方法的系统标签保存
+        // Self.saveTagsToSystem(path: path, tags: tags)
+        // print("项目标签保存已禁用: \(name)")
     }
 
     private var projectType: ProjectType {

@@ -118,6 +118,12 @@ The application relies on integration with macOS file system features, making te
 - Cache consistency
 - Editor integration functionality
 
+### Data Backup
+**Project and Tag Backup Files:**
+- `projects-backup-20250823-070551.json` - Complete backup of all projects and their tags from Application Support
+- Contains full project metadata, paths, tags, and Git information
+- Use this file to restore project data after refactoring if needed
+
 ### Editor Integration
 - Supports multiple editors via `AppOpenHelper`
 - Preference-based editor selection

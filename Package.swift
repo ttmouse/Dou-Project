@@ -26,6 +26,15 @@ let package = Package(
                     "-suppress-warnings",
                 ])
             ]
+        ),
+        .testTarget(
+            name: "ProjectManagerTests",
+            dependencies: ["ProjectManager"],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-enable-private-imports"
+                ])
+            ]
         )
     ]
 )

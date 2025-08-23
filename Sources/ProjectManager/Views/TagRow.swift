@@ -8,7 +8,7 @@ struct TagRow: View {
     let action: () -> Void
     let onDrop: ((String) -> Void)?
     let onRename: (() -> Void)?
-    @ObservedObject var tagManager: TagManager
+    @ObservedObject var tagManager: TagManagerAdapter
     @State private var isTargeted = false
     @State private var showingContextMenu = false
     @State var isEditing = false
@@ -35,10 +35,35 @@ struct TagRow: View {
                 }
 
                 Spacer()
-
+                
+                // 小眼睛隐藏按钮 - 垂直对齐
+                HStack(spacing: 0) {
+                    Button {
+                        tagManager.toggleTagVisibility(tag)
+                    } label: {
+                        if tagManager.isTagHidden(tag) {
+                            // 隐藏标签：始终显示eye.slash
+                            Image(systemName: "eye.slash")
+                                .foregroundColor(AppTheme.sidebarSecondaryText.opacity(0.6))
+                                .font(.system(size: 11))
+                                .frame(width: 14, height: 14)
+                        } else {
+                            // 正常标签：悬停时显示eye，不悬停时透明占位
+                            Image(systemName: "eye")
+                                .foregroundColor(AppTheme.sidebarSecondaryText)
+                                .font(.system(size: 11))
+                                .frame(width: 14, height: 14)
+                                .opacity(isHovered ? 0.8 : 0.0)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.2), value: isHovered)
+                }
+                
                 Text("\(count)")
                     .font(.caption)
                     .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
+                    .frame(minWidth: 24, alignment: .center) // 固定最小宽度，居中对齐
                     .padding(.horizontal, AppTheme.tagCountPaddingH)
                     .padding(.vertical, AppTheme.tagCountPaddingV)
                     .background(
@@ -148,7 +173,10 @@ struct TagRow: View {
                     action: {},
                     onDrop: nil,
                     onRename: {},
-                    tagManager: TagManager()
+                    tagManager: {
+                        let container = ServiceContainer()
+                        return container.createTagManagerAdapter()
+                    }()
                 )
                 TagRow(
                     tag: "macOS",
@@ -157,7 +185,10 @@ struct TagRow: View {
                     action: {},
                     onDrop: nil,
                     onRename: {},
-                    tagManager: TagManager()
+                    tagManager: {
+                        let container = ServiceContainer()
+                        return container.createTagManagerAdapter()
+                    }()
                 )
             }
             .padding()

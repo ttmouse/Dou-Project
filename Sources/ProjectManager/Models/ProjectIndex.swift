@@ -85,7 +85,7 @@ class ProjectIndex {
     // 同步扫描方法，直接在当前线程执行
     func performScanSync(_ path: String, force: Bool = false) {
         performScan(path, force: force)
-        saveIndex()
+        // 不再自动保存，由调用者决定何时保存
     }
 
     private func performScan(_ path: String, force: Bool) {
@@ -154,8 +154,27 @@ class ProjectIndex {
             }
         }
         
-        // 保存索引
+        // 只在最后保存一次索引，避免重复保存
         saveIndex()
+    }
+    
+    // 批量扫描多个目录，只在最后保存一次
+    func scanDirectoriesTwoLevelsBatch(_ paths: [String], force: Bool = false) {
+        for path in paths {
+            // 扫描父目录
+            performScanSync(path, force: force)
+            
+            // 获取子目录并扫描
+            if let children = indexEntries[path]?.children {
+                for childPath in children {
+                    performScanSync(childPath, force: force)
+                }
+            }
+        }
+        
+        // 批量扫描完成后只保存一次
+        saveIndex()
+        print("批量扫描 \(paths.count) 个目录完成并保存索引")
     }
 
     // MARK: - 项目加载
