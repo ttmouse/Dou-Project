@@ -53,27 +53,24 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         return watcher
     }()
 
-    // MARK: - 标签统计缓存
-    private var cachedTagUsageCount: [String: Int]?
-    private var lastProjectUpdateTime: Date?
-
-    // MARK: - 标签选择
+    // MARK: - Linus式状态管理 - 用纯数据模型替代复杂状态
+    @Published var appState: AppStateData = AppStateData.empty
     
+    // MARK: - 标签选择（保留UI状态）
     @Published var selectedTag: String?
     
-    // MARK: - 标签隐藏管理
+    // MARK: - Linus式业务逻辑调用 - 所有逻辑都在BusinessLogic中
     
+    /// 切换标签可见性 - 使用纯函数处理
     func toggleTagVisibility(_ tag: String) {
-        if hiddenTags.contains(tag) {
-            hiddenTags.remove(tag)
-        } else {
-            hiddenTags.insert(tag)
-        }
+        let updatedFilter = FilterLogic.toggleTagVisibility(appState.filter, tag: tag)
+        appState = AppStateLogic.updateState(appState, filter: updatedFilter)
         saveAll()
     }
     
+    /// 检查标签是否隐藏 - 使用纯函数处理
     func isTagHidden(_ tag: String) -> Bool {
-        return hiddenTags.contains(tag)
+        return appState.filter.hiddenTags.contains(tag)
     }
 
     // MARK: - 初始化
@@ -119,37 +116,17 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         saveAll(force: true)
     }
 
-    // MARK: - 标签统计
+    // MARK: - Linus式标签统计 - 使用纯函数，无缓存复杂性
 
-    private var tagUsageCount: [String: Int] {
-        // 如果项目数据没有更新，直接返回缓存
-        if let cached = cachedTagUsageCount,
-            let lastUpdate = lastProjectUpdateTime,
-            Date().timeIntervalSince(lastUpdate) < 1.0
-        {
-            return cached
-        }
-
-        // 重新计算并缓存
-        var counts: [String: Int] = [:]
-        for project in projects.values {
-            for tag in project.tags {
-                counts[tag, default: 0] += 1
-            }
-        }
-
-        cachedTagUsageCount = counts
-        lastProjectUpdateTime = Date()
-        return counts
-    }
-
+    /// 获取标签使用次数 - 直接使用BusinessLogic计算，无缓存
     func getUsageCount(for tag: String) -> Int {
-        return tagUsageCount[tag] ?? 0
+        let statistics = AppStateLogic.getTagStatistics(appState)
+        return statistics[tag] ?? 0
     }
-
-    func invalidateTagUsageCache() {
-        cachedTagUsageCount = nil
-        lastProjectUpdateTime = nil
+    
+    /// 获取所有标签统计 - 直接使用BusinessLogic
+    func getAllTagStatistics() -> [String: Int] {
+        return AppStateLogic.getTagStatistics(appState)
     }
 
     // MARK: - 数据加载
@@ -170,13 +147,23 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // allTags.formUnion(systemTags)
         print("已注销系统标签加载，当前标签: \(allTags)")
 
-        // 3. 加载项目缓存
+        // 3. 加载项目缓存并同步到新状态系统
         if let cachedProjects = loadProjectsFromCache() {
             print("从缓存加载了 \(cachedProjects.count) 个项目")
+            
+            // 同步到旧系统（过渡期间保持兼容）
             for project in cachedProjects {
                 projects[project.id] = project
             }
             sortManager.updateSortedProjects(cachedProjects)
+            
+            // 同步到新的纯数据状态系统
+            let projectDataDict = cachedProjects.toProjectDataArray()
+                .reduce(into: [UUID: ProjectData]()) { dict, projectData in
+                    dict[projectData.id] = projectData
+                }
+            
+            appState = AppStateLogic.updateState(appState, projects: projectDataDict)
             
             // 将项目标签添加到全部标签集合中
             for project in cachedProjects {
@@ -288,14 +275,22 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         return sortManager.getSortedProjects()
     }
 
+    /// Linus式项目筛选 - 使用BusinessLogic的纯函数处理
     func getFilteredProjects(withTags tags: Set<String>, searchText: String = "") -> [Project] {
-        return sortManager.getSortedProjects().filter { project in
-            let matchesTags = tags.isEmpty || !tags.isDisjoint(with: project.tags)
-            let matchesSearch =
-                searchText.isEmpty || project.name.localizedCaseInsensitiveContains(searchText)
-                || project.path.localizedCaseInsensitiveContains(searchText)
-            return matchesTags && matchesSearch
-        }
+        // 创建筛选条件
+        let filter = FilterLogic.createFilter(
+            selectedTags: tags, 
+            searchText: searchText,
+            sortCriteria: SortCriteriaData.lastModified, // 默认按修改时间排序
+            isAscending: false
+        )
+        
+        // 使用BusinessLogic处理
+        let projectDataArray = Array(appState.projects.values)
+        let filteredProjectData = ProjectLogic.processProjects(projectDataArray, with: filter)
+        
+        // 转换回Project数组
+        return filteredProjectData.toProjectArray()
     }
 
     // MARK: - 标签操作
@@ -319,8 +314,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             // 从所有项目中移除该标签
             for (id, project) in projects {
                 if project.tags.contains(tag) {
-                    var updatedProject = project
-                    updatedProject.removeTag(tag)
+                    let updatedProject = project.withRemovedTag(tag)
                     projects[id] = updatedProject
                     sortManager.updateProject(updatedProject)
                 }
@@ -332,65 +326,84 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         }
     }
 
+    /// Linus式标签操作 - 使用BusinessLogic处理，Manager只管状态同步
     func addTagToProject(projectId: UUID, tag: String) {
         print("添加标签 '\(tag)' 到项目 \(projectId)")
-        if var project = projects[projectId] {
-            if !project.tags.contains(tag) {
-                project.addTag(tag)
-                projects[projectId] = project
-                sortManager.updateProject(project)
-                invalidateTagUsageCache()
-
-                // 保存到系统
-                project.saveTagsToSystem()
-                saveAll(force: true)  // 强制保存
-            }
-        }
+        
+        guard let currentProjectData = appState.projects[projectId] else { return }
+        
+        // 使用BusinessLogic处理标签添加
+        let updatedProjectData = TagLogic.addTagToProject(currentProjectData, tag: tag)
+        
+        // 更新应用状态
+        var updatedProjects = appState.projects
+        updatedProjects[projectId] = updatedProjectData
+        appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+        
+        // 同步到旧的数据结构（过渡期间保持兼容）
+        let updatedProject = Project.fromProjectData(updatedProjectData)
+        projects[projectId] = updatedProject
+        sortManager.updateProject(updatedProject)
+        
+        // 同步到系统（暂时禁用）
+        // updatedProject.saveTagsToSystem()
+        saveAll(force: true)
     }
 
     func removeTagFromProject(projectId: UUID, tag: String) {
         print("从项目 \(projectId) 移除标签 '\(tag)'")
-        if var project = projects[projectId] {
-            project.removeTag(tag)
-            projects[projectId] = project
-            sortManager.updateProject(project)
-            invalidateTagUsageCache()
-
-            // 保存到系统
-            project.saveTagsToSystem()
-            saveAll(force: true)  // 强制保存
-        }
+        
+        guard let currentProjectData = appState.projects[projectId] else { return }
+        
+        // 使用BusinessLogic处理标签移除
+        let updatedProjectData = TagLogic.removeTagFromProject(currentProjectData, tag: tag)
+        
+        // 更新应用状态
+        var updatedProjects = appState.projects
+        updatedProjects[projectId] = updatedProjectData
+        appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+        
+        // 同步到旧的数据结构（过渡期间保持兼容）
+        let updatedProject = Project.fromProjectData(updatedProjectData)
+        projects[projectId] = updatedProject
+        sortManager.updateProject(updatedProject)
+        
+        // 同步到系统（暂时禁用）
+        // updatedProject.saveTagsToSystem()
+        saveAll(force: true)
     }
 
-    // MARK: - 批量操作
+    // MARK: - Linus式批量操作 - 使用BusinessLogic的批量函数
 
     func addTagToProjects(projectIds: Set<UUID>, tag: String) {
         print("批量添加标签 '\(tag)' 到 \(projectIds.count) 个项目")
 
-        // 如果标签不存在，先添加标签
-        if !allTags.contains(tag) {
-            addTag(tag, color: getColor(for: tag))
+        // 收集需要更新的项目数据
+        let projectsToUpdate = projectIds.compactMap { appState.projects[$0] }
+        
+        // 使用BusinessLogic批量处理
+        let updatedProjectsData = ProjectOperations.batchUpdateTags(projectsToUpdate, addTag: tag)
+        
+        // 批量更新应用状态
+        var updatedProjects = appState.projects
+        for updatedProjectData in updatedProjectsData {
+            updatedProjects[updatedProjectData.id] = updatedProjectData
+            
+            // 同步到旧数据结构（过渡期间）
+            let updatedProject = Project.fromProjectData(updatedProjectData)
+            projects[updatedProjectData.id] = updatedProject
+            sortManager.updateProject(updatedProject)
         }
-
-        // 批量处理项目
-        for projectId in projectIds {
-            if var project = projects[projectId] {
-                project.addTag(tag)
-                projects[projectId] = project
-                sortManager.updateProject(project)
-            }
-        }
-
-        // 统一处理缓存和保存
-        invalidateTagUsageCache()
-        saveAll(force: true)  // 强制保存
-
-        // 批量保存系统标签
-        for projectId in projectIds {
-            if let project = projects[projectId] {
-                project.saveTagsToSystem()
-            }
-        }
+        
+        // 如果标签不存在，添加到全局标签集
+        var updatedAllTags = allTags
+        updatedAllTags.insert(tag)
+        allTags = updatedAllTags
+        
+        appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+        saveAll(force: true)
+        
+        print("批量添加完成：已为 \(updatedProjectsData.count) 个项目添加标签 '\(tag)'")
     }
 
     // MARK: - 数据保存
@@ -465,9 +478,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             // 更新所有项目中的标签
             for (id, project) in projects {
                 if project.tags.contains(oldName) {
-                    var updatedProject = project
-                    updatedProject.removeTag(oldName)
-                    updatedProject.addTag(newName)
+                    let updatedProject = project.withRemovedTag(oldName).withAddedTag(newName)
                     projects[id] = updatedProject
                     sortManager.updateProject(updatedProject)
                 }
@@ -499,6 +510,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     func notifyProjectsChanged() {
         // 触发 UI 更新
         objectWillChange.send()
+    }
+    
+    // Linus式简化：不需要复杂的缓存失效逻辑，BusinessLogic会处理
+    func invalidateTagUsageCache() {
+        // 在新架构中，标签统计通过纯函数实时计算，无需缓存失效
     }
     
     // MARK: - DirectoryWatcherDelegate 实现

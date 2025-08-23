@@ -3,53 +3,20 @@ import Foundation
 import SwiftUI
 
 /// 项目模型，代表文件系统中的一个项目目录
-///
-/// ⚠️ 标签系统警告：
-/// 1. 项目的标签信息直接存储在文件系统的元数据中
-/// 2. 标签的加载和保存操作需要特别注意数据完整性
-/// 3. 在修改标签相关代码时，请参考 README.md 中的警告说明
-///
-/// 标签处理流程：
-/// 1. `loadTagsFromSystem`: 从文件系统加载标签
-/// 2. 标签修改后需要确保同步回系统
-/// 3. 避免在未同步完成前执行其他标签操作
+/// 
+/// Linus式重构后的简单设计：
+/// 1. 去掉所有延迟加载 - "Premature optimization is the root of all evil"
+/// 2. 去掉所有缓存逻辑 - 先让它工作，再优化
+/// 3. 标签就是简单的Set<String> - 不搞花里胡哨
+/// 4. 需要业务逻辑？去BusinessLogic.swift找
 struct Project: Identifiable, Equatable, Codable {
     let id: UUID
     let name: String
     let path: String
     let lastModified: Date
-    private var _tags: Set<String>?
-    private var _tagsLoaded: Bool = false
+    let tags: Set<String>  // 简单直接，不搞延迟加载
     let gitInfo: GitInfo?
     let fileSystemInfo: FileSystemInfo
-    
-    /// Linus式延迟加载标签
-    /// "Don't do work you don't need to do"
-    var tags: Set<String> {
-        get {
-            // 暂时注销延迟加载，直接返回已有标签，提升启动速度
-            // if !_tagsLoaded {
-            //     // 优先从缓存获取
-            //     if let cachedTags = TagCache.shared.getTags(for: path) {
-            //         _tags = cachedTags
-            //     } else {
-            //         // 缓存未命中，从系统加载
-            //         let systemTags = TagSystemSyncOptimized.loadTagsFromFile(at: path)
-            //         _tags = systemTags
-            //         // 更新缓存
-            //         TagCache.shared.setTags(systemTags, for: path)
-            //     }
-            //     _tagsLoaded = true
-            // }
-            return _tags ?? []
-        }
-        set {
-            _tags = newValue
-            _tagsLoaded = true
-            // 暂时注销缓存更新，减少I/O操作
-            // TagCache.shared.setTags(newValue, for: path)
-        }
-    }
 
     struct GitInfo: Codable, Equatable {
         let commitCount: Int
@@ -65,6 +32,7 @@ struct Project: Identifiable, Equatable, Codable {
         static let checkInterval: TimeInterval = 300  // 5分钟检查间隔
     }
 
+    /// Linus式简单初始化器 - 无花里胡哨，直接赋值
     init(
         id: UUID = UUID(),
         name: String,
@@ -76,19 +44,9 @@ struct Project: Identifiable, Equatable, Codable {
         self.name = name
         self.path = path
         self.lastModified = lastModified
+        self.tags = tags  // 直接赋值，不搞缓存
         self.fileSystemInfo = Self.loadFileSystemInfo(path: path)
         self.gitInfo = Self.loadGitInfo(path: path)
-        
-        // Linus式延迟加载 - 只有在需要时才加载标签
-        // "Don't do work you don't need to do"
-        if !tags.isEmpty {
-            // 如果提供了标签，直接使用
-            self._tags = tags
-            self._tagsLoaded = true
-            // 暂时注销缓存更新
-            // TagCache.shared.setTags(tags, for: path)
-        }
-        // 否则保持延迟加载状态，等待首次访问时加载
     }
     
     // MARK: - Codable Support
@@ -97,6 +55,7 @@ struct Project: Identifiable, Equatable, Codable {
         case id, name, path, lastModified, tags, gitInfo, fileSystemInfo
     }
     
+    /// Linus式简单解码 - 直接解码，无缓存逻辑
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
@@ -104,19 +63,12 @@ struct Project: Identifiable, Equatable, Codable {
         name = try container.decode(String.self, forKey: .name)
         path = try container.decode(String.self, forKey: .path)
         lastModified = try container.decode(Date.self, forKey: .lastModified)
+        tags = try container.decodeIfPresent(Set<String>.self, forKey: .tags) ?? []
         gitInfo = try container.decodeIfPresent(GitInfo.self, forKey: .gitInfo)
         fileSystemInfo = try container.decode(FileSystemInfo.self, forKey: .fileSystemInfo)
-        
-        // 从缓存中加载标签，但不立即解码
-        let decodedTags = try container.decodeIfPresent(Set<String>.self, forKey: .tags) ?? []
-        if !decodedTags.isEmpty {
-            _tags = decodedTags
-            _tagsLoaded = true
-            // 暂时注销缓存更新
-            // TagCache.shared.setTags(decodedTags, for: path)
-        }
     }
     
+    /// Linus式简单编码 - 直接编码，无缓存逻辑
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         
@@ -124,17 +76,9 @@ struct Project: Identifiable, Equatable, Codable {
         try container.encode(name, forKey: .name)
         try container.encode(path, forKey: .path)
         try container.encode(lastModified, forKey: .lastModified)
+        try container.encode(tags, forKey: .tags)
         try container.encodeIfPresent(gitInfo, forKey: .gitInfo)
         try container.encode(fileSystemInfo, forKey: .fileSystemInfo)
-        
-        // 只有在标签已加载时才编码
-        if _tagsLoaded {
-            try container.encode(_tags ?? [], forKey: .tags)
-        } else {
-            // 如果未加载，编码空集合（暂时不使用缓存）
-            // let currentTags = TagCache.shared.getTags(for: path) ?? []
-            try container.encode([] as Set<String>, forKey: .tags)
-        }
     }
 
     private static func loadFileSystemInfo(path: String) -> FileSystemInfo {
@@ -229,20 +173,18 @@ struct Project: Identifiable, Equatable, Codable {
         return Project(id: id, name: name, path: path, tags: tags)
     }
 
-    mutating func addTag(_ tag: String) {
-        print("添加标签到项目 '\(name)': \(tag)")
-        print("原有标签: \(tags)")
-        tags.insert(tag)
-        print("更新后标签: \(tags)")
-        // 不在这里保存，由上层统一处理
+    /// Linus式标签操作 - 返回新实例，不修改自身（函数式编程风格）
+    /// 业务逻辑请使用BusinessLogic中的ProjectOperations和TagLogic
+    func withAddedTag(_ tag: String) -> Project {
+        var newTags = tags
+        newTags.insert(tag)
+        return Project(id: id, name: name, path: path, lastModified: lastModified, tags: newTags)
     }
 
-    mutating func removeTag(_ tag: String) {
-        print("从项目 '\(name)' 移除标签: \(tag)")
-        print("原有标签: \(tags)")
-        tags.remove(tag)
-        print("更新后标签: \(tags)")
-        // 不在这里保存，由上层统一处理
+    func withRemovedTag(_ tag: String) -> Project {
+        var newTags = tags
+        newTags.remove(tag)
+        return Project(id: id, name: name, path: path, lastModified: lastModified, tags: newTags)
     }
 
     func copyWith(tags newTags: Set<String>) -> Project {
@@ -256,54 +198,23 @@ struct Project: Identifiable, Equatable, Codable {
         return project
     }
 
-    // 从系统加载标签
+    // Linus式简化：系统标签功能暂时禁用，专注核心功能
+    // "When in doubt, remove it" - 先让基本功能稳定运行
+    
+    /// 系统标签加载（暂时禁用）
     static func loadTagsFromSystem(path: String) -> Set<String> {
-        // 暂时注销系统标签加载，直接返回空集合
-        // let tags = TagSystemSync.loadTagsFromFile(at: path)
-        // print("从系统加载标签: \(path) -> \(tags)")
-        print("系统标签加载已禁用: \(path)")
+        // TODO: 等基础架构稳定后再重新启用
         return []
     }
 
-    // 系统标准标签映射
-    private static let systemTagMapping: [String: String] = [
-        "green": "绿色",
-        "绿色": "绿色",
-        "red": "红色",
-        "红色": "红色",
-        "orange": "橙色",
-        "橙色": "橙色",
-        "yellow": "黄色",
-        "黄色": "黄色",
-        "blue": "蓝色",
-        "蓝色": "蓝色",
-        "purple": "紫色",
-        "紫色": "紫色",
-        "gray": "灰色",
-        "grey": "灰色",
-        "灰色": "灰色"
-    ]
-
-    // 保存标签到系统（改为静态方法）
+    /// 系统标签保存（暂时禁用）
     static func saveTagsToSystem(path: String, tags: Set<String>) {
-        // 暂时注销所有系统标签保存操作，避免I/O
-        // let currentTags = loadTagsFromSystem(path: path)
-        // 
-        // if !currentTags.isEmpty {
-        //     print("文件已有系统标签，不覆盖: \(currentTags)")
-        //     return
-        // }
-        // 
-        // print("保存标签到系统: \(path) -> \(tags)")
-        // TagSystemSync.saveTagsToFile(tags, at: path)
-        print("系统标签保存已禁用: \(path)")
+        // TODO: 等基础架构稳定后再重新启用
     }
 
-    // 实例方法调用静态方法
+    /// 实例方法调用静态方法（暂时禁用）
     func saveTagsToSystem() {
-        // 暂时注销实例方法的系统标签保存
-        // Self.saveTagsToSystem(path: path, tags: tags)
-        // print("项目标签保存已禁用: \(name)")
+        // TODO: 等基础架构稳定后再重新启用
     }
 
     private var projectType: ProjectType {

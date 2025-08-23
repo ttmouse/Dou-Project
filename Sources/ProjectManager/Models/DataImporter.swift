@@ -256,8 +256,13 @@ class DataImporter {
             let mergedTags = existing.tags.union(backupTags)
             
             // 创建合并后的项目（保留现有项目的基本信息，但更新标签和Git信息）
-            var mergedProject = existing
-            mergedProject.tags = mergedTags
+            let mergedProject = Project(
+                id: existing.id,
+                name: existing.name,
+                path: existing.path,
+                lastModified: existing.lastModified,
+                tags: mergedTags
+            )
             
             // Git信息通过gitInfo获取，这里不需要特殊处理
             // 因为Project的gitInfo是在初始化时从文件系统加载的

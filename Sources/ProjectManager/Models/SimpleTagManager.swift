@@ -120,10 +120,10 @@ extension SimpleTagManagerImpl: ProjectTags {
     func tag(_ projectId: UUID, _ tag: String) {
         guard let index = allProjects.firstIndex(where: { $0.id == projectId }) else { return }
         
-        var project = allProjects[index]
+        let project = allProjects[index]
         if !project.tags.contains(tag) {
-            project.addTag(tag)
-            allProjects[index] = project
+            let updatedProject = project.withAddedTag(tag)
+            allProjects[index] = updatedProject
             
             // 确保标签存在于全局标签列表中
             if !allTags.contains(tag) {
@@ -131,7 +131,7 @@ extension SimpleTagManagerImpl: ProjectTags {
             }
             
             // 保存到系统
-            project.saveTagsToSystem()
+            updatedProject.saveTagsToSystem()
             save()
         }
     }
@@ -139,12 +139,12 @@ extension SimpleTagManagerImpl: ProjectTags {
     func untag(_ projectId: UUID, _ tag: String) {
         guard let index = allProjects.firstIndex(where: { $0.id == projectId }) else { return }
         
-        var project = allProjects[index]
-        project.removeTag(tag)
-        allProjects[index] = project
+        let project = allProjects[index]
+        let updatedProject = project.withRemovedTag(tag)
+        allProjects[index] = updatedProject
         
         // 保存到系统
-        project.saveTagsToSystem()
+        updatedProject.saveTagsToSystem()
         save()
     }
 }

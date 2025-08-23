@@ -98,35 +98,35 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
     
     // MARK: - 项目标签操作
     func addTagToProject(projectId: UUID, tag: String) {
-        if var project = projects[projectId] {
+        if let project = projects[projectId] {
             if !project.tags.contains(tag) {
-                project.addTag(tag)
-                projects[projectId] = project
-                sortManager.updateProject(project)
+                let updatedProject = project.withAddedTag(tag)
+                projects[projectId] = updatedProject
+                sortManager.updateProject(updatedProject)
                 
                 // 确保标签存在
                 tagStore?.addTag(tag)
                 tagStore?.invalidateUsageCache()
                 
                 // 保存到系统
-                project.saveTagsToSystem()
+                updatedProject.saveTagsToSystem()
                 saveProjectsToCache()
                 
-                print("ProjectStore: 添加标签 '\(tag)' 到项目 '\(project.name)'")
+                print("ProjectStore: 添加标签 '\(tag)' 到项目 '\(updatedProject.name)'")
             }
         }
     }
     
     func removeTagFromProject(projectId: UUID, tag: String) {
-        if var project = projects[projectId] {
-            project.removeTag(tag)
-            projects[projectId] = project
-            sortManager.updateProject(project)
+        if let project = projects[projectId] {
+            let updatedProject = project.withRemovedTag(tag)
+            projects[projectId] = updatedProject
+            sortManager.updateProject(updatedProject)
             
             tagStore?.invalidateUsageCache()
             
             // 保存到系统
-            project.saveTagsToSystem()
+            updatedProject.saveTagsToSystem()
             saveProjectsToCache()
             
             print("ProjectStore: 从项目 '\(project.name)' 移除标签 '\(tag)'")
@@ -142,10 +142,10 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
         
         // 批量处理项目
         for projectId in projectIds {
-            if var project = projects[projectId] {
-                project.addTag(tag)
-                projects[projectId] = project
-                sortManager.updateProject(project)
+            if let project = projects[projectId] {
+                let updatedProject = project.withAddedTag(tag)
+                projects[projectId] = updatedProject
+                sortManager.updateProject(updatedProject)
             }
         }
         
@@ -166,8 +166,7 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
         
         for (id, project) in projects {
             if project.tags.contains(tag) {
-                var updatedProject = project
-                updatedProject.removeTag(tag)
+                let updatedProject = project.withRemovedTag(tag)
                 projects[id] = updatedProject
                 updatedProjects.append(updatedProject)
             }
@@ -188,9 +187,7 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
         
         for (id, project) in projects {
             if project.tags.contains(oldName) {
-                var updatedProject = project
-                updatedProject.removeTag(oldName)
-                updatedProject.addTag(newName)
+                let updatedProject = project.withRemovedTag(oldName).withAddedTag(newName)
                 projects[id] = updatedProject
                 updatedProjects.append(updatedProject)
             }

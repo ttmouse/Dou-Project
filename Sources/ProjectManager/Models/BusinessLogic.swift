@@ -310,6 +310,82 @@ enum FilterLogic {
     }
 }
 
+/// 项目操作业务逻辑 - 纯函数集合
+/// Linus式设计：你要的ProjectOperations来了，全是纯函数，无副作用
+enum ProjectOperations {
+    
+    /// 更新项目标签
+    static func updateProject(_ project: ProjectData, with tags: Set<String>) -> ProjectData {
+        return ProjectData(
+            id: project.id,
+            name: project.name,
+            path: project.path,
+            lastModified: project.lastModified,
+            tags: tags,
+            gitInfo: project.gitInfo,
+            fileSystemInfo: project.fileSystemInfo
+        )
+    }
+    
+    /// 批量更新标签 - 给多个项目添加同一个标签
+    static func batchUpdateTags(_ projects: [ProjectData], addTag: String) -> [ProjectData] {
+        return projects.map { project in
+            var updatedTags = project.tags
+            updatedTags.insert(addTag)
+            return updateProject(project, with: updatedTags)
+        }
+    }
+    
+    /// 批量移除标签 - 从多个项目移除同一个标签
+    static func batchRemoveTags(_ projects: [ProjectData], removeTag: String) -> [ProjectData] {
+        return projects.map { project in
+            var updatedTags = project.tags
+            updatedTags.remove(removeTag)
+            return updateProject(project, with: updatedTags)
+        }
+    }
+    
+    /// 批量替换标签 - 将多个项目的某个标签替换为新标签
+    static func batchReplaceTags(
+        _ projects: [ProjectData], 
+        oldTag: String, 
+        newTag: String
+    ) -> [ProjectData] {
+        return projects.map { project in
+            var updatedTags = project.tags
+            if updatedTags.contains(oldTag) {
+                updatedTags.remove(oldTag)
+                updatedTags.insert(newTag)
+            }
+            return updateProject(project, with: updatedTags)
+        }
+    }
+    
+    /// 为项目设置完整的标签集合
+    static func setProjectTags(_ project: ProjectData, tags: Set<String>) -> ProjectData {
+        return updateProject(project, with: tags)
+    }
+    
+    /// 检查项目是否需要更新文件系统信息
+    static func needsFileSystemUpdate(_ project: ProjectData) -> Bool {
+        let timeSinceCheck = Date().timeIntervalSince(project.fileSystemInfo.lastCheckTime)
+        return timeSinceCheck >= ProjectData.FileSystemInfoData.checkInterval
+    }
+    
+    /// 合并两个项目数据（以第二个为准，但保留ID）
+    static func mergeProject(_ existing: ProjectData, with updated: ProjectData) -> ProjectData {
+        return ProjectData(
+            id: existing.id, // 保持原有ID
+            name: updated.name,
+            path: updated.path,
+            lastModified: updated.lastModified,
+            tags: updated.tags,
+            gitInfo: updated.gitInfo,
+            fileSystemInfo: updated.fileSystemInfo
+        )
+    }
+}
+
 /// 应用状态业务逻辑 - 纯函数集合
 enum AppStateLogic {
     
@@ -346,5 +422,28 @@ enum AppStateLogic {
     static func getTagStatistics(_ state: AppStateData) -> [String: Int] {
         let projectList = Array(state.projects.values)
         return TagLogic.calculateTagUsage(projectList)
+    }
+    
+    /// 添加项目到状态
+    static func addProject(_ state: AppStateData, project: ProjectData) -> AppStateData {
+        var updatedProjects = state.projects
+        updatedProjects[project.id] = project
+        return updateState(state, projects: updatedProjects)
+    }
+    
+    /// 批量添加项目到状态
+    static func addProjects(_ state: AppStateData, projects: [ProjectData]) -> AppStateData {
+        var updatedProjects = state.projects
+        for project in projects {
+            updatedProjects[project.id] = project
+        }
+        return updateState(state, projects: updatedProjects)
+    }
+    
+    /// 移除项目从状态
+    static func removeProject(_ state: AppStateData, projectId: UUID) -> AppStateData {
+        var updatedProjects = state.projects
+        updatedProjects.removeValue(forKey: projectId)
+        return updateState(state, projects: updatedProjects)
     }
 }
