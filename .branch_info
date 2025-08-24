@@ -1,6 +1,4 @@
-{
-    "name": "merged_main",
-    "created": "2025-08-25T03:15:00+07:00",
-    "description": "Main branch after merging all Trees branches",
-    "type": "git-main"
-}
+BRANCH_NAME=ui
+DESCRIPTION=
+CREATED_AT=2025-08-24T20:42:05Z
+BASE_PATH=/Users/douba/Projects/project-list

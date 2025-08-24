@@ -6,6 +6,7 @@ import SwiftUI
 struct ProjectDetailView: View {
     let project: ProjectData
     @Binding var isVisible: Bool
+    @ObservedObject var tagManager: TagManager
     
     @State private var selectedTab: DetailTab = .overview
     @State private var showDeleteConfirmation = false
@@ -39,7 +40,7 @@ struct ProjectDetailView: View {
             // 内容区域
             contentSection
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(AppTheme.background)
         .frame(width: 380)
         .confirmationDialog(
             "删除分支",
@@ -90,13 +91,13 @@ struct ProjectDetailView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(project.name)
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(AppTheme.titleFont)
+                    .foregroundColor(AppTheme.text)
                     .lineLimit(1)
                 
                 Text(abbreviatedPath)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.secondaryText)
                     .lineLimit(1)
             }
             
@@ -105,44 +106,67 @@ struct ProjectDetailView: View {
             // 关闭按钮
             Button(action: { isVisible = false }) {
                 Image(systemName: "xmark")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14))
+                    .foregroundColor(AppTheme.secondaryIcon)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.plain)
+            .padding(8)
+            .background(AppTheme.buttonBackground)
+            .cornerRadius(6)
             .help("关闭详情面板")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .background(AppTheme.secondaryBackground)
+        .overlay(
+            Rectangle()
+                .fill(AppTheme.divider)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
     
     private var tabSection: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 12) {
             ForEach(DetailTab.allCases, id: \.self) { tab in
                 Button(action: { selectedTab = tab }) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: tab.icon)
+                            .font(.system(size: 13))
                         Text(tab.rawValue)
+                            .font(AppTheme.bodyFont)
                     }
-                    .font(.caption)
-                    .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                    .foregroundColor(selectedTab == tab ? AppTheme.text : AppTheme.secondaryText)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(
                         selectedTab == tab ?
-                        Color(NSColor.selectedControlColor).opacity(0.3) :
+                        AppTheme.accent.opacity(0.2) :
                         Color.clear
                     )
-                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(
+                                selectedTab == tab ? AppTheme.accent.opacity(0.5) : Color.clear,
+                                lineWidth: 1
+                            )
+                    )
+                    .cornerRadius(8)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.plain)
             }
             
             Spacer()
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+        .padding(.vertical, 12)
+        .background(AppTheme.sidebarBackground)
+        .overlay(
+            Rectangle()
+                .fill(AppTheme.divider)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
     
     private var contentSection: some View {
@@ -158,7 +182,7 @@ struct ProjectDetailView: View {
     }
     
     private var projectOverview: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
                 // 基本信息
                 projectBasicInfo
@@ -176,67 +200,98 @@ struct ProjectDetailView: View {
             }
             .padding(20)
         }
+        .background(AppTheme.background)
     }
     
     private var projectBasicInfo: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             sectionHeader("基本信息", icon: "info.circle")
             
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 infoRow("项目路径", project.path)
                 infoRow("最后修改", formatDate(project.lastModified))
                 infoRow("项目ID", project.id.uuidString)
             }
+            .padding(16)
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
         }
     }
     
     private func projectGitInfo(_ gitInfo: ProjectData.GitInfoData) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             sectionHeader("Git 信息", icon: "branch")
             
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 infoRow("提交数量", "\(gitInfo.commitCount)")
                 infoRow("最后提交", formatDate(gitInfo.lastCommitDate))
             }
+            .padding(16)
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
         }
     }
     
     private var projectTagInfo: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             sectionHeader("标签", icon: "tag")
             
-            if project.tags.isEmpty {
-                Text("无标签")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 8)
-            } else {
-                FlowLayout(spacing: 6, data: Array(project.tags.sorted())) { tag in
-                    AnyView(
-                        Text(tag)
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.2))
-                            .foregroundColor(.blue)
-                            .cornerRadius(4)
-                    )
+            VStack(alignment: .leading, spacing: 0) {
+                if project.tags.isEmpty {
+                    HStack {
+                        Text("无标签")
+                            .font(AppTheme.bodyFont)
+                            .foregroundColor(AppTheme.secondaryText)
+                        Spacer()
+                    }
+                    .padding(16)
+                } else {
+                    FlowLayout(spacing: 8, data: Array(project.tags.sorted())) { tag in
+                        AnyView(
+                            TagView(
+                                tag: tag,
+                                color: tagManager.getColor(for: tag),
+                                fontSize: 12
+                            )
+                        )
+                    }
+                    .padding(16)
                 }
-                .padding(.leading, 8)
             }
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
         }
     }
     
     private var projectFileSystemInfo: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             sectionHeader("文件系统", icon: "folder")
             
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 infoRow("文件大小", formatFileSize(project.fileSystemInfo.size))
                 infoRow("修改时间", formatDate(project.fileSystemInfo.modificationDate))
                 infoRow("上次检查", formatDate(project.fileSystemInfo.lastCheckTime))
                 infoRow("校验和", project.fileSystemInfo.checksum.isEmpty ? "无" : String(project.fileSystemInfo.checksum.prefix(16)) + "...")
             }
+            .padding(16)
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
         }
     }
     
@@ -259,41 +314,44 @@ struct ProjectDetailView: View {
     // MARK: - Helper Views
     
     private func sectionHeader(_ title: String, icon: String) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: icon)
-                .foregroundColor(.blue)
+                .font(.system(size: 16))
+                .foregroundColor(AppTheme.accent)
             Text(title)
-                .font(.headline)
-                .fontWeight(.semibold)
+                .font(AppTheme.subtitleFont)
+                .foregroundColor(AppTheme.text)
             Spacer()
         }
     }
     
     private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack {
+        HStack(spacing: 12) {
             Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.secondaryText)
                 .frame(width: 80, alignment: .leading)
             
             Text(value)
-                .font(.caption)
-                .foregroundColor(.primary)
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.text)
                 .lineLimit(1)
-                .help(value) // 完整文本提示
+                .help(value)
             
             Spacer()
             
             // 复制按钮
             Button(action: { copyToClipboard(value) }) {
                 Image(systemName: "doc.on.doc")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundColor(AppTheme.secondaryIcon)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.plain)
+            .padding(4)
+            .background(AppTheme.buttonBackground.opacity(0.5))
+            .cornerRadius(4)
             .help("复制")
         }
-        .padding(.leading, 8)
     }
     
     private var deleteConfirmationButtons: some View {
@@ -463,7 +521,8 @@ struct ProjectDetailView: View {
                 lastCheckTime: Date()
             )
         ),
-        isVisible: .constant(true)
+        isVisible: .constant(true),
+        tagManager: TagManager()
     )
 }
 

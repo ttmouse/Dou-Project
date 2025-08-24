@@ -95,20 +95,6 @@ struct BranchCard: View {
         Circle()
             .fill(statusColor)
             .frame(width: 8, height: 8)
-            .overlay(
-                // 未提交更改的数字徽章
-                Group {
-                    if branch.hasUncommittedChanges {
-                        Text("\(branch.uncommittedChanges)")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(2)
-                            .background(Color.red)
-                            .clipShape(Circle())
-                            .offset(x: 8, y: -8)
-                    }
-                }
-            )
     }
     
     private var actionButtons: some View {
