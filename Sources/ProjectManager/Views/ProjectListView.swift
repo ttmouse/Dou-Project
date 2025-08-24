@@ -126,7 +126,8 @@ struct ProjectListView: View {
             if showDetailPanel, let project = selectedProjectForDetail {
                 ProjectDetailView(
                     project: convertToProjectData(project),
-                    isVisible: $showDetailPanel
+                    isVisible: $showDetailPanel,
+                    tagManager: tagManager
                 )
                 .frame(minWidth: 380, maxWidth: 380)
                 .transition(.move(edge: .trailing))
