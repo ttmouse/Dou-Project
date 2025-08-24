@@ -167,9 +167,16 @@ struct DirectoryManageButton: View {
             // === 管理区块 ===
             Menu {
                 Button(action: {
-                    tagManager.clearCacheAndReloadProjects()
+                    tagManager.refreshProjects()  // 使用新的智能刷新
                 }) {
-                    Label("刷新项目", systemImage: "arrow.triangle.2.circlepath")
+                    Label("智能刷新", systemImage: "arrow.triangle.2.circlepath")
+                }
+                
+                Button(action: {
+                    tagManager.clearCacheAndReloadProjects()  // 保留传统全量刷新作为备用
+                }) {
+                    Label("完全重新加载", systemImage: "arrow.counterclockwise")
+                        .foregroundColor(.orange)
                 }
             } label: {
                 Label("刷新与重载", systemImage: "arrow.clockwise")
