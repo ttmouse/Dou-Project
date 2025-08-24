@@ -108,7 +108,7 @@ struct MainTabView: View {
     // MARK: - 计算属性
     
     private var projectDataArray: [ProjectData] {
-        return Array(tagManager.projects.values).map { project in
+        let allProjectData = Array(tagManager.projects.values).map { project in
             ProjectData(
                 id: project.id,
                 name: project.name,
@@ -129,6 +129,9 @@ struct MainTabView: View {
                 )
             )
         }
+        
+        // 过滤掉包含"隐藏标签"的项目，确保数据看板统计准确
+        return ProjectLogic.filterProjectsByHiddenTags(allProjectData)
     }
 }
 

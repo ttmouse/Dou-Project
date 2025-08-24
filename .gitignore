@@ -81,6 +81,11 @@ ProjectManager.iconset/
 ProjectManager.icns
 icon.png
 
+# TaskMaster AI
+.taskmaster/cache/
+.taskmaster/temp/
+package-lock.json
+
 # Added by Claude Task Master
 logs
 npm-debug.log*
