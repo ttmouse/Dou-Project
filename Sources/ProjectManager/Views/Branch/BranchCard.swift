@@ -118,17 +118,25 @@ struct BranchCard: View {
                 AppOpenHelper.openInDefaultEditor(path: branch.path)
             }) {
                 Image(systemName: "folder.fill")
-                    .font(.caption)
                     .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
             .help("在编辑器中打开分支")
             
+            // Ghostty 终端按钮
+            Button(action: {
+                openInGhostty()
+            }) {
+                Image(systemName: "terminal.fill")
+                    .foregroundColor(.purple)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help("在 Ghostty 终端中打开")
+            
             // 合并按钮（仅非主分支显示）
             if !branch.isMain, let onMerge = onMerge {
                 Button(action: onMerge) {
                     Image(systemName: "arrow.triangle.merge")
-                        .font(.caption)
                         .foregroundColor(.green)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -139,7 +147,6 @@ struct BranchCard: View {
             if !branch.isMain {
                 Button(action: onDelete) {
                     Image(systemName: "trash.fill")
-                        .font(.caption)
                         .foregroundColor(.red)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -248,6 +255,12 @@ struct BranchCard: View {
                 Button("在访达中打开") {
                     AppOpenHelper.performSystemAction(.showInFinder, path: branch.path)
                 }
+                
+                Divider()
+                
+                Button("在 Ghostty 中打开") {
+                    openInGhostty()
+                }
             }
             
             if !branch.isMain {
@@ -321,6 +334,32 @@ struct BranchCard: View {
     }
     
     // MARK: - Helper Functions
+    
+    private func openInGhostty() {
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-a", "Ghostty", branch.path]
+        
+        do {
+            try task.run()
+        } catch {
+            print("Failed to open Ghostty: \(error)")
+            // 如果 Ghostty 打开失败，尝试默认终端
+            fallbackToDefaultTerminal()
+        }
+    }
+    
+    private func fallbackToDefaultTerminal() {
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-a", "Terminal", branch.path]
+        
+        do {
+            try task.run()
+        } catch {
+            print("Failed to open Terminal: \(error)")
+        }
+    }
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
