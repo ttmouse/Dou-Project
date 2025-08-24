@@ -5,7 +5,10 @@ struct DashboardView: View {
     @StateObject private var viewModel: DashboardViewModel
     @State private var selectedTimeRange: TimeRange = .threeMonths
     
+    let projects: [ProjectData]
+    
     init(projects: [ProjectData] = []) {
+        self.projects = projects
         self._viewModel = StateObject(wrappedValue: DashboardViewModel(projects: projects))
     }
     
@@ -30,6 +33,9 @@ struct DashboardView: View {
             .padding(20)
         }
         .navigationTitle("开发活动概览")
+        .onChange(of: projects) { newProjects in
+            viewModel.refreshData(with: newProjects)
+        }
     }
     
     // MARK: - 子视图

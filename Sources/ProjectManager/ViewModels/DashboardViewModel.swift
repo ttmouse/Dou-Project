@@ -21,7 +21,7 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Private Properties
     
     private var cancellables = Set<AnyCancellable>()
-    private let projects: [ProjectData]
+    private var projects: [ProjectData]
     
     // MARK: - Initialization
     
@@ -34,6 +34,7 @@ final class DashboardViewModel: ObservableObject {
     
     /// 刷新仪表盘数据
     func refreshData(with newProjects: [ProjectData]) {
+        self.projects = newProjects
         Task {
             await loadDashboardData(projects: newProjects)
         }
