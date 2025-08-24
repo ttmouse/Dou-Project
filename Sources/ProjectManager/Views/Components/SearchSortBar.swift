@@ -4,13 +4,56 @@ struct SearchSortBar: View {
     @Binding var searchText: String
     @Binding var sortOption: ProjectListView.SortOption
     @Binding var searchBarRef: SearchBar?
+    @State private var isShowingDashboard = false
+    @EnvironmentObject var tagManager: TagManager
+    
+    // MARK: - 计算属性
+    
+    private var projectDataArray: [ProjectData] {
+        return Array(tagManager.projects.values).map { project in
+            ProjectData(
+                id: project.id,
+                name: project.name,
+                path: project.path,
+                lastModified: project.lastModified,
+                tags: project.tags,
+                gitInfo: project.gitInfo.map { gitInfo in
+                    ProjectData.GitInfoData(
+                        commitCount: gitInfo.commitCount,
+                        lastCommitDate: gitInfo.lastCommitDate
+                    )
+                },
+                fileSystemInfo: ProjectData.FileSystemInfoData(
+                    modificationDate: project.fileSystemInfo.modificationDate,
+                    size: project.fileSystemInfo.size,
+                    checksum: project.fileSystemInfo.checksum,
+                    lastCheckTime: project.fileSystemInfo.lastCheckTime
+                )
+            )
+        }
+    }
     
     var body: some View {
         HStack(spacing: 8) {
             SearchBar(text: $searchText)
                 .modifier(ViewReferenceSetter(reference: $searchBarRef))
             
+            // 仪表盘按钮
+            Button(action: {
+                isShowingDashboard = true
+            }) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundColor(AppTheme.titleBarIcon)
+                    .font(.system(size: 20))
+            }
+            .buttonStyle(.plain)
+            .help("项目仪表盘")
+            
             SortButtons(sortOption: $sortOption)
+        }
+        .sheet(isPresented: $isShowingDashboard) {
+            DashboardView(projects: projectDataArray)
+                .frame(minWidth: 800, minHeight: 600)
         }
         .padding(AppTheme.searchBarAreaPadding)
         .frame(height: AppTheme.searchBarAreaHeight)
