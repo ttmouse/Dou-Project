@@ -71,6 +71,9 @@ coverage/
 # Cursor
 .cursorrules
 
+# Trees 分支管理工具
+.trees/
+
 # 应用打包相关
 ProjectManager.app/
 ProjectManager.dmg
@@ -104,3 +107,4 @@ tasks/
 .cursor
 .gitignore
 .claude/
+.trees
