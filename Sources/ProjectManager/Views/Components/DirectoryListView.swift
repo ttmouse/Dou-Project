@@ -67,7 +67,7 @@ struct DirectoryListView: View {
                                 
                                 // 批量注册项目
                                 DispatchQueue.main.async {
-                                    tagManager.registerProjects(projects)
+                                    tagManager.projectOperations.registerProjects(projects)
                                     
                                     // 显示确认对话框
                                     let alert = NSAlert()

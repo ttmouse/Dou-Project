@@ -143,9 +143,7 @@ struct DirectoryManageButton: View {
                             
                             // 批量注册项目
                             DispatchQueue.main.async {
-                                for project in projects {
-                                    tagManager.registerProject(project)
-                                }
+                                tagManager.projectOperations.registerProjects(projects)
                                 
                                 // 显示确认对话框
                                 let alert = NSAlert()
