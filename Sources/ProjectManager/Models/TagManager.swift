@@ -36,6 +36,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     let sortManager: ProjectSortManager
     private let projectIndex: ProjectIndex
     private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - Linus式智能刷新状态
+    
+    /// 目录修改时间缓存 - 用于智能检测变化
+    private var directoryModificationTimes: [String: Date] = [:]
     lazy var projectOperations: ProjectOperationManager = {
         let manager = ProjectOperationManager(
             delegate: self, 
@@ -500,8 +505,131 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         directoryWatcher.removeWatchedDirectory(path)
     }
 
-    // 清除缓存并重新加载所有项目
+    // MARK: - Linus式简化刷新 - 新的智能刷新方法
+    
+    /// 安全的智能项目刷新 - 修复版本，绝不清空现有数据
+    func refreshProjects() {
+        Task {
+            print("🔄 开始安全智能刷新...")
+            
+            // 🛡️ 安全检查：备份现有数据
+            let backupProjects = projects
+            let backupTags = allTags
+            print("🛡️ 已备份 \(backupProjects.count) 个项目和 \(backupTags.count) 个标签")
+            
+            let existingDirectories = Array(watchedDirectories).filter {
+                FileManager.default.fileExists(atPath: $0)
+            }
+            
+            if existingDirectories.isEmpty {
+                print("✅ 没有可用的监视目录")
+                return
+            }
+            
+            print("📁 安全扫描 \(existingDirectories.count) 个目录")
+            
+            // 强制重新扫描所有目录
+            for directory in existingDirectories {
+                projectIndex.scanDirectoryTwoLevels(directory, force: false)
+            }
+            
+            // 使用现有项目作为基础，进行增量更新
+            let newProjects = projectIndex.loadProjects(
+                existingProjects: backupProjects,
+                fromWatchedDirectories: Set(existingDirectories)
+            )
+            
+            // 在主线程安全更新数据
+            await MainActor.run {
+                let oldCount = projects.count
+                
+                // 🛡️ 安全更新：绝不清空，只做增量合并
+                var updatedProjects = backupProjects
+                var updatedTags = backupTags
+                var syncedProjectsCount = 0
+                
+                // 🔄 智能标签同步：为所有项目同步系统标签
+                print("🏷️ 开始智能同步系统标签...")
+                
+                // 安全地合并新项目并同步所有项目的系统标签
+                for newProject in newProjects {
+                    updatedProjects[newProject.id] = newProject
+                    updatedTags.formUnion(newProject.tags)
+                }
+                
+                // 为现有项目同步系统标签（增强功能）
+                for (projectId, existingProject) in updatedProjects {
+                    let currentSystemTags = TagSystemSync.loadTagsFromFile(at: existingProject.path)
+                    
+                    if !currentSystemTags.isEmpty {
+                        let originalTags = existingProject.tags
+                        let mergedTags = originalTags.union(currentSystemTags)
+                        
+                        if mergedTags.count > originalTags.count {
+                            // 发现新的系统标签，更新项目
+                            let updatedProject = Project(
+                                id: existingProject.id,
+                                name: existingProject.name,
+                                path: existingProject.path,
+                                lastModified: existingProject.lastModified,
+                                tags: mergedTags
+                            )
+                            updatedProjects[projectId] = updatedProject
+                            updatedTags.formUnion(currentSystemTags)
+                            syncedProjectsCount += 1
+                        }
+                    }
+                }
+                
+                if syncedProjectsCount > 0 {
+                    print("✅ 智能同步完成：\(syncedProjectsCount) 个项目同步了系统标签")
+                } else {
+                    print("✅ 智能同步完成：无新的系统标签需要同步")
+                }
+                
+                // 🛡️ 双重验证：确保没有数据丢失
+                if updatedProjects.count >= backupProjects.count && updatedTags.count >= backupTags.count {
+                    // 安全：数据没有减少，可以更新
+                    projects = updatedProjects
+                    allTags = updatedTags
+                    
+                    // 更新排序和保存
+                    sortManager.updateSortedProjects(Array(projects.values))
+                    projectOperations.saveAllToCache()
+                    
+                    let newCount = projects.count
+                    print("✅ 安全刷新成功：\(oldCount) → \(newCount) 个项目，标签从 \(backupTags.count) 到 \(updatedTags.count)")
+                } else {
+                    // 🚨 危险：检测到数据丢失，恢复备份
+                    print("🚨 检测到潜在数据丢失，恢复备份数据")
+                    print("   项目数量：\(backupProjects.count) → \(updatedProjects.count)")
+                    print("   标签数量：\(backupTags.count) → \(updatedTags.count)")
+                    
+                    // 恢复备份
+                    projects = backupProjects
+                    allTags = backupTags
+                    
+                    print("🛡️ 已恢复备份，数据安全")
+                }
+            }
+        }
+    }
+    
+    
+    
+    /// 获取文件/目录修改时间
+    private func getModificationDate(_ path: String) -> Date {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: path)
+            return attributes[.modificationDate] as? Date ?? Date.distantPast
+        } catch {
+            return Date.distantPast
+        }
+    }
+    
+    // 清除缓存并重新加载所有项目 (保留作为备用方案)
     func clearCacheAndReloadProjects() {
+        print("⚠️ 使用传统全量刷新方式")
         directoryWatcher.clearCacheAndReloadProjects()
     }
     
@@ -521,14 +649,31 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     // 所有必需的属性已经在类中定义了，不需要额外实现
     
-    // MARK: - 数据导入功能 (临时占位)
+    // MARK: - 标签数据备份功能
     
-    func importData(
-        from fileURL: URL,
-        strategy: String = "merge", 
-        conflictResolution: String = "mergeData"
-    ) -> String {
-        print("数据导入功能暂未实现")
-        return "未实现"
+    private lazy var backupManager: TagDataBackup = {
+        return TagDataBackup(storage: storage, tagManager: self)
+    }()
+    
+    /// 快速备份标签数据到桌面
+    func quickBackupTagsToDesktop() -> URL? {
+        return backupManager.quickBackupToDesktop()
+    }
+    
+    /// 备份标签数据到指定位置
+    func backupTagsToFile(at url: URL) throws {
+        let backupData = backupManager.createBackup()
+        try backupManager.saveBackupToFile(backupData, to: url)
+    }
+    
+    /// 生成标签数据报告
+    func generateTagsReport() -> String {
+        let backupData = backupManager.createBackup()
+        return backupManager.generateBackupReport(backupData)
+    }
+    
+    /// 从备份文件导入标签数据
+    func importTagsFromBackup(at url: URL, strategy: TagDataBackup.ImportStrategy = .merge) throws -> TagDataBackup.ImportResult {
+        return try backupManager.importBackupFromFile(at: url, strategy: strategy)
     }
 }

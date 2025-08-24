@@ -288,21 +288,24 @@ struct Project: Identifiable, Equatable, Codable {
         
         // 检查是否已有现有项目
         if let existingProject = existingProjects.values.first(where: { $0.path == path }) {
-            // 使用现有项目的ID，但重新从系统加载标签
+            // 🛡️ 安全修复：保持现有项目的标签，避免数据丢失
             return Project(
                 id: existingProject.id,
                 name: name,
                 path: path,
-                lastModified: modificationDate
+                lastModified: modificationDate,
+                tags: existingProject.tags  // 🔧 修复：保持现有标签
             )
         }
         
-        // 创建新项目
+        // 创建新项目，从系统加载标签
+        let systemTags = loadTagsFromSystem(path: path)
         return Project(
             id: UUID(),
             name: name,
             path: path,
-            lastModified: modificationDate
+            lastModified: modificationDate,
+            tags: systemTags  // 🔧 修复：加载系统标签
         )
     }
 

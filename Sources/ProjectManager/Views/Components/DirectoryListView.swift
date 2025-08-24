@@ -11,8 +11,6 @@ struct DirectoryListView: View {
     @Binding var selectedDirectory: String?
     var onDirectorySelected: (() -> Void)? = nil // 添加目录选择的回调
     
-    @State private var showingDataImportView = false
-    @State private var isProcessingTagSync = false
     @State private var createProjectPath: CreateProjectPath?
     
     var body: some View {
@@ -92,27 +90,38 @@ struct DirectoryListView: View {
                     
                     Divider()
                     
-                    Button(action: {
-                        batchSyncTagsFromDirectory()
-                    }) {
-                        if isProcessingTagSync {
-                            Label("同步中...", systemImage: "arrow.triangle.2.circlepath")
-                        } else {
-                            Label("从系统同步标签", systemImage: "tag.circle")
-                        }
-                    }
-                    .disabled(isProcessingTagSync)
                     
                     Button(action: {
-                        showingDataImportView = true
+                        backupTagsToDesktop()
                     }) {
-                        Label("导入项目数据", systemImage: "square.and.arrow.down")
+                        Label("备份标签数据", systemImage: "doc.badge.plus")
                     }
                     
                     Button(action: {
-                        tagManager.clearCacheAndReloadProjects()
+                        backupTagsToCustomLocation()
                     }) {
-                        Label("刷新项目", systemImage: "arrow.triangle.2.circlepath")
+                        Label("备份到指定位置", systemImage: "folder.badge.plus")
+                    }
+                    
+                    Button(action: {
+                        importTagsFromBackup()
+                    }) {
+                        Label("从备份导入标签", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    
+                    Divider()
+                    
+                    Button(action: {
+                        tagManager.refreshProjects()  // 使用新的智能刷新
+                    }) {
+                        Label("智能刷新", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    
+                    Button(action: {
+                        tagManager.clearCacheAndReloadProjects()  // 保留传统全量刷新作为备用
+                    }) {
+                        Label("完全重新加载", systemImage: "arrow.counterclockwise")
+                            .foregroundColor(.orange)
                     }
                 } label: {
                     Image(systemName: "folder.badge.plus")
@@ -183,10 +192,6 @@ struct DirectoryListView: View {
             .padding(.vertical, AppTheme.tagListContentPaddingV)
         }
         .frame(maxWidth: .infinity)
-        .sheet(isPresented: $showingDataImportView) {
-            DataImportView()
-                .environmentObject(tagManager)
-        }
         .sheet(item: $createProjectPath) { pathItem in
             CreateProjectView(
                 parentDirectory: pathItem.path,
@@ -195,66 +200,175 @@ struct DirectoryListView: View {
         }
     }
     
-    // MARK: - 批量同步标签功能
+    // MARK: - 标签数据备份功能
     
-    /// 批量同步系统标签到应用数据库
-    private func batchSyncTagsFromDirectory() {
-        guard !isProcessingTagSync else { return }
-        
-        // 直接对所有已知项目进行标签同步
-        self.performTagSyncForAllProjects()
-    }
-    
-    /// 对所有已知项目执行标签同步
-    private func performTagSyncForAllProjects() {
-        isProcessingTagSync = true
-        
+    /// 备份标签数据到桌面
+    private func backupTagsToDesktop() {
         DispatchQueue.global(qos: .userInitiated).async {
-            var syncedProjects = 0
-            var syncedTags = Set<String>()
-            let allProjects = Array(self.tagManager.projects.values)
-            
-            for project in allProjects {
-                // 从系统加载此项目目录的标签
-                let systemTags = TagSystemSync.loadTagsFromFile(at: project.path)
-                
-                if !systemTags.isEmpty {
-                    DispatchQueue.main.async {
-                        // 为项目添加从系统同步的标签
-                        for tag in systemTags {
-                            self.tagManager.addTagToProject(projectId: project.id, tag: tag)
-                        }
-                        syncedTags.formUnion(systemTags)
-                        syncedProjects += 1
-                        
-                        print("从系统同步标签到项目 '\(project.name)': \(systemTags)")
-                    }
+            if let backupURL = self.tagManager.quickBackupTagsToDesktop() {
+                DispatchQueue.main.async {
+                    self.showBackupSuccessAlert(at: backupURL.path)
                 }
-            }
-            
-            // 同步完成，显示结果
-            DispatchQueue.main.async {
-                self.isProcessingTagSync = false
-                self.showSyncCompletionAlert(projectsCount: syncedProjects, tagsCount: syncedTags.count)
+            } else {
+                DispatchQueue.main.async {
+                    self.showBackupErrorAlert(message: "备份失败，请检查桌面写入权限")
+                }
             }
         }
     }
     
-    /// 显示同步完成提示
-    private func showSyncCompletionAlert(projectsCount: Int, tagsCount: Int) {
+    /// 备份标签数据到自定义位置
+    private func backupTagsToCustomLocation() {
+        DispatchQueue.main.async {
+            let savePanel = NSSavePanel()
+            savePanel.canCreateDirectories = true
+            savePanel.allowedContentTypes = [.json]
+            
+            // 生成默认文件名
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let timestamp = formatter.string(from: Date())
+            savePanel.nameFieldStringValue = "ProjectManager_TagsBackup_\(timestamp).json"
+            
+            savePanel.title = "保存标签备份文件"
+            savePanel.message = "选择备份文件的保存位置"
+            savePanel.level = .modalPanel
+            
+            savePanel.begin { response in
+                if response == .OK, let url = savePanel.url {
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            try self.tagManager.backupTagsToFile(at: url)
+                            DispatchQueue.main.async {
+                                self.showBackupSuccessAlert(at: url.path)
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                self.showBackupErrorAlert(message: "备份失败: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// 显示备份成功提示
+    private func showBackupSuccessAlert(at path: String) {
         let alert = NSAlert()
-        alert.messageText = "标签同步完成"
-        alert.informativeText = "已同步 \(projectsCount) 个项目的标签，共发现 \(tagsCount) 个不同标签"
+        alert.messageText = "标签数据备份成功"
+        alert.informativeText = "备份文件已保存到：\n\(path)\n\n同时生成了人类可读的报告文件。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "在访达中显示")
+        alert.addButton(withTitle: "确定")
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+        }
+    }
+    
+    /// 显示备份错误提示
+    private func showBackupErrorAlert(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "标签数据备份失败"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
+    }
+    
+    // MARK: - 标签数据导入功能
+    
+    /// 从备份导入标签数据
+    private func importTagsFromBackup() {
+        DispatchQueue.main.async {
+            let openPanel = NSOpenPanel()
+            openPanel.canChooseFiles = true
+            openPanel.canChooseDirectories = false
+            openPanel.allowsMultipleSelection = false
+            openPanel.allowedContentTypes = [.json]
+            openPanel.title = "选择标签备份文件"
+            openPanel.message = "选择要导入的标签备份文件"
+            openPanel.level = .modalPanel
+            
+            openPanel.begin { response in
+                if response == .OK, let url = openPanel.url {
+                    // 显示导入策略选择对话框
+                    self.showImportStrategyDialog(for: url)
+                }
+            }
+        }
+    }
+    
+    /// 显示导入策略选择对话框
+    private func showImportStrategyDialog(for url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "选择导入策略"
+        alert.informativeText = """
+        选择如何处理与现有标签的冲突：
+        
+        • 合并：添加新标签，保留现有标签
+        • 替换：完全替换所有标签数据
+        • 仅添加：只导入新标签，不修改现有内容
+        """
+        alert.alertStyle = .informational
+        
+        alert.addButton(withTitle: "合并")
+        alert.addButton(withTitle: "替换")
+        alert.addButton(withTitle: "仅添加")
+        alert.addButton(withTitle: "取消")
+        
+        let response = alert.runModal()
+        
+        let strategy: TagDataBackup.ImportStrategy
+        switch response {
+        case .alertFirstButtonReturn:
+            strategy = .merge
+        case .alertSecondButtonReturn:
+            strategy = .replace
+        case .alertThirdButtonReturn:
+            strategy = .addOnly
+        default:
+            return // 用户取消
+        }
+        
+        // 执行导入
+        performImport(from: url, strategy: strategy)
+    }
+    
+    /// 执行导入操作
+    private func performImport(from url: URL, strategy: TagDataBackup.ImportStrategy) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let result = try self.tagManager.importTagsFromBackup(at: url, strategy: strategy)
+                
+                DispatchQueue.main.async {
+                    self.showImportSuccessAlert(result: result)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showImportErrorAlert(error: error)
+                }
+            }
+        }
+    }
+    
+    /// 显示导入成功提示
+    private func showImportSuccessAlert(result: TagDataBackup.ImportResult) {
+        let alert = NSAlert()
+        alert.messageText = "标签数据导入成功"
+        alert.informativeText = result.summary
         alert.alertStyle = .informational
         alert.addButton(withTitle: "确定")
         alert.runModal()
     }
     
-    /// 显示同步错误提示
-    private func showSyncErrorAlert(error: Error) {
+    /// 显示导入错误提示
+    private func showImportErrorAlert(error: Error) {
         let alert = NSAlert()
-        alert.messageText = "标签同步失败"
-        alert.informativeText = "同步过程中发生错误: \(error.localizedDescription)"
+        alert.messageText = "标签数据导入失败"
+        alert.informativeText = "导入过程中发生错误：\n\(error.localizedDescription)"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "确定")
         alert.runModal()
