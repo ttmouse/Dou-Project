@@ -75,9 +75,8 @@ show_main_menu() {
     echo -e "${GREEN}1.${NC} 🆕 创建新分支"
     echo -e "${GREEN}2.${NC} 🔄 切换到分支"
     echo -e "${GREEN}3.${NC} 📋 查看所有分支"
-    echo -e "${GREEN}4.${NC} 🔗 合并分支到主分支"
-    echo -e "${GREEN}5.${NC} 🗑️  删除分支"
-    echo -e "${GREEN}6.${NC} 📊 显示状态"
+    echo -e "${GREEN}4.${NC} 🗑️  删除分支"
+    echo -e "${GREEN}5.${NC} 📊 显示状态"
     echo -e "${GREEN}0.${NC} 🚪 退出"
     echo ""
 }
@@ -218,8 +217,8 @@ switch_to_branch() {
     fi
     
     echo -e "${CYAN}🚀 启动分支环境...${NC}"
-    echo -e "${YELLOW}💡 使用 'exit' 返回主目录${NC}"
-    echo -e "${YELLOW}💡 使用 './back-to-main.sh' 快速返回${NC}"
+    echo -e "${YELLOW}💡 使用 'exit' 或 '..' 返回主目录${NC}"
+    echo -e "${YELLOW}💡 使用 'ts' 查看当前环境状态${NC}"
     echo ""
     
     # 切换到分支目录
@@ -228,49 +227,59 @@ switch_to_branch() {
     # 启动新的shell会话，设置提示符
     export TREES_BRANCH="$branch_name"
     
+    # 创建临时的rcfile
+    local temp_rcfile="/tmp/trees_rcfile_$$"
+    cat > "$temp_rcfile" << EOF
+# 加载用户的bashrc (如果存在)
+[ -f ~/.bashrc ] && source ~/.bashrc
+[ -f ~/.bash_profile ] && source ~/.bash_profile
+
+# 设置更明显的终端标题：项目名-分支名
+export PROMPT_COMMAND="echo -ne '\033]0;$project_name-$branch_name | \$(basename \\\$PWD)\007'"
+
+# 设置彩色提示符，包含项目名和分支名
+PS1='\[\e[1;36m\][$project_name:\[\e[1;32m\]$branch_name\[\e[1;36m\]]\[\e[0m\] \[\e[1;34m\]\u\[\e[0m\] \[\e[1;33m\]\W\[\e[0m\] \$ '
+
+# 导出环境变量
+export TREES_BRANCH='$branch_name'
+export TREES_PROJECT='$project_name'
+
+# 添加分支状态函数
+trees_status() {
+    echo -e '\033[1;32m当前 Trees 环境:\033[0m'
+    echo -e '  项目: \033[1;34m$project_name\033[0m'
+    echo -e '  分支: \033[1;32m$branch_name\033[0m'
+    echo -e '  路径: \033[1;33m'\$(pwd)'\033[0m'
+    echo -e '  Git: \033[0;36m'\$(git branch --show-current 2>/dev/null || echo "未知")'\033[0m'
+}
+
+# 添加快速返回函数  
+back() {
+    cd ../..
+    echo -e '\033[1;36m🏠 已返回主项目目录\033[0m'
+    rm -f "$temp_rcfile" 2>/dev/null
+    exec bash
+}
+
+# 添加别名
+alias ts='trees_status'
+alias ..='back'
+
+# 欢迎信息
+echo -e '\033[1;36m╔══════════════════════════════════════════╗\033[0m'
+echo -e '\033[1;36m║          🌲 Trees 分支环境               ║\033[0m'
+echo -e '\033[1;36m╚══════════════════════════════════════════╝\033[0m'
+echo -e '\033[1;32m🌿 当前分支: $branch_name\033[0m'
+echo -e '\033[1;33m📁 工作目录: '\$(pwd)'\033[0m'
+echo -e '\033[1;34m🏗️  项目名称: $project_name\033[0m'
+echo ''
+echo -e '\033[0;36m💡 提示: 终端标题显示 "$project_name-$branch_name"\033[0m'
+echo -e '\033[0;35m💡 便捷命令: ts (状态) | .. (返回) | exit (退出)\033[0m'
+echo ''
+EOF
+    
     # 增强的终端标题和提示符设置
-    exec bash --rcfile <(echo "
-        # 设置更明显的终端标题：项目名-分支名
-        export PROMPT_COMMAND=\"echo -ne '\033]0;$project_name-$branch_name | \$(basename \\\$PWD)\007'\"
-        
-        # 设置彩色提示符，包含项目名和分支名
-        PS1='\[\e[1;36m\][$project_name:\[\e[1;32m\]$branch_name\[\e[1;36m\]]\[\e[0m\] \[\e[1;34m\]\u\[\e[0m\] \[\e[1;33m\]\W\[\e[0m\] \$ '
-        
-        # 导出环境变量
-        export TREES_BRANCH='$branch_name'
-        export TREES_PROJECT='$project_name'
-        
-        # 欢迎信息
-        echo -e '\033[1;36m╔══════════════════════════════════════════╗\033[0m'
-        echo -e '\033[1;36m║          🌲 Trees 分支环境               ║\033[0m'
-        echo -e '\033[1;36m╚══════════════════════════════════════════╝\033[0m'
-        echo -e '\033[1;32m🌿 当前分支: $branch_name\033[0m'
-        echo -e '\033[1;33m📁 工作目录: '\$(pwd)'\033[0m'
-        echo -e '\033[1;34m🏗️  项目名称: $project_name\033[0m'
-        echo ''
-        echo -e '\033[0;36m💡 提示: 终端标题显示 \"$project_name-$branch_name\" \033[0m'
-        echo ''
-        
-        # 添加分支状态函数
-        trees_status() {
-            echo -e '\033[1;32m当前 Trees 环境:\033[0m'
-            echo -e '  项目: \033[1;34m$project_name\033[0m'
-            echo -e '  分支: \033[1;32m$branch_name\033[0m'
-            echo -e '  路径: \033[1;33m'\$(pwd)'\033[0m'
-            echo -e '  Git: \033[0;36m'\$(git branch --show-current 2>/dev/null || echo \"未知\"')'\033[0m'
-        }
-        
-        # 添加快速返回函数
-        back() {
-            cd ../..
-            echo -e '\033[1;36m🏠 已返回主项目目录\033[0m'
-            exec bash
-        }
-        
-        # 添加别名
-        alias ts='trees_status'
-        alias ..='back'
-    ")
+    exec bash --rcfile "$temp_rcfile"
 }
 
 # 查看所有分支
@@ -329,89 +338,6 @@ list_branches_interactive() {
     read -p "按回车继续..."
 }
 
-# 合并分支
-merge_branch_interactive() {
-    echo -e "${BOLD}${CYAN}🔗 合并分支到主分支${NC}"
-    echo ""
-    
-    local branches=($(get_worktree_branches))
-    
-    if [ ${#branches[@]} -eq 0 ]; then
-        echo -e "${YELLOW}📭 没有找到可合并的分支${NC}"
-        read -p "按回车继续..."
-        return
-    fi
-    
-    echo -e "${BLUE}可合并的分支:${NC}"
-    echo ""
-    
-    for i in "${!branches[@]}"; do
-        local branch_name="${branches[$i]}"
-        echo -e "${GREEN}$((i+1)).${NC} $branch_name"
-    done
-    
-    echo ""
-    read -p "请选择要合并的分支编号 (1-${#branches[@]}): " choice
-    
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#branches[@]}" ]; then
-        local selected_branch="${branches[$((choice-1))]}"
-        merge_branch "$selected_branch"
-    else
-        echo -e "${RED}❌ 无效选择${NC}"
-        read -p "按回车继续..."
-    fi
-}
-
-# 执行合并
-merge_branch() {
-    local branch_name="$1"
-    local branch_dir="$TREES_DIR/$branch_name"
-    
-    echo -e "${YELLOW}🔍 检查分支状态...${NC}"
-    
-    # 检查分支是否有未提交的更改
-    cd "$branch_dir"
-    local uncommitted=$(git status --porcelain | wc -l)
-    if [ "$uncommitted" -gt 0 ]; then
-        echo -e "${RED}❌ 分支 '$branch_name' 有 $uncommitted 个未提交的更改${NC}"
-        echo -e "${YELLOW}请先提交更改再合并${NC}"
-        cd ../..
-        read -p "按回车继续..."
-        return
-    fi
-    
-    cd ../..
-    
-    local main_branch=$(git branch --show-current)
-    echo -e "${BLUE}📊 当前主分支: $main_branch${NC}"
-    
-    # 显示即将合并的提交
-    echo -e "${BLUE}📝 即将合并的提交:${NC}"
-    git log --oneline "$main_branch..$branch_name" | head -5
-    echo ""
-    
-    read -p "确认合并分支 '$branch_name' 到 '$main_branch'? (y/N): " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}🔨 正在合并...${NC}"
-        git merge "$branch_name"
-        
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✅ 合并成功!${NC}"
-            echo ""
-            read -p "是否删除已合并的分支? (y/N): " delete_confirm
-            if [[ "$delete_confirm" =~ ^[Yy]$ ]]; then
-                delete_branch "$branch_name" "force"
-                return
-            fi
-        else
-            echo -e "${RED}❌ 合并失败，请解决冲突${NC}"
-        fi
-    else
-        echo -e "${YELLOW}🚫 合并已取消${NC}"
-    fi
-    
-    read -p "按回车继续..."
-}
 
 # 删除分支交互式选择
 delete_branch_interactive() {
@@ -573,7 +499,7 @@ main_loop() {
         show_header
         show_main_menu
         
-        read -p "请选择 (0-6): " choice
+        read -p "请选择 (0-5): " choice
         echo ""
         
         case "$choice" in
@@ -587,12 +513,9 @@ main_loop() {
                 list_branches_interactive
                 ;;
             "4")
-                merge_branch_interactive
-                ;;
-            "5")
                 delete_branch_interactive
                 ;;
-            "6")
+            "5")
                 show_status_interactive
                 ;;
             "0")
