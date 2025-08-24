@@ -6,6 +6,7 @@ struct MainContentView: View {
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager
+    @ObservedObject var editorManager: EditorManager
     
     let filteredProjects: [Project]
     
@@ -23,7 +24,8 @@ struct MainContentView: View {
                 ProjectGridView(
                     filteredProjects: filteredProjects,
                     selectedProjects: $selectedProjects,
-                    searchBarRef: $searchBarRef
+                    searchBarRef: $searchBarRef,
+                    editorManager: editorManager
                 )
             }
         }
@@ -87,6 +89,7 @@ struct ProjectGridView: View {
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager
+    @ObservedObject var editorManager: EditorManager
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -109,6 +112,7 @@ struct ProjectGridView: View {
                         selectedCount: selectedProjects.count,
                         selectedProjects: selectedProjects,
                         tagManager: tagManager,
+                        editorManager: editorManager,
                         onTagSelected: handleTagSelection,
                         onSelect: { isShiftPressed in
                             handleProjectSelection(project, isShiftPressed: isShiftPressed)
@@ -168,6 +172,7 @@ struct MainContentView_Previews: PreviewProvider {
             sortOption: .constant(.timeDesc),
             selectedProjects: .constant([]),
             searchBarRef: .constant(nil),
+            editorManager: EditorManager(),
             filteredProjects: []
         )
         .environmentObject({
