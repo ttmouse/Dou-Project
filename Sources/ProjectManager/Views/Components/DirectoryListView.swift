@@ -1,5 +1,11 @@
 import SwiftUI
 
+// MARK: - 辅助数据类型
+struct CreateProjectPath: Identifiable {
+    let id = UUID()
+    let path: String
+}
+
 struct DirectoryListView: View {
     @ObservedObject var tagManager: TagManager
     @Binding var selectedDirectory: String?
@@ -7,6 +13,7 @@ struct DirectoryListView: View {
     
     @State private var showingDataImportView = false
     @State private var isProcessingTagSync = false
+    @State private var createProjectPath: CreateProjectPath?
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
@@ -145,6 +152,23 @@ struct DirectoryListView: View {
                         }
                     )
                     .contextMenu {
+                        Button(action: {
+                            // 确保在主线程上执行状态更新
+                            DispatchQueue.main.async {
+                                createProjectPath = CreateProjectPath(path: path)
+                            }
+                        }) {
+                            Label("创建新项目", systemImage: "folder.badge.plus")
+                        }
+                        
+                        Divider()
+                        
+                        Button(action: {
+                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+                        }) {
+                            Label("在访达中显示", systemImage: "folder")
+                        }
+                        
                         Button(
                             role: .destructive,
                             action: {
@@ -152,12 +176,6 @@ struct DirectoryListView: View {
                             }
                         ) {
                             Label("移除目录", systemImage: "trash")
-                        }
-
-                        Button(action: {
-                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
-                        }) {
-                            Label("在访达中显示", systemImage: "folder")
                         }
                     }
                 }
@@ -168,6 +186,12 @@ struct DirectoryListView: View {
         .sheet(isPresented: $showingDataImportView) {
             DataImportView()
                 .environmentObject(tagManager)
+        }
+        .sheet(item: $createProjectPath) { pathItem in
+            CreateProjectView(
+                parentDirectory: pathItem.path,
+                tagManager: tagManager
+            )
         }
     }
     
