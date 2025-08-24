@@ -192,18 +192,6 @@ struct EditorPreset {
     ]
 }
 
-/// 通用设置视图占位符
-struct GeneralSettingsView: View {
-    var body: some View {
-        VStack {
-            Text("通用设置")
-                .font(.title2)
-            Text("暂无通用设置项")
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
 
 #if DEBUG
 struct AddEditorView_Previews: PreviewProvider {
