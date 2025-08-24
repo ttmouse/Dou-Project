@@ -17,7 +17,6 @@ struct BranchListView: View {
     @State private var showMainBranch = true
     @State private var statusFilter: Set<BranchStatus> = []
     @State private var searchText = ""
-    @State private var refreshTimer: Timer?
     @StateObject private var statusMonitor = BranchStatusMonitor()
     @State private var selectedBranches: Set<UUID> = []
     @State private var showBatchOperations = false
@@ -47,10 +46,8 @@ struct BranchListView: View {
         }
         .onAppear {
             loadBranches()
-            startRefreshTimer()
         }
         .onDisappear {
-            stopRefreshTimer()
             statusMonitor.stopMonitoring()
         }
         .onReceive(NotificationCenter.default.publisher(for: .branchStatusChanged)) { notification in
@@ -425,19 +422,6 @@ struct BranchListView: View {
         }
     }
     
-    private func startRefreshTimer() {
-        // 每30秒自动刷新一次分支状态
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-            if !isLoading {
-                loadBranches()
-            }
-        }
-    }
-    
-    private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
     
     private func handleBranchStatusChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
