@@ -19,6 +19,7 @@ struct ProjectListView: View {
     @State private var selectedDirectory: String? = nil
 
     @EnvironmentObject var tagManager: TagManager
+    @ObservedObject private var editorManager = AppOpenHelper.editorManager
 
     // MARK: - 枚举
     enum SortOption {
@@ -114,6 +115,7 @@ struct ProjectListView: View {
                 sortOption: $sortOption,
                 selectedProjects: $selectedProjects,
                 searchBarRef: $searchBarRef,
+                editorManager: editorManager,
                 filteredProjects: filteredProjects
             )
         }

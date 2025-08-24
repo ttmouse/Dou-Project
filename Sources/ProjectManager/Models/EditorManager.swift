@@ -78,6 +78,12 @@ class EditorManager: ObservableObject {
     func saveEditors() {
         if let data = try? JSONEncoder().encode(editors) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            print("💾 编辑器配置已保存到UserDefaults")
+            
+            // 显式触发UI更新通知
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
         }
     }
     
@@ -272,6 +278,7 @@ class EditorManager: ObservableObject {
     func updateEditor(_ editor: EditorConfig) {
         if let index = editors.firstIndex(where: { $0.id == editor.id }) {
             editors[index] = editor
+            print("🔄 更新编辑器配置: \(editor.name)")
             saveEditors()
         }
     }
@@ -301,6 +308,7 @@ class EditorManager: ObservableObject {
         for index in editors.indices {
             editors[index].isDefault = (editors[index].id == editor.id)
         }
+        print("⭐ 设置默认编辑器: \(editor.name)")
         saveEditors()
     }
     
@@ -310,6 +318,9 @@ class EditorManager: ObservableObject {
             // 这里可以添加更精确的检测逻辑
             // 目前使用EditorConfig的isAvailable属性
         }
-        objectWillChange.send()
+        print("🔍 检测可用编辑器完成")
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
     }
 }

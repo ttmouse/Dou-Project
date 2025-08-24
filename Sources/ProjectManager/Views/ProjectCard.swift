@@ -11,6 +11,7 @@ struct ProjectCard: View {
     let selectedCount: Int  // 添加选中数量
     let selectedProjects: Set<UUID>  // 添加选中的项目集合
     @ObservedObject var tagManager: TagManager
+    @ObservedObject var editorManager: EditorManager  // 添加对编辑器管理器的观察
     @State private var isEditingTags = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
@@ -129,7 +130,7 @@ struct ProjectCard: View {
     private var contextMenuContent: some View {
         // 打开方式菜单
         Menu("打开方式") {
-            let sortedEditors = AppOpenHelper.editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }
+            let sortedEditors = editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }
             // let _ = print("🎯 构建右键菜单，编辑器数量: \(sortedEditors.count)")
             // let _ = print("📋 编辑器列表: \(sortedEditors.map { "\($0.name)(\($0.isEnabled ? "✓" : "✗"))" })")
             
@@ -160,7 +161,7 @@ struct ProjectCard: View {
                 .disabled(!editor.isEnabled || !editor.isAvailable)
             }
             
-            if AppOpenHelper.editorManager.editors.isEmpty {
+            if editorManager.editors.isEmpty {
                 Divider()
                 Text("无配置的编辑器")
                     .foregroundColor(.secondary)
@@ -325,6 +326,7 @@ struct ProjectCard_Previews: PreviewProvider {
                 let container = TagManager()
                 return TagManager()
             }(),
+            editorManager: EditorManager(),
             onTagSelected: { _ in },
             onSelect: { _ in }
         )
