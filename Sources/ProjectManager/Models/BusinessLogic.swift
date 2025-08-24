@@ -47,7 +47,19 @@ enum ProjectLogic {
     ) -> [ProjectData] {
         let tagFiltered = filterProjects(projects, by: filter.selectedTags)
         let searchFiltered = filterProjects(tagFiltered, by: filter.searchText)
-        return searchFiltered
+        let hiddenTagsFiltered = filterProjectsByHiddenTags(searchFiltered, hiddenTags: filter.hiddenTags)
+        return hiddenTagsFiltered
+    }
+    
+    /// 根据特定标签过滤项目 - 排除包含"隐藏标签"的项目
+    static func filterProjectsByHiddenTags(
+        _ projects: [ProjectData],
+        hiddenTags: Set<String> = [] // 保留参数兼容性，但不使用
+    ) -> [ProjectData] {
+        return projects.filter { project in
+            // 只检查项目是否包含"隐藏标签"这个特定标签
+            return !project.tags.contains("隐藏标签")
+        }
     }
     
     /// 排序项目
@@ -802,18 +814,37 @@ enum AppStateLogic {
 /// Dashboard 业务逻辑 - 最简单可工作的实现
 enum DashboardLogic {
     
-    /// 生成每日活动数据 - 先创建空的，确保编译通过
+    /// 生成每日活动数据 - 基于实际项目数据，修正提交数计算逻辑
     static func generateDailyActivities(from projects: [ProjectData], days: Int = 90) -> [DailyActivity] {
         let calendar = Calendar.current
         let today = Date()
         var activities: [DailyActivity] = []
         
+        // 创建日期到活跃项目数的映射（更合理的统计方式）
+        var dailyActiveProjects: [Date: Set<UUID>] = [:]
+        
+        // 统计每个项目的最后活跃日期
+        for project in projects {
+            guard let gitInfo = project.gitInfo else { continue }
+            
+            let lastCommitDate = gitInfo.lastCommitDate
+            let dayStart = calendar.startOfDay(for: lastCommitDate)
+            
+            // 如果这个日期在我们的统计范围内，记录这个项目在这一天是活跃的
+            if let daysAgo = calendar.dateComponents([.day], from: dayStart, to: calendar.startOfDay(for: today)).day,
+               daysAgo >= 0 && daysAgo < days {
+                dailyActiveProjects[dayStart, default: Set<UUID>()].insert(project.id)
+            }
+        }
+        
+        // 生成指定天数的活动数据
         for dayOffset in 0..<days {
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
             
-            // 简单实现：每天固定显示一些活动
-            let commitCount = Int.random(in: 0...5)
-            activities.append(DailyActivity(date: date, commitCount: commitCount))
+            // 使用当天活跃的项目数作为活动强度指标
+            let activeProjectCount = dailyActiveProjects[dayStart]?.count ?? 0
+            activities.append(DailyActivity(date: date, commitCount: activeProjectCount))
         }
         
         return activities.reversed() // 按时间顺序
@@ -852,20 +883,23 @@ enum DashboardLogic {
         return grid
     }
     
-    /// 计算热力图统计信息
-    static func calculateHeatmapStats(from activities: [DailyActivity]) -> Dashboard.HeatmapStats {
+    /// 计算热力图统计信息 - 修正总提交数计算
+    static func calculateHeatmapStats(from activities: [DailyActivity], projects: [ProjectData]) -> Dashboard.HeatmapStats {
         let totalDays = activities.count
         let activeDays = activities.filter { $0.commitCount > 0 }.count
-        let totalCommits = activities.reduce(0) { $0 + $1.commitCount }
-        let maxCommitsInDay = activities.map { $0.commitCount }.max() ?? 0
-        let averageCommitsPerDay = totalDays > 0 ? Double(totalCommits) / Double(totalDays) : 0
+        
+        // 正确计算总提交次数：从项目的实际Git信息中获取
+        let totalCommits = projects.compactMap { $0.gitInfo?.commitCount }.reduce(0, +)
+        
+        let maxActiveProjectsInDay = activities.map { $0.commitCount }.max() ?? 0
+        let averageActiveProjectsPerDay = totalDays > 0 ? Double(activities.reduce(0) { $0 + $1.commitCount }) / Double(totalDays) : 0
         
         return Dashboard.HeatmapStats(
             totalDays: totalDays,
             activeDays: activeDays,
             totalCommits: totalCommits,
-            maxCommitsInDay: maxCommitsInDay,
-            averageCommitsPerDay: averageCommitsPerDay,
+            maxCommitsInDay: maxActiveProjectsInDay,
+            averageCommitsPerDay: averageActiveProjectsPerDay,
             activityRate: totalDays > 0 ? Double(activeDays) / Double(totalDays) : 0
         )
     }

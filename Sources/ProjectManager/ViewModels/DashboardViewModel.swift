@@ -113,7 +113,7 @@ final class DashboardViewModel: ObservableObject {
         await MainActor.run {
             self.dailyActivities = result.0
             self.mostActiveProjects = result.1
-            self.heatmapStats = DashboardLogic.calculateHeatmapStats(from: result.0)
+            self.heatmapStats = DashboardLogic.calculateHeatmapStats(from: result.0, projects: projects)
         }
     }
     
@@ -126,7 +126,7 @@ final class DashboardViewModel: ObservableObject {
             
             await MainActor.run {
                 self.dailyActivities = activities
-                self.heatmapStats = DashboardLogic.calculateHeatmapStats(from: activities)
+                self.heatmapStats = DashboardLogic.calculateHeatmapStats(from: activities, projects: self.projects)
             }
         }
     }
