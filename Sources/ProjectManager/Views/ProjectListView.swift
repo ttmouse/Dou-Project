@@ -17,6 +17,8 @@ struct ProjectListView: View {
     @State private var searchBarRef: SearchBar? = nil
     @State private var sortOption: SortOption = .timeDesc
     @State private var selectedDirectory: String? = nil
+    @State private var showDetailPanel = false
+    @State private var selectedProjectForDetail: Project? = nil
 
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject private var editorManager = AppOpenHelper.editorManager
@@ -116,8 +118,20 @@ struct ProjectListView: View {
                 selectedProjects: $selectedProjects,
                 searchBarRef: $searchBarRef,
                 editorManager: editorManager,
-                filteredProjects: filteredProjects
+                filteredProjects: filteredProjects,
+                onShowProjectDetail: showProjectDetail
             )
+            
+            // 详情面板（条件显示）
+            if showDetailPanel, let project = selectedProjectForDetail {
+                ProjectDetailView(
+                    project: convertToProjectData(project),
+                    isVisible: $showDetailPanel
+                )
+                .frame(minWidth: 380, maxWidth: 380)
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
+            }
         }
         .onAppear {
             loadProjects()
@@ -146,6 +160,37 @@ struct ProjectListView: View {
     }
 
     // MARK: - 私有方法
+    
+    private func showProjectDetail(_ project: Project) {
+        selectedProjectForDetail = project
+        withAnimation(.easeInOut(duration: 0.3)) {
+            showDetailPanel = true
+        }
+    }
+    
+    private func convertToProjectData(_ project: Project) -> ProjectData {
+        // 将 Project 转换为 ProjectData
+        return ProjectData(
+            id: project.id,
+            name: project.name,
+            path: project.path,
+            lastModified: project.lastModified,
+            tags: project.tags,
+            gitInfo: project.gitInfo.map { gitInfo in
+                ProjectData.GitInfoData(
+                    commitCount: gitInfo.commitCount,
+                    lastCommitDate: gitInfo.lastCommitDate ?? Date()
+                )
+            },
+            fileSystemInfo: ProjectData.FileSystemInfoData(
+                modificationDate: project.lastModified,
+                size: 0, // 这里可以从文件系统获取实际大小
+                checksum: "",
+                lastCheckTime: Date()
+            )
+        )
+    }
+    
     private func loadProjects() {
         // 立即加载缓存的项目数据
         print("立即加载已缓存的项目数据")
