@@ -9,6 +9,7 @@ struct MainContentView: View {
     @ObservedObject var editorManager: EditorManager
     
     let filteredProjects: [Project]
+    let onShowProjectDetail: (Project) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -25,7 +26,8 @@ struct MainContentView: View {
                     filteredProjects: filteredProjects,
                     selectedProjects: $selectedProjects,
                     searchBarRef: $searchBarRef,
-                    editorManager: editorManager
+                    editorManager: editorManager,
+                    onShowProjectDetail: onShowProjectDetail
                 )
             }
         }
@@ -90,6 +92,7 @@ struct ProjectGridView: View {
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject var editorManager: EditorManager
+    let onShowProjectDetail: (Project) -> Void
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -116,7 +119,8 @@ struct ProjectGridView: View {
                         onTagSelected: handleTagSelection,
                         onSelect: { isShiftPressed in
                             handleProjectSelection(project, isShiftPressed: isShiftPressed)
-                        }
+                        },
+                        onShowDetail: { onShowProjectDetail(project) }
                     )
                 }
             }
@@ -173,7 +177,8 @@ struct MainContentView_Previews: PreviewProvider {
             selectedProjects: .constant([]),
             searchBarRef: .constant(nil),
             editorManager: EditorManager(),
-            filteredProjects: []
+            filteredProjects: [],
+            onShowProjectDetail: { _ in }
         )
         .environmentObject({
             let container = TagManager()

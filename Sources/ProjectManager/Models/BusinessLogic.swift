@@ -386,6 +386,354 @@ enum ProjectOperations {
     }
 }
 
+/// 分支管理业务逻辑 - 纯函数集合
+/// 遵循Linus式设计原则：简洁、直接、无副作用
+enum BranchLogic {
+    
+    /// 创建分支
+    /// - Parameters:
+    ///   - params: 分支创建参数
+    /// - Returns: 分支操作结果
+    static func createBranch(params: BranchCreationParams) -> BranchOperationResult {
+        // 验证分支名称
+        if !params.isValidName {
+            return BranchOperationResult.failure(
+                operation: .create,
+                message: "分支名称无效：\(params.name)",
+                branchName: params.name
+            )
+        }
+        
+        // 检查项目路径是否为有效Git仓库
+        if !ShellExecutor.isValidGitRepository(path: params.projectPath) {
+            return BranchOperationResult.failure(
+                operation: .create,
+                message: "路径不是有效的Git仓库：\(params.projectPath)",
+                branchName: params.name
+            )
+        }
+        
+        // 委托给ShellExecutor执行实际创建
+        return ShellExecutor.createWorktree(
+            branchName: params.name,
+            targetPath: params.targetPath,
+            basePath: params.projectPath,
+            description: params.description
+        )
+    }
+    
+    /// 删除分支
+    /// - Parameters:
+    ///   - name: 分支名称
+    ///   - path: 分支路径
+    ///   - projectPath: 项目路径
+    ///   - force: 是否强制删除
+    /// - Returns: 分支操作结果
+    static func deleteBranch(
+        name: String, 
+        path: String, 
+        projectPath: String, 
+        force: Bool = false
+    ) -> BranchOperationResult {
+        // 安全检查：不允许删除主分支
+        if isMainBranch(name: name) {
+            return BranchOperationResult.failure(
+                operation: .delete,
+                message: "不能删除主分支",
+                branchName: name
+            )
+        }
+        
+        // 委托给ShellExecutor执行实际删除
+        return ShellExecutor.removeWorktree(
+            path: path,
+            branchName: name,
+            basePath: projectPath,
+            force: force
+        )
+    }
+    
+    /// 获取分支状态
+    /// - Parameter path: 分支路径
+    /// - Returns: 分支状态
+    static func getBranchStatus(path: String) -> BranchStatus {
+        guard ShellExecutor.isValidGitRepository(path: path) else {
+            return .unknown
+        }
+        
+        let status = ShellExecutor.getGitStatus(path: path)
+        return status.clean ? .clean : .hasChanges
+    }
+    
+    /// 列出所有worktree
+    /// - Parameter projectPath: 项目路径
+    /// - Returns: worktree信息列表
+    static func listWorktrees(projectPath: String) -> [WorktreeInfo] {
+        guard ShellExecutor.isValidGitRepository(path: projectPath) else {
+            return []
+        }
+        
+        return ShellExecutor.getWorktreeList(basePath: projectPath)
+    }
+    
+    /// 获取分支信息
+    /// - Parameter path: 分支路径
+    /// - Returns: 分支信息，如果获取失败返回nil
+    static func getBranchInfo(path: String) -> BranchInfo? {
+        guard FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+        
+        // 从路径中提取分支名称
+        let branchName = URL(fileURLWithPath: path).lastPathComponent
+        
+        // 读取分支描述
+        let description = ShellExecutor.readBranchInfo(branchPath: path)
+        
+        // 获取分支状态
+        let status = getBranchStatus(path: path)
+        
+        // 获取Git状态详情
+        let gitStatus = ShellExecutor.getGitStatus(path: path)
+        
+        // 获取创建时间和最后修改时间
+        let (createdAt, lastUsed) = getBranchDates(path: path)
+        
+        // 获取磁盘使用量
+        let diskSize = ShellExecutor.getDiskUsage(path: path)
+        
+        // 检查是否为主分支
+        let isMain = isMainBranch(name: branchName)
+        
+        return BranchInfo(
+            name: branchName,
+            path: path,
+            description: description,
+            status: status,
+            createdAt: createdAt,
+            lastUsed: lastUsed,
+            uncommittedChanges: gitStatus.changes,
+            diskSize: diskSize,
+            isMain: isMain
+        )
+    }
+    
+    /// 合并分支
+    /// - Parameters:
+    ///   - source: 源分支名称
+    ///   - target: 目标分支名称
+    ///   - projectPath: 项目路径
+    ///   - strategy: 合并策略
+    /// - Returns: 操作结果
+    static func mergeBranch(
+        source: String, 
+        target: String = "main", 
+        projectPath: String,
+        strategy: MergeStrategy = .recursive
+    ) -> BranchOperationResult {
+        // 安全检查：不允许合并主分支
+        if isMainBranch(name: source) {
+            return BranchOperationResult.failure(
+                operation: .merge,
+                message: "不能合并主分支",
+                branchName: source
+            )
+        }
+        
+        // 委托给ShellExecutor执行实际合并
+        return ShellExecutor.mergeBranch(
+            sourceBranch: source,
+            targetBranch: target,
+            projectPath: projectPath,
+            strategy: strategy
+        )
+    }
+    
+    /// 检查分支合并可行性
+    /// - Parameters:
+    ///   - source: 源分支名称
+    ///   - target: 目标分支名称
+    ///   - projectPath: 项目路径
+    /// - Returns: 合并可行性检查结果
+    static func checkMergeability(
+        source: String,
+        target: String = "main",
+        projectPath: String
+    ) -> MergeabilityCheck {
+        return ShellExecutor.checkMergeability(
+            sourceBranch: source,
+            targetBranch: target,
+            projectPath: projectPath
+        )
+    }
+    
+    /// 获取分支差异统计
+    /// - Parameters:
+    ///   - source: 源分支名称
+    ///   - target: 目标分支名称
+    ///   - projectPath: 项目路径
+    /// - Returns: 差异统计信息
+    static func getBranchDiff(
+        source: String,
+        target: String = "main",
+        projectPath: String
+    ) -> BranchDiffStats? {
+        return ShellExecutor.getBranchDiff(
+            sourceBranch: source,
+            targetBranch: target,
+            projectPath: projectPath
+        )
+    }
+    
+    /// 验证分支名称
+    /// - Parameter name: 分支名称
+    /// - Returns: 是否有效
+    static func validateBranchName(_ name: String) -> Bool {
+        let params = BranchCreationParams(name: name, projectPath: "")
+        return params.isValidName
+    }
+    
+    /// 检查是否为主分支
+    /// - Parameter name: 分支名称
+    /// - Returns: 是否为主分支
+    static func isMainBranch(name: String) -> Bool {
+        let mainBranches = ["main", "master", "develop"]
+        return mainBranches.contains(name.lowercased())
+    }
+    
+    /// 生成分支统计信息
+    /// - Parameter branches: 分支列表
+    /// - Returns: 统计信息
+    static func generateStatistics(_ branches: [BranchInfo]) -> BranchStatistics {
+        return BranchStatistics(branches: branches)
+    }
+    
+    /// 根据条件过滤分支
+    /// - Parameters:
+    ///   - branches: 分支列表
+    ///   - showMain: 是否显示主分支
+    ///   - statusFilter: 状态过滤器
+    /// - Returns: 过滤后的分支列表
+    static func filterBranches(
+        _ branches: [BranchInfo],
+        showMain: Bool = true,
+        statusFilter: Set<BranchStatus>? = nil
+    ) -> [BranchInfo] {
+        var filtered = branches
+        
+        // 主分支过滤
+        if !showMain {
+            filtered = filtered.filter { !$0.isMain }
+        }
+        
+        // 状态过滤
+        if let statusFilter = statusFilter, !statusFilter.isEmpty {
+            filtered = filtered.filter { statusFilter.contains($0.status) }
+        }
+        
+        return filtered
+    }
+    
+    /// 按条件排序分支
+    /// - Parameters:
+    ///   - branches: 分支列表
+    ///   - criteria: 排序条件
+    ///   - ascending: 是否升序
+    /// - Returns: 排序后的分支列表
+    static func sortBranches(
+        _ branches: [BranchInfo],
+        by criteria: BranchSortCriteria = .lastUsed,
+        ascending: Bool = false
+    ) -> [BranchInfo] {
+        return branches.sorted { branch1, branch2 in
+            let result: Bool
+            
+            switch criteria {
+            case .name:
+                result = branch1.name.localizedCaseInsensitiveCompare(branch2.name) == .orderedAscending
+            case .createdAt:
+                result = branch1.createdAt < branch2.createdAt
+            case .lastUsed:
+                let date1 = branch1.lastUsed ?? Date.distantPast
+                let date2 = branch2.lastUsed ?? Date.distantPast
+                result = date1 < date2
+            case .status:
+                result = branch1.status.rawValue < branch2.status.rawValue
+            case .changes:
+                result = branch1.uncommittedChanges < branch2.uncommittedChanges
+            case .diskSize:
+                let size1 = branch1.diskSize ?? 0
+                let size2 = branch2.diskSize ?? 0
+                result = size1 < size2
+            }
+            
+            return ascending ? result : !result
+        }
+    }
+    
+    // MARK: - Private Helper Functions
+    
+    /// 获取分支的创建和最后使用时间
+    private static func getBranchDates(path: String) -> (createdAt: Date, lastUsed: Date?) {
+        let branchInfoPath = "\(path)/.branch_info"
+        var createdAt: Date = Date()
+        
+        // 尝试从.branch_info文件读取创建时间
+        if let content = try? String(contentsOfFile: branchInfoPath, encoding: .utf8) {
+            let lines = content.components(separatedBy: .newlines)
+            for line in lines {
+                if line.hasPrefix("CREATED_AT=") {
+                    let dateString = String(line.dropFirst("CREATED_AT=".count))
+                    if let date = ISO8601DateFormatter().date(from: dateString) {
+                        createdAt = date
+                        break
+                    }
+                }
+            }
+        } else {
+            // 回退到文件系统创建时间
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: path)
+                createdAt = attributes[.creationDate] as? Date ?? Date()
+            } catch {
+                createdAt = Date()
+            }
+        }
+        
+        // 最后使用时间使用文件系统修改时间
+        let lastUsed: Date?
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: path)
+            lastUsed = attributes[.modificationDate] as? Date
+        } catch {
+            lastUsed = nil
+        }
+        
+        return (createdAt: createdAt, lastUsed: lastUsed)
+    }
+}
+
+/// 分支排序条件
+enum BranchSortCriteria: CaseIterable {
+    case name
+    case createdAt
+    case lastUsed
+    case status
+    case changes
+    case diskSize
+    
+    var displayName: String {
+        switch self {
+        case .name: return "名称"
+        case .createdAt: return "创建时间"
+        case .lastUsed: return "最后使用"
+        case .status: return "状态"
+        case .changes: return "更改数量"
+        case .diskSize: return "大小"
+        }
+    }
+}
+
 /// 应用状态业务逻辑 - 纯函数集合
 enum AppStateLogic {
     

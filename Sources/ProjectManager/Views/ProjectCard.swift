@@ -15,6 +15,7 @@ struct ProjectCard: View {
     @State private var isEditingTags = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
+    let onShowDetail: () -> Void  // 添加显示详情回调
 
     // MARK: - 子视图
     
@@ -27,6 +28,14 @@ struct ProjectCard: View {
                 .lineLimit(1)
 
             Spacer()
+
+            // 详情按钮
+            Button(action: onShowDetail) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(AppTheme.secondaryIcon)
+            }
+            .buttonStyle(.plain)
+            .help("显示项目详情和分支管理")
 
             // 编辑标签按钮
             Button(action: { isEditingTags = true }) {
@@ -328,7 +337,8 @@ struct ProjectCard_Previews: PreviewProvider {
             }(),
             editorManager: EditorManager(),
             onTagSelected: { _ in },
-            onSelect: { _ in }
+            onSelect: { _ in },
+            onShowDetail: { }
         )
         .padding()
     }
