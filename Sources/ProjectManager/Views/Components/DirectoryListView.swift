@@ -51,88 +51,36 @@ struct DirectoryListView: View {
                             panel.allowsMultipleSelection = true
                             panel.canCreateDirectories = false
                             panel.prompt = "选择"
-                            panel.message = "请选择要添加的项目文件夹"
+                            panel.message = "请选择要添加的项目文件夹（支持多选，批量添加）"
                             panel.level = .modalPanel
 
                             if panel.runModal() == .OK {
+                                var projects: [Project] = []
                                 for url in panel.urls {
-                                    DispatchQueue.main.async {
-                                        let project = Project(
-                                            name: url.lastPathComponent,
-                                            path: url.path,
-                                            lastModified: Date()
-                                        )
-                                        tagManager.registerProject(project)
-                                    }
-                                }
-                            }
-                        }
-                    }) {
-                        Label("直接添加为项目", systemImage: "plus.rectangle.on.folder")
-                    }
-                    
-                    Button(action: {
-                        DispatchQueue.main.async {
-                            let panel = NSOpenPanel()
-                            panel.canChooseFiles = false
-                            panel.canChooseDirectories = true
-                            panel.allowsMultipleSelection = false
-                            panel.canCreateDirectories = false
-                            panel.prompt = "选择"
-                            panel.message = "请选择要扫描的文件夹"
-                            panel.level = .modalPanel
-
-                            if panel.runModal() == .OK, let url = panel.url {
-                                // 仅扫描选定目录的直接子目录
-                                do {
-                                    let fileManager = FileManager.default
-                                    let contents = try fileManager.contentsOfDirectory(
-                                        at: url,
-                                        includingPropertiesForKeys: [.isDirectoryKey],
-                                        options: [.skipsHiddenFiles]
+                                    let project = Project(
+                                        name: url.lastPathComponent,
+                                        path: url.path,
+                                        lastModified: Date()
                                     )
-                                    
-                                    // 过滤出目录
-                                    let directories = contents.filter { 
-                                        (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                                    }
-                                    
-                                    // 将每个子目录添加为项目
-                                    for dirURL in directories {
-                                        let modDate = (try? dirURL.resourceValues(
-                                            forKeys: [.contentModificationDateKey]
-                                        ).contentModificationDate) ?? Date()
-                                        
-                                        let project = Project(
-                                            name: dirURL.lastPathComponent,
-                                            path: dirURL.path,
-                                            lastModified: modDate
-                                        )
-                                        tagManager.registerProject(project)
-                                    }
+                                    projects.append(project)
+                                }
+                                
+                                // 批量注册项目
+                                DispatchQueue.main.async {
+                                    tagManager.registerProjects(projects)
                                     
                                     // 显示确认对话框
-                                    DispatchQueue.main.async {
-                                        let alert = NSAlert()
-                                        alert.messageText = "导入完成"
-                                        alert.informativeText = "已添加 \(directories.count) 个子目录作为项目"
-                                        alert.alertStyle = .informational
-                                        alert.addButton(withTitle: "确定")
-                                        alert.runModal()
-                                    }
-                                } catch {
-                                    // 显示错误对话框
                                     let alert = NSAlert()
-                                    alert.messageText = "扫描错误"
-                                    alert.informativeText = "扫描目录失败: \(error.localizedDescription)"
-                                    alert.alertStyle = .warning
+                                    alert.messageText = "导入完成"
+                                    alert.informativeText = "已添加 \(projects.count) 个项目"
+                                    alert.alertStyle = .informational
                                     alert.addButton(withTitle: "确定")
                                     alert.runModal()
                                 }
                             }
                         }
                     }) {
-                        Label("扫描子目录并添加", systemImage: "folder.badge.gearshape")
+                        Label("直接添加为项目", systemImage: "plus.rectangle.on.folder")
                     }
                     
                     Divider()
