@@ -115,7 +115,7 @@ enum HeatmapLogic {
         }
     }
     
-    /// 获取最近N天的热力图数据 - Linus式：直接计算，不搞缓存
+    /// 获取最近N天的热力图数据 - 支持真实的多天Git历史
     static func generateHeatmapData(
         from projects: [ProjectData],
         days: Int = 30
@@ -124,24 +124,22 @@ enum HeatmapLogic {
         let today = Date()
         var heatmapData: [HeatmapData] = []
         
-        // 简单直接：遍历每一天
+        // 遍历每一天，实时查询Git历史
         for dayOffset in 0..<days {
             guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
                 continue
             }
             
-            // 获取当天开始和结束时间
             let startOfDay = calendar.startOfDay(for: targetDate)
-            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
             
-            // 找出当天有提交的项目
+            // 实时查询每个项目在这一天的提交数
             var dailyCommitCount = 0
             var dailyProjects: [ProjectData] = []
             
             for project in projects {
-                if let lastCommitDate = project.gitInfo?.lastCommitDate,
-                   lastCommitDate >= startOfDay && lastCommitDate < endOfDay {
-                    dailyCommitCount += 1 // 简化：每个项目当天算1个提交
+                let commitsOnDay = getCommitsForDate(project: project, date: startOfDay)
+                if commitsOnDay > 0 {
+                    dailyCommitCount += commitsOnDay
                     dailyProjects.append(project)
                 }
             }
@@ -156,6 +154,55 @@ enum HeatmapLogic {
         return heatmapData.reversed() // 最早的日期在前
     }
     
+    /// 获取项目在指定日期的提交数 - 实时Git查询，不存储数据
+    private static func getCommitsForDate(project: ProjectData, date: Date) -> Int {
+        // 直接检查是否是Git仓库，不依赖缓存的gitInfo
+        let gitPath = "\(project.path)/.git"
+        guard FileManager.default.fileExists(atPath: gitPath) else { return 0 }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: date)
+        
+        // 计算下一天的日期
+        let calendar = Calendar.current
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+        let nextDayString = formatter.string(from: nextDay)
+        
+        // Git命令：查询指定日期的提交数（使用--since和--until的正确格式）
+        let gitCommand = "cd '\(project.path)' && git log --oneline --since='\(dateString)' --until='\(nextDayString)' 2>/dev/null | wc -l"
+        
+        return executeGitCommand(gitCommand)
+    }
+    
+    /// 执行Git命令并返回提交数
+    private static func executeGitCommand(_ command: String) -> Int {
+        let process = Process()
+        process.launchPath = "/bin/bash"
+        process.arguments = ["-c", command]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe() // 忽略错误输出
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               let count = Int(output) {
+                return count
+            }
+        } catch {
+            // Git命令执行失败，静默返回0
+            return 0
+        }
+        
+        return 0
+    }
+    
     /// 获取某天的项目列表 - Linus式：简单查找
     static func getProjectsForDate(
         _ targetDate: Date,
@@ -168,6 +215,24 @@ enum HeatmapLogic {
             }
         }
         return []
+    }
+    
+    /// 为特定项目生成热力图数据 - Linus式：最小改动实现单项目支持
+    static func generateProjectHeatmapData(
+        for project: ProjectData,
+        days: Int = 30
+    ) -> [HeatmapData] {
+        // 复用现有逻辑，只传入单个项目
+        return generateHeatmapData(from: [project], days: days)
+    }
+    
+    /// 为多个特定项目生成热力图数据 - 支持项目组合分析
+    static func generateProjectsHeatmapData(
+        for projects: [ProjectData],
+        days: Int = 30
+    ) -> [HeatmapData] {
+        // 直接复用现有逻辑
+        return generateHeatmapData(from: projects, days: days)
     }
     
     /// 检查项目是否存在

@@ -15,6 +15,10 @@ struct SidebarView: View {
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
     
+    // 缓存热力图数据，避免重复计算
+    @State private var cachedHeatmapData: [HeatmapLogic.HeatmapData] = []
+    @State private var isGeneratingHeatmap = false
+    
     var body: some View {
         VStack(spacing: 0) {
             // 添加目录列表
@@ -103,7 +107,7 @@ struct SidebarView: View {
             }
             
             HeatmapView(
-                heatmapData: generateHeatmapData(),
+                heatmapData: cachedHeatmapData,
                 onDateSelected: { projects in
                     selectedProjects = projects
                     selectedDateString = formatSelectedDate(from: projects)
@@ -120,45 +124,34 @@ struct SidebarView: View {
                     searchBarRef?.clearFocus()
                 }
             )
+            .onAppear {
+                if cachedHeatmapData.isEmpty && !isGeneratingHeatmap {
+                    generateHeatmapDataAsync()
+                }
+            }
         }
     }
     
-    // MARK: - 热力图数据生成 (Linus式：直接从TagManager获取数据，不搞复杂转换)
-    private func generateHeatmapData() -> [HeatmapLogic.HeatmapData] {
-        // Linus式解决方案：直接用现有的Project结构，不转换
-        let calendar = Calendar.current
-        let today = Date()
-        var heatmapData: [HeatmapLogic.HeatmapData] = []
+    // MARK: - 热力图数据生成 - 异步版本，避免UI阻塞
+    private func generateHeatmapDataAsync() {
+        isGeneratingHeatmap = true
         
-        // Linus式：根据侧边栏空间优化，显示更多天数
-        for dayOffset in 0..<90 {
-            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
-                continue
-            }
-            
-            let startOfDay = calendar.startOfDay(for: targetDate)
-            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
-            
-            // 找出当天有提交的项目（直接使用Project）
-            var dailyCommitCount = 0
-            var dailyProjects: [ProjectData] = []
-            
-            for project in tagManager.projects.values {
-                if let gitInfo = project.gitInfo,
-                   gitInfo.lastCommitDate >= startOfDay && gitInfo.lastCommitDate < endOfDay {
-                    dailyCommitCount += 1
-                    
-                    // 简单转换到ProjectData
-                    let projectData = ProjectData(
+        Task {
+            // 在后台线程生成数据
+            let projectDataArray = await MainActor.run {
+                tagManager.projects.values.map { project in
+                    ProjectData(
                         id: project.id,
                         name: project.name,
                         path: project.path,
                         lastModified: project.lastModified,
                         tags: project.tags,
-                        gitInfo: ProjectData.GitInfoData(
-                            commitCount: gitInfo.commitCount,
-                            lastCommitDate: gitInfo.lastCommitDate
-                        ),
+                        gitInfo: project.gitInfo.map { gitInfo in
+                            ProjectData.GitInfoData(
+                                commitCount: gitInfo.commitCount,
+                                lastCommitDate: gitInfo.lastCommitDate
+                            )
+                        },
                         fileSystemInfo: ProjectData.FileSystemInfoData(
                             modificationDate: project.fileSystemInfo.modificationDate,
                             size: project.fileSystemInfo.size,
@@ -166,18 +159,18 @@ struct SidebarView: View {
                             lastCheckTime: project.fileSystemInfo.lastCheckTime
                         )
                     )
-                    dailyProjects.append(projectData)
                 }
             }
             
-            heatmapData.append(HeatmapLogic.HeatmapData(
-                date: startOfDay,
-                commitCount: dailyCommitCount,
-                projects: dailyProjects
-            ))
+            // 后台生成热力图数据（Git查询）
+            let heatmapData = HeatmapLogic.generateHeatmapData(from: Array(projectDataArray), days: 90)
+            
+            // 回到主线程更新UI
+            await MainActor.run {
+                cachedHeatmapData = heatmapData
+                isGeneratingHeatmap = false
+            }
         }
-        
-        return heatmapData.reversed() // 最早的日期在前
     }
     
     // MARK: - 日期格式化
