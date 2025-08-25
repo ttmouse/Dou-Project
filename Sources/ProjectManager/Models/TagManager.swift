@@ -633,6 +633,126 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         directoryWatcher.clearCacheAndReloadProjects()
     }
     
+    /// 刷新单个项目
+    /// - Parameter projectId: 要刷新的项目ID
+    func refreshSingleProject(_ projectId: UUID) {
+        print("🔄 开始刷新单个项目: \(projectId)")
+        
+        guard let existingProject = projects[projectId] else {
+            print("❌ 未找到要刷新的项目: \(projectId)")
+            return
+        }
+        
+        Task {
+            // 使用BusinessLogic的纯函数刷新项目数据
+            let projectData = existingProject.toProjectData()
+            let refreshedData = ProjectOperations.refreshSingleProject(projectData)
+            
+            // 转换回Project并同步系统标签
+            let syncedProject = Project.fromProjectData(refreshedData)
+            // 加载最新的系统标签并合并
+            let systemTags = TagSystemSync.loadTagsFromFile(at: refreshedData.path)
+            let mergedTags = refreshedData.tags.union(systemTags)
+            let finalProject = syncedProject.copyWith(tags: mergedTags)
+            
+            // 在主线程更新数据
+            await MainActor.run {
+                let oldProject = projects[projectId]
+                projects[projectId] = finalProject
+                
+                // 更新排序管理器
+                sortManager.updateProject(finalProject)
+                
+                // 更新标签集合
+                allTags.formUnion(finalProject.tags)
+                
+                // 同步到新的状态系统
+                var updatedProjects = appState.projects
+                updatedProjects[projectId] = refreshedData
+                appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+                
+                // 保存到缓存
+                projectOperations.saveAllToCache()
+                
+                print("✅ 项目刷新完成: \(finalProject.name)")
+                
+                // 检查是否有变化
+                if let old = oldProject {
+                    let nameChanged = old.name != finalProject.name
+                    let tagsChanged = old.tags != finalProject.tags
+                    let gitChanged = old.gitInfo?.commitCount != finalProject.gitInfo?.commitCount
+                    
+                    if nameChanged || tagsChanged || gitChanged {
+                        print("📝 检测到项目变化:")
+                        if nameChanged { print("  • 名称: \(old.name) → \(finalProject.name)") }
+                        if tagsChanged { print("  • 标签: \(old.tags) → \(finalProject.tags)") }
+                        if gitChanged { 
+                            let oldCount = old.gitInfo?.commitCount ?? 0
+                            let newCount = finalProject.gitInfo?.commitCount ?? 0
+                            print("  • Git提交: \(oldCount) → \(newCount)") 
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// 重命名项目
+    /// - Parameters:
+    ///   - projectId: 要重命名的项目ID
+    ///   - newName: 新的项目名称
+    func renameProject(_ projectId: UUID, newName: String, completion: @escaping (Result<Void, RenameError>) -> Void) {
+        print("🏷️ 开始重命名项目: \(projectId) → \(newName)")
+        
+        guard let existingProject = projects[projectId] else {
+            print("❌ 未找到要重命名的项目: \(projectId)")
+            completion(.failure(.systemError(NSError(domain: "ProjectNotFound", code: 404))))
+            return
+        }
+        
+        Task {
+            // 使用BusinessLogic的纯函数执行重命名
+            let projectData = existingProject.toProjectData()
+            let result = ProjectOperations.renameProject(projectData, newName: newName)
+            
+            await MainActor.run {
+                switch result {
+                case .success(let updatedProjectData):
+                    let oldProject = projects[projectId]
+                    let updatedProject = Project.fromProjectData(updatedProjectData)
+                    
+                    // 更新本地数据
+                    projects[projectId] = updatedProject
+                    sortManager.updateProject(updatedProject)
+                    
+                    // 更新标签集合
+                    allTags.formUnion(updatedProject.tags)
+                    
+                    // 同步到新的状态系统
+                    var updatedProjects = appState.projects
+                    updatedProjects[projectId] = updatedProjectData
+                    appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+                    
+                    // 保存到缓存
+                    projectOperations.saveAllToCache()
+                    
+                    print("✅ 项目重命名成功: \(existingProject.name) → \(newName)")
+                    
+                    // 检查路径变化
+                    if let old = oldProject {
+                        print("📝 路径更新: \(old.path) → \(updatedProject.path)")
+                    }
+                    
+                    completion(.success(()))
+                    
+                case .failure(let error):
+                    print("❌ 项目重命名失败: \(error.localizedDescription)")
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
     // MARK: - ProjectOperationDelegate 实现
     
     func notifyProjectsChanged() {

@@ -63,7 +63,7 @@ struct TagView: View {
                 isHovered = hovering
             }
         }
-        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .scaleEffect(x: isHovered ? 1.05 : 1.0, y: 1.0, anchor: .leading)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .animation(.easeInOut(duration: 0.1), value: isPressed)
         .id(viewId)  // 使用动态 id 确保视图更新

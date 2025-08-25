@@ -396,6 +396,208 @@ enum ProjectOperations {
             fileSystemInfo: updated.fileSystemInfo
         )
     }
+    
+    /// 刷新单个项目数据（重新扫描文件系统和Git信息）
+    /// - Parameters:
+    ///   - project: 要刷新的项目数据
+    /// - Returns: 刷新后的项目数据，如果刷新失败则返回原始数据
+    static func refreshSingleProject(_ project: ProjectData) -> ProjectData {
+        // 检查项目路径是否存在
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: project.path) else {
+            print("⚠️ 项目路径不存在，无法刷新: \(project.path)")
+            return project
+        }
+        
+        // 获取新的文件系统信息
+        var updatedProject = project
+        
+        // 更新最后修改时间和文件系统信息
+        if let attributes = try? fileManager.attributesOfItem(atPath: project.path),
+           let modificationDate = attributes[.modificationDate] as? Date {
+            let size = UInt64(attributes[.size] as? NSNumber ?? 0)
+            let checksum = "\(modificationDate.timeIntervalSince1970)_\(size)"
+            updatedProject = ProjectData(
+                id: project.id,
+                name: URL(fileURLWithPath: project.path).lastPathComponent, // 更新可能变化的目录名
+                path: project.path,
+                lastModified: modificationDate,
+                tags: project.tags, // 标签将由外部同步
+                gitInfo: project.gitInfo, // Git信息将被重新获取
+                fileSystemInfo: ProjectData.FileSystemInfoData(
+                    modificationDate: modificationDate,
+                    size: size,
+                    checksum: checksum,
+                    lastCheckTime: Date()
+                )
+            )
+        }
+        
+        // 重新获取Git信息
+        updatedProject = updateGitInfo(updatedProject)
+        
+        return updatedProject
+    }
+    
+    /// 更新项目的Git信息
+    /// - Parameter project: 项目数据
+    /// - Returns: 更新Git信息后的项目数据
+    private static func updateGitInfo(_ project: ProjectData) -> ProjectData {
+        let gitInfoData = loadGitInfoData(from: project.path)
+        return ProjectData(
+            id: project.id,
+            name: project.name,
+            path: project.path,
+            lastModified: project.lastModified,
+            tags: project.tags,
+            gitInfo: gitInfoData,
+            fileSystemInfo: project.fileSystemInfo
+        )
+    }
+    
+    /// 从指定路径加载Git信息数据
+    /// - Parameter path: 项目路径
+    /// - Returns: Git信息数据，如果不是Git仓库则返回nil
+    private static func loadGitInfoData(from path: String) -> ProjectData.GitInfoData? {
+        // 检查是否是 Git 仓库
+        let gitPath = "\(path)/.git"
+        guard FileManager.default.fileExists(atPath: gitPath) else {
+            return nil
+        }
+
+        let process = Process()
+        process.currentDirectoryURL = URL(fileURLWithPath: path)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+
+        // 获取提交次数和最后提交时间
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.arguments = ["log", "--format=%ct", "-n", "1"]
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let timestamp = Double(
+                String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? "0")
+            {
+                let lastCommitDate = Date(timeIntervalSince1970: timestamp)
+
+                // 获取提交次数
+                let countProcess = Process()
+                countProcess.currentDirectoryURL = URL(fileURLWithPath: path)
+                countProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                countProcess.arguments = ["rev-list", "--count", "HEAD"]
+
+                let countPipe = Pipe()
+                countProcess.standardOutput = countPipe
+                try countProcess.run()
+                countProcess.waitUntilExit()
+
+                let countData = countPipe.fileHandleForReading.readDataToEndOfFile()
+                if let commitCount = Int(
+                    String(data: countData, encoding: .utf8)?.trimmingCharacters(
+                        in: .whitespacesAndNewlines) ?? "0")
+                {
+                    return ProjectData.GitInfoData(commitCount: commitCount, lastCommitDate: lastCommitDate)
+                }
+            }
+        } catch {
+            print("获取 Git 信息失败: \(error)")
+        }
+        return nil
+    }
+    
+    /// 重命名项目文件夹
+    /// - Parameters:
+    ///   - project: 要重命名的项目数据
+    ///   - newName: 新的文件夹名称
+    /// - Returns: 重命名结果，成功时返回更新后的项目数据，失败时返回错误
+    static func renameProject(_ project: ProjectData, newName: String) -> Result<ProjectData, RenameError> {
+        let oldPath = project.path
+        let parentDir = URL(fileURLWithPath: oldPath).deletingLastPathComponent()
+        let newPath = parentDir.appendingPathComponent(newName).path
+        
+        // 1. 验证新名称
+        guard isValidFileName(newName) else {
+            return .failure(.invalidName)
+        }
+        
+        // 2. 检查目标路径是否已存在
+        guard !FileManager.default.fileExists(atPath: newPath) else {
+            return .failure(.targetExists)
+        }
+        
+        // 3. 执行文件系统重命名
+        do {
+            try FileManager.default.moveItem(atPath: oldPath, toPath: newPath)
+            print("✅ 文件系统重命名成功: \(oldPath) → \(newPath)")
+        } catch {
+            print("❌ 文件系统重命名失败: \(error)")
+            return .failure(.systemError(error))
+        }
+        
+        // 4. 更新项目数据
+        let updatedProject = ProjectData(
+            id: project.id, // 保持原ID
+            name: newName,
+            path: newPath,
+            lastModified: Date(),
+            tags: project.tags,
+            gitInfo: project.gitInfo,
+            fileSystemInfo: ProjectData.FileSystemInfoData(
+                modificationDate: Date(),
+                size: project.fileSystemInfo.size,
+                checksum: "\(Date().timeIntervalSince1970)_\(project.fileSystemInfo.size)",
+                lastCheckTime: Date()
+            )
+        )
+        
+        return .success(updatedProject)
+    }
+    
+    /// 验证文件名是否合法
+    /// - Parameter fileName: 要验证的文件名
+    /// - Returns: 是否合法
+    private static func isValidFileName(_ fileName: String) -> Bool {
+        // 检查是否为空或只包含空白字符
+        guard !fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        
+        // 检查是否包含非法字符
+        let invalidCharacters = CharacterSet(charactersIn: ":<>|*?\"\\")
+        guard fileName.rangeOfCharacter(from: invalidCharacters) == nil else {
+            return false
+        }
+        
+        // 检查是否为系统保留名称
+        let reservedNames = [".", "..", "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]
+        guard !reservedNames.contains(fileName.uppercased()) else {
+            return false
+        }
+        
+        return true
+    }
+}
+
+/// 项目重命名错误类型
+enum RenameError: LocalizedError {
+    case invalidName
+    case targetExists
+    case systemError(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidName:
+            return "项目名称包含非法字符或为空"
+        case .targetExists:
+            return "目标路径已存在同名文件夹"
+        case .systemError(let error):
+            return "系统错误: \(error.localizedDescription)"
+        }
+    }
 }
 
 /// 分支管理业务逻辑 - 纯函数集合

@@ -13,6 +13,7 @@ struct ProjectCard: View {
     @ObservedObject var tagManager: TagManager
     @ObservedObject var editorManager: EditorManager  // 添加对编辑器管理器的观察
     @State private var isEditingTags = false
+    @State private var isRenamingProject = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
     let onShowDetail: () -> Void  // 添加显示详情回调
@@ -205,6 +206,20 @@ struct ProjectCard: View {
         }) {
             Label("复制项目信息", systemImage: "info.circle")
         }
+        
+        Divider()
+        
+        Button(action: {
+            tagManager.refreshSingleProject(project.id)
+        }) {
+            Label("刷新项目", systemImage: "arrow.clockwise")
+        }
+        
+        Button(action: {
+            isRenamingProject = true
+        }) {
+            Label("重命名项目", systemImage: "pencil")
+        }
     }
     
     // MARK: - 辅助方法
@@ -315,6 +330,21 @@ struct ProjectCard: View {
         }
         .sheet(isPresented: $isEditingTags) {
             TagEditorView(project: project, tagManager: tagManager)
+        }
+        .sheet(isPresented: $isRenamingProject) {
+            ProjectRenameDialog(
+                project: project,
+                isPresented: $isRenamingProject,
+                tagManager: tagManager
+            ) { result in
+                // 处理重命名结果
+                switch result {
+                case .success():
+                    print("✅ 项目重命名成功")
+                case .failure(let error):
+                    print("❌ 项目重命名失败: \(error.localizedDescription)")
+                }
+            }
         }
     }
 }
