@@ -1,0 +1,33 @@
+{
+  "name": "project-list",
+  "version": "1.0.0",
+  "description": "可以整合项目内的github的一些提交信息。",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "taskmaster": "npx task-master-ai",
+    "tm:init": "npx task-master-ai init",
+    "tm:plan": "npx task-master-ai plan",
+    "tm:breakdown": "npx task-master-ai breakdown",
+    "tm:research": "npx task-master-ai research",
+    "tm:migrate": "npx task-master-ai migrate"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ttmouse/Dou-Project.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ttmouse/Dou-Project/issues"
+  },
+  "homepage": "https://github.com/ttmouse/Dou-Project#readme",
+  "dependencies": {
+    "task-master-ai": "^0.25.1"
+  }
+}

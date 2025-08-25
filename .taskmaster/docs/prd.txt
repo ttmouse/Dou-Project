@@ -1,0 +1,90 @@
+# ProjectManager - Product Requirements Document
+
+## Project Overview
+ProjectManager is a macOS SwiftUI application for managing development projects with deep macOS integration. It provides project discovery, tag management, directory monitoring, and integrates with various editors like Cursor, VSCode, and Trae AI.
+
+## Core Features
+
+### 1. Project Discovery and Management
+- Automatic project scanning and indexing
+- Support for multiple project types (Git repositories, directories with specific markers)
+- Project caching with incremental updates
+- Real-time directory monitoring for changes
+
+### 2. Tag System Integration
+- Deep integration with macOS file system metadata using `com.apple.metadata:_kMDItemUserTags`
+- Persistent tag storage across sessions
+- Batch tag operations with atomic transactions
+- Visual tag management with color coding
+
+### 3. Editor Integration
+- Support for multiple editors: Cursor (default), Visual Studio Code, Trae AI, custom editors
+- Intelligent fallback mechanism for editor detection
+- Visual indicators for editor availability
+- Command-line tool integration with app fallback
+
+### 4. Dashboard and Analytics
+- Project activity tracking
+- Git integration for commit history
+- Usage metrics and statistics
+- Time-based filtering and sorting
+
+### 5. Branch Management (Trees Integration)
+- Git branch visualization and management
+- Branch creation, switching, and merging
+- Branch status monitoring
+- Integration with git worktrees
+
+## Technical Architecture
+
+### Core Components
+- **Business Logic Layer**: Pure functions in BusinessLogic.swift
+- **Data Models**: Project.swift with Git integration
+- **Manager Components**: Specialized managers with single responsibilities
+- **View Models**: MVVM pattern for UI state management
+- **UI Architecture**: SwiftUI with HSplitView layout
+
+### Performance Requirements
+- Sub-second project loading with incremental updates
+- Efficient file system monitoring with minimal CPU usage
+- Debounced operations to prevent UI blocking
+- Binary search optimization for sorted lists
+
+### Data Persistence
+- JSON caching for project data
+- macOS UserDefaults for preferences
+- Extended attributes (xattr) for tag storage
+- Atomic operations for data consistency
+
+## Development Guidelines
+
+### Code Quality
+- Focus on SwiftUI best practices
+- Prioritize readability over performance optimizations
+- Complete implementations without TODOs or placeholders
+- Step-by-step planning before implementation
+
+### Architecture Principles
+- Pure functions for business logic
+- Single responsibility for components
+- Dependency injection using protocols
+- Performance optimization with incremental updates
+
+### Safety Requirements
+- Tag system operations must be atomic
+- Data backup before destructive operations
+- Comprehensive error handling
+- Cross-session data persistence validation
+
+## Success Metrics
+- Fast project discovery (< 1 second for typical project counts)
+- Zero data loss in tag operations
+- Reliable editor integration across different macOS configurations
+- Smooth UI performance during bulk operations
+
+## Future Enhancements
+- Cloud synchronization for project data
+- Advanced search and filtering capabilities
+- Integration with more development tools
+- Customizable project templates
+- Team collaboration features
