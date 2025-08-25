@@ -1,4 +1,6 @@
-BRANCH_NAME=ui
-DESCRIPTION=
-CREATED_AT=2025-08-24T20:42:05Z
-BASE_PATH=/Users/douba/Projects/project-list
+{
+    "name": "UI",
+    "created": "2025-08-25T18:17:26+07:00",
+    "description": "",
+    "type": "git-worktree"
+}
