@@ -6,6 +6,10 @@ struct HeatmapView: View {
     let onDateSelected: ([ProjectData]) -> Void
     let onDateFilter: (([ProjectData]) -> Void)?
     
+    // 快速悬停状态管理
+    @State private var hoveredCell: HeatmapLogic.HeatmapData? = nil
+    @State private var showTooltip = false
+    
     // 自适应配置 - 根据侧边栏宽度动态调整
     private let daysPerWeek = 7
     
@@ -50,8 +54,16 @@ struct HeatmapView: View {
     }
     
     var body: some View {
-        // 热力图网格
-        heatmapGrid
+        ZStack {
+            // 热力图网格
+            heatmapGrid
+            
+            // 快速悬停提示
+            if showTooltip, let data = hoveredCell {
+                HeatmapTooltip(data: data)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
     }
     
     // MARK: - 热力图网格 (自适应布局，无水平滚动)
@@ -117,7 +129,9 @@ struct HeatmapView: View {
                     }
                 }
             }
-            .help(cellTooltip(for: data))
+            .onHover { isHovering in
+                handleCellHover(data: data, isHovering: isHovering)
+            }
     }
     
     // MARK: - 颜色计算 (统一风格：使用AppTheme颜色)
@@ -153,6 +167,28 @@ struct HeatmapView: View {
         }
     }
     
+    // MARK: - 悬停处理
+    private func handleCellHover(data: HeatmapLogic.HeatmapData?, isHovering: Bool) {
+        guard let data = data else { return }
+        
+        if isHovering {
+            hoveredCell = data
+            // 300ms 延迟后显示提示
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if hoveredCell?.date == data.date { // 确保还在悬停同一个格子
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showTooltip = true
+                    }
+                }
+            }
+        } else {
+            // 立即隐藏提示
+            withAnimation(.easeInOut(duration: 0.1)) {
+                showTooltip = false
+            }
+            hoveredCell = nil
+        }
+    }
     
     // MARK: - 网格生成 (Linus式：直接计算，不搞花里胡哨)
     private func generateWeekGrid(from data: [HeatmapLogic.HeatmapData]) -> [[HeatmapLogic.HeatmapData?]] {
@@ -190,6 +226,55 @@ struct HeatmapView: View {
         }
         
         return grid
+    }
+}
+
+// MARK: - 快速悬停提示
+struct HeatmapTooltip: View {
+    let data: HeatmapLogic.HeatmapData
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(dateString)
+                .font(AppTheme.captionFont)
+                .fontWeight(.medium)
+                .foregroundColor(AppTheme.text)
+            
+            if data.commitCount == 0 {
+                Text("无活动")
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.secondaryText)
+            } else {
+                Text("\(data.commitCount)个项目活跃")
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.success)
+                
+                if !data.projects.isEmpty {
+                    let projectNames = data.projects.prefix(3).map { $0.name }.joined(separator: ", ")
+                    Text(projectNames + (data.projects.count > 3 ? "..." : ""))
+                        .font(AppTheme.captionFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(8)
+        .background(AppTheme.secondaryBackground.opacity(0.95))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(AppTheme.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 2)
+        .frame(maxWidth: 200)
+        .fixedSize()
+        .allowsHitTesting(false) // 让鼠标事件穿透
+    }
+    
+    private var dateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: data.date)
     }
 }
 
