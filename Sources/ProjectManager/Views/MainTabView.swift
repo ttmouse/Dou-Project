@@ -143,6 +143,7 @@ struct ProjectSidebarContent: View {
     @State private var selectedDirectory: String? = nil
     @State private var searchBarRef: SearchBar? = nil
     @State private var isDraggingDirectory = false
+    @State private var heatmapFilteredProjectIds: Set<UUID> = []
     
     var body: some View {
         SidebarView(
@@ -151,7 +152,8 @@ struct ProjectSidebarContent: View {
             isDraggingDirectory: $isDraggingDirectory,
             isShowingNewTagDialog: $isShowingNewTagDialog,
             tagToRename: $tagToRename,
-            selectedDirectory: $selectedDirectory
+            selectedDirectory: $selectedDirectory,
+            heatmapFilteredProjectIds: $heatmapFilteredProjectIds
         )
     }
 }

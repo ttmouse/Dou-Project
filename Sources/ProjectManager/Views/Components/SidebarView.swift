@@ -8,6 +8,12 @@ struct SidebarView: View {
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
     @Binding var selectedDirectory: String?
+    @Binding var heatmapFilteredProjectIds: Set<UUID>
+    
+    // Linus式：简单的状态管理，不搞复杂的
+    @State private var selectedProjects: [ProjectData] = []
+    @State private var showProjectPopover = false
+    @State private var selectedDateString = ""
     
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +28,13 @@ struct SidebarView: View {
             Divider()
                 .background(AppTheme.divider)
                 .padding(.bottom, 8)
+            
+            // Linus式热力图 - 简单直接添加
+            heatmapSection
+            
+            Divider()
+                .background(AppTheme.divider)
+                .padding(.vertical, 8)
             
             // 标签列表使用剩余空间
             TagListView(
@@ -51,6 +64,132 @@ struct SidebarView: View {
                 isShowingNewTagDialog = false
             }
         }
+        .sheet(isPresented: $showProjectPopover) {
+            ProjectListPopover(
+                projects: selectedProjects,
+                date: selectedDateString,
+                isPresented: $showProjectPopover
+            )
+        }
+    }
+    
+    // MARK: - 热力图部分 (使用标签列表相同的间距)
+    private var heatmapSection: some View {
+        VStack(spacing: 0) {
+            // 热力图筛选状态提示
+            if !heatmapFilteredProjectIds.isEmpty {
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar.badge.checkmark")
+                            .foregroundColor(AppTheme.accent)
+                            .font(.caption)
+                        Text("日期筛选已启用")
+                            .font(AppTheme.captionFont)
+                            .foregroundColor(AppTheme.accent)
+                    }
+                    
+                    Spacer()
+                    
+                    Button("清除") {
+                        heatmapFilteredProjectIds.removeAll()
+                    }
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.accent)
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
+                .padding(.vertical, 4)
+                .background(AppTheme.accent.opacity(0.1))
+            }
+            
+            HeatmapView(
+                heatmapData: generateHeatmapData(),
+                onDateSelected: { projects in
+                    selectedProjects = projects
+                    selectedDateString = formatSelectedDate(from: projects)
+                    showProjectPopover = true
+                },
+                onDateFilter: { projects in
+                    // 筛选该日期的项目
+                    heatmapFilteredProjectIds = Set(projects.map { $0.id })
+                    // 清除其他筛选条件
+                    selectedTags.removeAll()
+                    selectedDirectory = nil
+                    // 清除搜索框焦点
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    searchBarRef?.clearFocus()
+                }
+            )
+        }
+    }
+    
+    // MARK: - 热力图数据生成 (Linus式：直接从TagManager获取数据，不搞复杂转换)
+    private func generateHeatmapData() -> [HeatmapLogic.HeatmapData] {
+        // Linus式解决方案：直接用现有的Project结构，不转换
+        let calendar = Calendar.current
+        let today = Date()
+        var heatmapData: [HeatmapLogic.HeatmapData] = []
+        
+        // Linus式：根据侧边栏空间优化，显示更多天数
+        for dayOffset in 0..<90 {
+            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                continue
+            }
+            
+            let startOfDay = calendar.startOfDay(for: targetDate)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+            
+            // 找出当天有提交的项目（直接使用Project）
+            var dailyCommitCount = 0
+            var dailyProjects: [ProjectData] = []
+            
+            for project in tagManager.projects.values {
+                if let gitInfo = project.gitInfo,
+                   gitInfo.lastCommitDate >= startOfDay && gitInfo.lastCommitDate < endOfDay {
+                    dailyCommitCount += 1
+                    
+                    // 简单转换到ProjectData
+                    let projectData = ProjectData(
+                        id: project.id,
+                        name: project.name,
+                        path: project.path,
+                        lastModified: project.lastModified,
+                        tags: project.tags,
+                        gitInfo: ProjectData.GitInfoData(
+                            commitCount: gitInfo.commitCount,
+                            lastCommitDate: gitInfo.lastCommitDate
+                        ),
+                        fileSystemInfo: ProjectData.FileSystemInfoData(
+                            modificationDate: project.fileSystemInfo.modificationDate,
+                            size: project.fileSystemInfo.size,
+                            checksum: project.fileSystemInfo.checksum,
+                            lastCheckTime: project.fileSystemInfo.lastCheckTime
+                        )
+                    )
+                    dailyProjects.append(projectData)
+                }
+            }
+            
+            heatmapData.append(HeatmapLogic.HeatmapData(
+                date: startOfDay,
+                commitCount: dailyCommitCount,
+                projects: dailyProjects
+            ))
+        }
+        
+        return heatmapData.reversed() // 最早的日期在前
+    }
+    
+    // MARK: - 日期格式化
+    private func formatSelectedDate(from projects: [ProjectData]) -> String {
+        // 简单实现：使用第一个项目的Git信息来推断日期
+        if let firstProject = projects.first,
+           let lastCommitDate = firstProject.gitInfo?.lastCommitDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "M月d日"
+            return formatter.string(from: lastCommitDate)
+        }
+        return "选中的日期"
     }
     
     // 清除选中的标签
@@ -403,7 +542,8 @@ struct SidebarView_Previews: PreviewProvider {
             isDraggingDirectory: .constant(false),
             isShowingNewTagDialog: .constant(false),
             tagToRename: .constant(nil),
-            selectedDirectory: .constant(nil)
+            selectedDirectory: .constant(nil),
+            heatmapFilteredProjectIds: .constant([])
         )
         .environmentObject({
             let container = TagManager()

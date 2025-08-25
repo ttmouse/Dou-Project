@@ -98,6 +98,77 @@ enum ProjectLogic {
         let timeSinceCheck = Date().timeIntervalSince(project.fileSystemInfo.lastCheckTime)
         return timeSinceCheck >= ProjectData.FileSystemInfoData.checkInterval
     }
+}
+
+// MARK: - 热力图业务逻辑 (Linus式：简单直接)
+enum HeatmapLogic {
+    
+    /// 热力图数据点 - 保持简单
+    struct HeatmapData {
+        let date: Date
+        let commitCount: Int
+        let projects: [ProjectData] // 当天有提交的项目
+        
+        var intensity: Double {
+            // 简单的强度计算：commitCount / 10.0，最大1.0
+            min(Double(commitCount) / 10.0, 1.0)
+        }
+    }
+    
+    /// 获取最近N天的热力图数据 - Linus式：直接计算，不搞缓存
+    static func generateHeatmapData(
+        from projects: [ProjectData],
+        days: Int = 30
+    ) -> [HeatmapData] {
+        let calendar = Calendar.current
+        let today = Date()
+        var heatmapData: [HeatmapData] = []
+        
+        // 简单直接：遍历每一天
+        for dayOffset in 0..<days {
+            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+                continue
+            }
+            
+            // 获取当天开始和结束时间
+            let startOfDay = calendar.startOfDay(for: targetDate)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+            
+            // 找出当天有提交的项目
+            var dailyCommitCount = 0
+            var dailyProjects: [ProjectData] = []
+            
+            for project in projects {
+                if let lastCommitDate = project.gitInfo?.lastCommitDate,
+                   lastCommitDate >= startOfDay && lastCommitDate < endOfDay {
+                    dailyCommitCount += 1 // 简化：每个项目当天算1个提交
+                    dailyProjects.append(project)
+                }
+            }
+            
+            heatmapData.append(HeatmapData(
+                date: startOfDay,
+                commitCount: dailyCommitCount,
+                projects: dailyProjects
+            ))
+        }
+        
+        return heatmapData.reversed() // 最早的日期在前
+    }
+    
+    /// 获取某天的项目列表 - Linus式：简单查找
+    static func getProjectsForDate(
+        _ targetDate: Date,
+        from heatmapData: [HeatmapData]
+    ) -> [ProjectData] {
+        let calendar = Calendar.current
+        for data in heatmapData {
+            if calendar.isDate(data.date, inSameDayAs: targetDate) {
+                return data.projects
+            }
+        }
+        return []
+    }
     
     /// 检查项目是否存在
     static func projectExists(path: String, in projects: [UUID: ProjectData]) -> Bool {

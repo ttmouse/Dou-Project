@@ -19,6 +19,7 @@ struct ProjectListView: View {
     @State private var selectedDirectory: String? = nil
     @State private var showDetailPanel = false
     @State private var selectedProjectForDetail: Project? = nil
+    @State private var heatmapFilteredProjectIds: Set<UUID> = []
 
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject private var editorManager = AppOpenHelper.editorManager
@@ -65,8 +66,12 @@ struct ProjectListView: View {
             return false
         }
         
+        // 热力图筛选 - 最高优先级
+        if !heatmapFilteredProjectIds.isEmpty {
+            projects = projects.filter { heatmapFilteredProjectIds.contains($0.id) }
+        }
         // 标签筛选
-        if !selectedTags.isEmpty {
+        else if !selectedTags.isEmpty {
             if selectedTags.contains("没有标签") {
                 projects = projects.filter { $0.tags.isEmpty }
             } else if !selectedTags.contains("全部") {
@@ -109,7 +114,8 @@ struct ProjectListView: View {
                 isDraggingDirectory: $isDraggingDirectory,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
-                selectedDirectory: $selectedDirectory
+                selectedDirectory: $selectedDirectory,
+                heatmapFilteredProjectIds: $heatmapFilteredProjectIds
             )
             
             MainContentView(
