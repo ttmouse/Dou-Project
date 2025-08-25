@@ -1,134 +1,204 @@
-可以整合项目内的github的一些提交信息。
+# ProjectManager
 
-## 🎯 新功能：自定义编辑器支持
+<div align="center">
 
-### 功能概述
-项目管理器现在支持自定义默认编辑器，不再局限于 Cursor。你可以选择使用 VSCode、Trae AI 或任何自定义编辑器来打开项目。
+![ProjectManager Icon](icon.png)
 
-### 支持的编辑器
-- **Cursor** - 默认选项
-- **Visual Studio Code** - 流行的代码编辑器
-- **Trae AI** - AI 驱动的 IDE
-- **自定义编辑器** - 支持任何你喜欢的编辑器
+**一个强大的 macOS 项目管理工具**
 
-### 如何设置
-1. 打开应用后，使用快捷键 `Cmd + ,` 或从菜单栏选择「偏好设置...」
-2. 在偏好设置窗口中选择你的首选编辑器
-3. 如果选择「自定义编辑器」，需要提供：
-   - 编辑器名称（用于显示）
-   - 可执行文件的完整路径
-4. 点击「完成」保存设置
+[![Swift](https://img.shields.io/badge/Swift-5.7+-orange.svg)](https://swift.org)
+[![macOS](https://img.shields.io/badge/macOS-12.0+-blue.svg)](https://www.apple.com/macos/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-### 自动检测
-- 应用会自动检测已安装的编辑器
-- 绿色勾号表示编辑器已安装并可用
-- 橙色警告表示编辑器未找到
+</div>
 
-### 打开机制
-应用会按以下顺序尝试打开项目：
-1. 首先尝试使用命令行工具（如 `cursor`、`code`、`trae`）
-2. 如果命令行工具不可用，直接启动应用程序
-3. 最后使用 macOS 的 `open` 命令作为备选方案
+ProjectManager 是一个专为开发者设计的 macOS 原生项目管理应用，提供直观的项目发现、标签管理、编辑器集成和 Git 信息展示功能。
 
-## 打包应用
+## ✨ 主要特性
 
-### 快速打包
-使用打包脚本一键完成：
+### 📁 智能项目发现
+- 自动扫描指定目录下的项目
+- 支持多个工作目录监控
+- 实时检测项目变更
+- 增量更新，性能优化
+
+### 🏷️ 强大的标签系统
+- **深度系统集成**：直接使用 macOS 文件标签系统
+- **可视化管理**：彩色标签，直观分类
+- **智能筛选**：支持标签组合筛选
+- **快速操作**：点击项目卡片标签即可筛选
+
+### 🔧 多编辑器支持
+- **Cursor** - AI 驱动的代码编辑器（默认）
+- **Visual Studio Code** - 流行的开发环境
+- **Trae AI** - AI 增强的 IDE
+- **自定义编辑器** - 支持任意编辑器配置
+- **智能检测** - 自动识别已安装的编辑器
+
+### 📊 Git 集成
+- 显示提交次数统计
+- 最后提交时间信息
+- 分支管理支持
+- 项目状态概览
+
+### 🎨 现代化界面
+- SwiftUI 原生设计
+- 响应式网格布局
+- 暗色模式支持
+- 平滑动画效果
+
+## 🚀 快速开始
+
+### 系统要求
+- macOS 12.0 或更高版本
+- Swift 5.7+
+
+### 从源码构建
+
 ```bash
+# 克隆仓库
+git clone https://github.com/your-username/project-list.git
+cd project-list
+
+# 快速构建和打包
 ./build.sh
 ```
 
-### 自定义应用图标
-1. 准备一个高质量的 PNG 图片（建议尺寸 1024x1024），命名为 `icon.png`
-2. 将 `icon.png` 放在项目根目录
-3. 运行打包脚本，会自动生成并使用图标
+### 安装
 
-### 手动打包流程
-如果需要手动打包，可以按以下步骤执行：
+1. 运行 `./build.sh` 构建应用
+2. 打开生成的 `ProjectManager.dmg` 文件
+3. 将 ProjectManager.app 拖拽到应用程序文件夹
 
-## 打包流程
+## 📖 使用指南
 
-### 1. 构建发布版本
+### 首次设置
+
+1. 启动 ProjectManager
+2. 点击侧边栏的"管理目录"
+3. 选择"添加工作目录（扫描项目）"来添加你的项目目录
+4. 应用将自动扫描并发现项目
+
+### 标签管理
+
+- **创建标签**：点击侧边栏的 + 按钮
+- **应用标签**：右键点击项目卡片，选择标签
+- **筛选项目**：点击侧边栏标签或项目卡片上的标签
+- **删除标签**：右键点击标签选择删除
+
+### 编辑器配置
+
+1. 按 `⌘ + ,` 打开偏好设置
+2. 选择你的首选编辑器
+3. 对于自定义编辑器，提供名称和可执行文件路径
+
+### 项目操作
+
+- **打开项目**：双击项目卡片
+- **在编辑器中打开**：右键选择编辑器
+- **在 Finder 中显示**：右键选择"在Finder中显示"
+- **复制路径**：右键选择"复制路径"
+
+## 🏗️ 架构设计
+
+ProjectManager 采用现代 SwiftUI 架构，遵循 MVVM 模式：
+
+```
+Sources/ProjectManager/
+├── Models/              # 数据模型和业务逻辑
+│   ├── Project.swift    # 核心项目模型
+│   ├── TagManager.swift # 标签管理器
+│   └── BusinessLogic.swift # 纯函数业务逻辑
+├── Views/               # 用户界面
+│   ├── ProjectListView.swift # 主界面
+│   ├── ProjectCard.swift     # 项目卡片
+│   └── Components/          # 可复用组件
+├── ViewModels/          # 视图模型
+└── Utilities/          # 工具类
+```
+
+### 核心组件
+
+- **TagManager**: 中央协调器，管理项目和标签
+- **BusinessLogic**: 纯函数业务逻辑，易于测试
+- **TagSystemSync**: 与 macOS 文件标签系统的集成
+- **ProjectIndex**: 项目发现和缓存机制
+
+## ⚠️ 重要提醒
+
+### 标签系统安全
+
+ProjectManager 深度集成 macOS 文件标签系统，标签数据直接存储在文件系统元数据中：
+
+- 使用 `com.apple.metadata:_kMDItemUserTags` 扩展属性
+- 标签操作需要谨慎处理，避免数据丢失
+- 修改标签相关代码前请备份数据
+- 涉及 `TagSystemSync.swift` 的更改需要特别小心
+
+## 🛠️ 开发
+
+### 构建配置
+
 ```bash
+# 开发构建
+swift build
+
+# 发布构建
 swift build -c release
+
+# 运行测试
+swift test
 ```
 
-### 2. 创建应用包结构
-```bash
-mkdir -p ProjectManager.app/Contents/MacOS
-mkdir -p ProjectManager.app/Contents/Resources
-```
+### 代码风格
 
-### 3. 复制构建文件
-```bash
-# 复制可执行文件
-cp .build/release/ProjectManager ProjectManager.app/Contents/MacOS/
+- 遵循 Swift 最佳实践
+- 优先使用 SwiftUI 和 Combine
+- 保持函数纯净，便于测试
+- 详细的中文注释
 
-# 复制资源文件
-cp -r Sources/ProjectManager/Resources/* ProjectManager.app/Contents/Resources/
-```
+### 项目脚本
 
-### 4. 创建 DMG 安装包
-```bash
-hdiutil create -volname "项目管理器" -srcfolder ProjectManager.app -ov -format UDZO ProjectManager.dmg
-```
+- `build.sh` - 完整构建和打包
+- `make_icon.sh` - 生成应用图标
+- `scripts/increment_version.sh` - 版本管理
 
-### 注意事项
-1. 由于应用未签名，首次运行时需要在系统偏好设置中允许运行
-2. 应用的数据会保存在用户目录下
-3. 如需应用图标，需要添加 .icns 文件到 Contents/Resources 目录
+## 🤝 贡献指南
 
-### 运行方式
-- 直接运行 ProjectManager.app
-- 或打开 ProjectManager.dmg 进行安装
+我们欢迎社区贡献！请遵循以下步骤：
 
-## ⚠️ 重要警告：标签系统
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add some amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 开启 Pull Request
 
-### 数据安全
-项目使用了 macOS 的文件标签系统进行标签管理。这涉及到以下关键点：
+### 贡献类型
 
-1. **标签数据存储**
-   - 项目标签直接存储在 macOS 文件系统的元数据中
-   - 使用 `com.apple.metadata:_kMDItemUserTags` 扩展属性存储
-   - 标签信息与文件系统深度集成
+- 🐛 Bug 修复
+- ✨ 新功能开发
+- 📚 文档改进
+- 🎨 UI/UX 优化
+- ⚡ 性能改进
+- 🧪 测试覆盖
 
-2. **数据完整性风险**
-   - ⚠️ 重新加载或刷新操作可能导致标签信息丢失
-   - 修改标签相关代码时需要特别谨慎
-   - 建议在修改前备份项目的标签数据
+## 📄 许可证
 
-3. **开发注意事项**
-   - 修改 `TagSystemSync.swift` 时需要特别小心
-   - 确保 `loadTagsFromSystem` 和 `syncTagsToSystem` 的操作是原子的
-   - 在实现新功能时，优先考虑标签数据的安全性
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
-4. **代码审查要求**
-   - 涉及标签系统的修改必须经过严格的代码审查
-   - 需要测试标签在各种操作后的持久性
-   - 包括但不限于：重启应用、重新加载项目、系统重启等场景
+## 🙏 致谢
 
-### 相关文件
-- `TagSystemSync.swift`: 负责与系统标签的同步
-- `Project.swift`: 项目标签的加载和保存
-- `ProjectOperationManager.swift`: 项目操作中的标签处理
+- [SwiftUI](https://developer.apple.com/xcode/swiftui/) - Apple 的声明式 UI 框架
+- macOS 文件系统 API - 强大的元数据支持
+- 开源社区的灵感和支持
 
-### todo
-* 文件夹时间没有更新。按时间排序展示的不是真实的效果。
-* 
+## 📞 联系方式
 
+- 提交 Issue：[GitHub Issues](https://github.com/your-username/project-list/issues)
+- 讨论功能：[GitHub Discussions](https://github.com/your-username/project-list/discussions)
 
-### 监视目录设置
-- 用户可以设置多个监视目录
-- 每个监视目录都会被独立扫描
-- 如果一个目录是另一个监视目录的子目录，它们会被分别扫描
-  - 例如：如果同时监视 `/path/A` 和 `/path/A/B`
-  - `/path/A` 的扫描只会处理其直接子目录
-  - `/path/A/B` 对子目录也会被添加。
+---
 
-
-
-# 
-添加工作目录（扫描项目）  预期就是添加目录下的一级子目录作为入口。
-直接添加为项目，将选中的 文件夹作为入口（支持多选批量添加）。
-
-
+<div align="center">
+Made with ❤️ for developers by developers
+</div>

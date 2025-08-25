@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Swift Version
+      run: swift --version
+      
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v3
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-
+          
+    - name: Build Debug
+      run: swift build -v
+      
+    - name: Run Tests
+      run: swift test -v
+      
+    - name: Build Release
+      run: swift build -c release -v
+      
+    - name: Archive Build Artifacts
+      uses: actions/upload-artifact@v3
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: ProjectManager-${{ github.sha }}
+        path: |
+          .build/release/ProjectManager
+          Sources/ProjectManager/Resources/
+        retention-days: 30
+
+  lint:
+    name: SwiftLint
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: SwiftLint
+      uses: norio-nomura/action-swiftlint@3.2.1
+      with:
+        args: --strict
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Check README
+      run: |
+        if [ ! -f README.md ]; then
+          echo "README.md is missing"
+          exit 1
+        fi
+        
+    - name: Check CONTRIBUTING
+      run: |
+        if [ ! -f CONTRIBUTING.md ]; then
+          echo "CONTRIBUTING.md is missing"
+          exit 1
+        fi
+        
+    - name: Check LICENSE
+      run: |
+        if [ ! -f LICENSE ]; then
+          echo "LICENSE is missing"
+          exit 1
+        fi
+
+  security:
+    name: Security Scan
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Run Security Audit
+      run: |
+        # 检查是否有敏感信息泄露
+        if grep -r "password\|secret\|key\|token" --include="*.swift" Sources/ 2>/dev/null; then
+          echo "⚠️ 发现可能的敏感信息，请检查代码"
+          exit 1
+        else
+          echo "✅ 安全扫描通过"
+        fi

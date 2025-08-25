@@ -1,0 +1,43 @@
+# CODEOWNERS 文件
+# 定义代码所有权和审查责任
+
+# 默认所有者
+* @maintainer
+
+# 核心架构文件 - 需要架构团队审查
+/Sources/ProjectManager/Models/BusinessLogic.swift @architecture-team
+/Sources/ProjectManager/Models/TagManager.swift @architecture-team
+/Sources/ProjectManager/Models/TagManagerComponents.swift @architecture-team
+
+# 标签系统 - 需要标签系统专家审查（高风险代码）
+/Sources/ProjectManager/Models/TagSystemSync.swift @tag-system-expert @architecture-team
+/Sources/ProjectManager/Models/Project.swift @tag-system-expert
+/Sources/ProjectManager/Models/TagStorage.swift @tag-system-expert
+/Sources/ProjectManager/Models/TagCache.swift @tag-system-expert
+
+# UI/UX 相关 - 需要 UI 团队审查
+/Sources/ProjectManager/Views/ @ui-team
+/Sources/ProjectManager/Theme/ @ui-team
+
+# 文档 - 需要文档团队审查
+README.md @docs-team
+CONTRIBUTING.md @docs-team
+CHANGELOG.md @docs-team
+/docs/ @docs-team
+
+# CI/CD 配置 - 需要 DevOps 团队审查
+.github/workflows/ @devops-team
+.swiftlint.yml @devops-team
+Package.swift @devops-team
+
+# 构建脚本 - 需要构建团队审查
+build.sh @build-team
+make_icon.sh @build-team
+/scripts/ @build-team
+
+# 测试文件 - 需要测试团队审查
+/Tests/ @test-team
+
+# 安全相关 - 需要安全团队审查
+*.plist @security-team
+/Sources/ProjectManager/Resources/ @security-team

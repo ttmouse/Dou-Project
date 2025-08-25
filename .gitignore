@@ -74,6 +74,13 @@ coverage/
 # Trees 分支管理工具
 .trees/
 
+# ProjectManager 特有文件
+projects-backup-*.json
+tags-backup-*.txt
+ProjectManager_TagsBackup_*.json
+build_perf.log
+quality_check.log
+
 # 应用打包相关
 ProjectManager.app/
 ProjectManager.dmg
