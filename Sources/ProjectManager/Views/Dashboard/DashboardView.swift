@@ -6,9 +6,11 @@ struct DashboardView: View {
     @State private var selectedTimeRange: TimeRange = .threeMonths
     
     let projects: [ProjectData]
+    let onClose: (() -> Void)?
     
-    init(projects: [ProjectData] = []) {
+    init(projects: [ProjectData] = [], onClose: (() -> Void)? = nil) {
         self.projects = projects
+        self.onClose = onClose
         self._viewModel = StateObject(wrappedValue: DashboardViewModel(projects: projects))
     }
     
@@ -36,13 +38,19 @@ struct DashboardView: View {
         .onChange(of: projects) { newProjects in
             viewModel.refreshData(with: newProjects)
         }
+        .background(
+            // 隐藏的 ESC 键处理按钮
+            Button("", action: { onClose?() })
+            .keyboardShortcut(.escape)
+            .hidden()
+        )
     }
     
     // MARK: - 子视图
     
     private var headerSection: some View {
         VStack(spacing: 16) {
-            // 标题和时间选择器
+            // 标题和控制区域
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("开发活动概览")
@@ -56,8 +64,34 @@ struct DashboardView: View {
                 
                 Spacer()
                 
-                // 时间范围选择器
-                timeRangeSelector
+                // 控制按钮区域
+                HStack(spacing: 12) {
+                    // 时间范围选择器
+                    timeRangeSelector
+                    
+                    // 关闭按钮
+                    if let onClose = onClose {
+                        Button(action: onClose) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                            Text("关闭")
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemRed).opacity(0.1))
+                        .foregroundColor(.red)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color(.systemRed).opacity(0.3), lineWidth: 1)
+                        )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("关闭数据看板")
+                    }
+                }
             }
             .padding(.bottom, 8)
             
@@ -680,8 +714,17 @@ struct HeatmapCell: View {
 #if DEBUG
 struct DashboardView_Previews: PreviewProvider {
     static var previews: some View {
-        DashboardView(projects: createSampleProjects())
+        PreviewWrapper()
             .frame(width: 1000, height: 700)
+    }
+    
+    struct PreviewWrapper: View {
+        var body: some View {
+            DashboardView(
+                projects: createSampleProjects(),
+                onClose: { }
+            )
+        }
     }
     
     static func createSampleProjects() -> [ProjectData] {

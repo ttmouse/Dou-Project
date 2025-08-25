@@ -52,8 +52,13 @@ struct SearchSortBar: View {
             SortButtons(sortOption: $sortOption)
         }
         .sheet(isPresented: $isShowingDashboard) {
-            DashboardView(projects: projectDataArray)
-                .frame(minWidth: 800, minHeight: 600)
+            DashboardView(
+                projects: projectDataArray,
+                onClose: {
+                    isShowingDashboard = false
+                }
+            )
+            .frame(minWidth: 800, minHeight: 600)
         }
         .padding(AppTheme.searchBarAreaPadding)
         .frame(height: AppTheme.searchBarAreaHeight)
