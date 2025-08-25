@@ -252,17 +252,23 @@ struct ProjectDetailView: View {
                             .foregroundColor(AppTheme.secondaryText)
                         Spacer()
                     }
+                    .frame(minHeight: 40)
                     .padding(16)
                 } else {
-                    FlowLayout(spacing: 8, data: Array(project.tags.sorted())) { tag in
-                        AnyView(
-                            TagView(
-                                tag: tag,
-                                color: tagManager.getColor(for: tag),
-                                fontSize: 12
+                    HStack {
+                        FlowLayout(spacing: 8, data: Array(project.tags.sorted())) { tag in
+                            AnyView(
+                                TagView(
+                                    tag: tag,
+                                    color: tagManager.getColor(for: tag),
+                                    fontSize: 12
+                                )
                             )
-                        )
+                        }
+                        .frame(maxHeight: .infinity)
+                        Spacer()
                     }
+                    .frame(minHeight: 40)
                     .padding(16)
                 }
             }
