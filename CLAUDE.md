@@ -6,6 +6,15 @@
 
 ProjectManager（项目管理器）是一个 macOS SwiftUI 应用程序，用于管理开发项目。它提供项目发现、标签管理、目录监控，并集成了各种编辑器，如 Cursor、VSCode 和 Trae AI。
 
+### 核心功能
+- **项目管理**: 项目发现、分类、搜索和排序
+- **标签系统**: 与 macOS 文件系统标签深度集成的标签管理
+- **项目刷新**: 单个项目数据刷新，支持检测名称、标签、Git信息变化
+- **应用内重命名**: 安全的项目文件夹重命名，避免外部修改导致的数据不一致
+- **编辑器集成**: 多编辑器支持，智能检测和回退机制
+- **分支管理**: Git分支可视化和操作（通过项目详情页面）
+- **仪表盘**: 项目活跃度分析和统计信息
+
 ## 构建和开发命令
 
 ### 主要构建命令
@@ -180,6 +189,43 @@ swift build -c release
 3. 为纯函数编写对应的测试
 4. 更新 ViewModels 以使用新的业务逻辑函数
 
+## Git 工作流程和分支管理
+
+### 🌿 **分支管理原则**
+- **分支删除决定权**: 始终由开发者决定是否删除分支，Claude不应自动删除
+- **合并后询问**: 合并完成后询问"是否需要删除已合并的分支？"，等待明确指示
+- **尊重工作流程**: 不同开发者有不同的分支使用习惯和策略
+
+### 📝 **提交和合并规范**
+
+#### 提交消息格式
+使用约定式提交规范：
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+#### 合并工作流程
+1. **执行合并**: 使用 `git merge` 合并分支
+2. **验证构建**: 确保合并后代码能够正常构建
+3. **询问删除**: 明确询问是否删除已合并的分支
+4. **等待指示**: 不做任何假设，等待开发者明确回复
+
+### 🔄 **Worktree 管理**
+- **合并策略**: 先提交worktree中的未保存更改，再执行合并
+- **冲突处理**: 如遇冲突，协助开发者解决并验证解决方案
+- **清理询问**: 合并成功后询问是否移除worktree和删除分支
+
+### ⚠️ **重要注意事项**
+- **永不擅自删除分支**: 除非明确得到删除指令
+- **保持透明**: 清楚说明每个Git操作的目的和影响
+- **备份意识**: 重要操作前提醒检查是否需要备份
+
 ## 文件结构
 ```
 Sources/ProjectManager/
@@ -194,10 +240,13 @@ Sources/ProjectManager/
 │   └── ViewModels.swift            # UI 状态的 MVVM 层
 ├── Views/
 │   ├── ProjectListView.swift       # 主应用视图
+│   ├── ProjectRenameDialog.swift   # 项目重命名对话框
 │   ├── Components/
 │   │   ├── SidebarView.swift      # 标签过滤和目录
 │   │   └── MainContentView.swift   # 项目网格显示
-│   └── ProjectCard.swift          # 单个项目显示
+│   ├── Branch/
+│   │   └── ProjectDetailView.swift # 项目详情和分支管理
+│   └── ProjectCard.swift          # 单个项目显示（含右键菜单）
 ├── Utilities/
 │   └── AppOpenHelper.swift        # 编辑器集成
 ├── Theme/
