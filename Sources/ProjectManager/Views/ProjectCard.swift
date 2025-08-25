@@ -118,11 +118,12 @@ struct ProjectCard: View {
                                 fontSize: 13,
                                 onDelete: {
                                     tagManager.removeTagFromProject(projectId: project.id, tag: tag)
+                                },
+                                onClick: {
+                                    print("🏷️ ProjectCard onClick: \(tag)")
+                                    onTagSelected(tag)
                                 }
                             )
-                            .onTapGesture {
-                                onTagSelected(tag)
-                            }
                             .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
                         }
                     }
@@ -244,6 +245,7 @@ struct ProjectCard: View {
             if !project.tags.isEmpty {
                 tagsView
                     .padding(.bottom, 4)
+                    .allowsHitTesting(true)  // 确保标签区域可以接收点击
             }
             
             Spacer(minLength: 0)

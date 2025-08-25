@@ -119,7 +119,8 @@ struct ProjectListView: View {
                 searchBarRef: $searchBarRef,
                 editorManager: editorManager,
                 filteredProjects: filteredProjects,
-                onShowProjectDetail: showProjectDetail
+                onShowProjectDetail: showProjectDetail,
+                onTagSelected: handleTagSelection
             )
             
             // 详情面板（条件显示）
@@ -161,6 +162,17 @@ struct ProjectListView: View {
     }
 
     // MARK: - 私有方法
+    
+    private func handleTagSelection(_ tag: String) {
+        print("🏷️ 标签点击: \(tag)")
+        // 移除任何现有焦点
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        // 清除搜索框焦点
+        searchBarRef?.clearFocus()
+        // 选择点击的标签
+        selectedTags = [tag]
+        print("🏷️ 已选中标签: \(selectedTags)")
+    }
     
     private func showProjectDetail(_ project: Project) {
         selectedProjectForDetail = project

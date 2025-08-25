@@ -7,8 +7,10 @@ struct TagView: View {
     var isSelected: Bool = false
     var isPreview: Bool = false  // 新增：是否为预览状态（新建标签时）
     var onDelete: (() -> Void)? = nil
+    var onClick: (() -> Void)? = nil  // 新增：点击回调
 
     @State private var isHovered = false
+    @State private var isPressed = false
 
     // 添加一个 id 来强制视图更新
     private var viewId: String {
@@ -16,34 +18,54 @@ struct TagView: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(tag)
-                .font(.system(size: fontSize))
-                .foregroundColor(textColor)
-
-            if isHovered && onDelete != nil {
-                Button(action: {
-                    onDelete?()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: fontSize))
-                        .foregroundColor(textColor.opacity(0.8))
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
+        Button(action: {
+            // 添加点击反馈动画
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isPressed = true
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    isPressed = false
+                }
+            }
+            // 调用点击回调
+            print("🏷️ TagView 点击: \(tag)")
+            onClick?()
+        }) {
+            HStack(spacing: 4) {
+                Text(tag)
+                    .font(.system(size: fontSize))
+                    .foregroundColor(textColor)
+
+                if isHovered && onDelete != nil {
+                    Button(action: {
+                        onDelete?()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: fontSize))
+                            .foregroundColor(textColor.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(backgroundColor)
+                    .scaleEffect(isPressed ? 0.95 : 1.0)
+            )
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(backgroundColor)
-        )
+        .buttonStyle(.plain)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.2)) {
                 isHovered = hovering
             }
         }
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
         .id(viewId)  // 使用动态 id 确保视图更新
     }
     
@@ -86,7 +108,8 @@ struct TagView: View {
                         tag: "Deletable",
                         color: .purple,
                         fontSize: 13,
-                        onDelete: {}
+                        onDelete: {},
+                        onClick: {}
                     )
                 }
                 .padding()
@@ -102,7 +125,8 @@ struct TagView: View {
                         tag: "Deletable",
                         color: .purple,
                         fontSize: 13,
-                        onDelete: {}
+                        onDelete: {},
+                        onClick: {}
                     )
                 }
                 .padding()

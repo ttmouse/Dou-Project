@@ -10,6 +10,7 @@ struct MainContentView: View {
     
     let filteredProjects: [Project]
     let onShowProjectDetail: (Project) -> Void
+    let onTagSelected: (String) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -27,7 +28,8 @@ struct MainContentView: View {
                     selectedProjects: $selectedProjects,
                     searchBarRef: $searchBarRef,
                     editorManager: editorManager,
-                    onShowProjectDetail: onShowProjectDetail
+                    onShowProjectDetail: onShowProjectDetail,
+                    onTagSelected: onTagSelected
                 )
             }
         }
@@ -93,6 +95,7 @@ struct ProjectGridView: View {
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject var editorManager: EditorManager
     let onShowProjectDetail: (Project) -> Void
+    let onTagSelected: (String) -> Void
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -116,7 +119,10 @@ struct ProjectGridView: View {
                         selectedProjects: selectedProjects,
                         tagManager: tagManager,
                         editorManager: editorManager,
-                        onTagSelected: handleTagSelection,
+                        onTagSelected: { tag in
+                            print("🏷️ MainContentView onTagSelected: \(tag)")
+                            onTagSelected(tag)
+                        },
                         onSelect: { isShiftPressed in
                             handleProjectSelection(project, isShiftPressed: isShiftPressed)
                         },
@@ -139,12 +145,6 @@ struct ProjectGridView: View {
         }
     }
     
-    private func handleTagSelection(_ tag: String) {
-        // 移除任何现有焦点
-        NSApp.keyWindow?.makeFirstResponder(nil)
-        // 清除搜索框焦点
-        searchBarRef?.clearFocus()
-    }
     
     private func handleProjectSelection(_ project: Project, isShiftPressed: Bool) {
         // 确保在点击卡片时，移除现有焦点
@@ -178,7 +178,8 @@ struct MainContentView_Previews: PreviewProvider {
             searchBarRef: .constant(nil),
             editorManager: EditorManager(),
             filteredProjects: [],
-            onShowProjectDetail: { _ in }
+            onShowProjectDetail: { _ in },
+            onTagSelected: { _ in }
         )
         .environmentObject({
             let container = TagManager()
