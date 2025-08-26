@@ -633,6 +633,34 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         directoryWatcher.clearCacheAndReloadProjects()
     }
     
+    /// 批量更新所有项目的git_daily数据
+    func updateAllProjectsGitDaily() {
+        print("🔄 开始批量更新所有项目的git_daily数据...")
+        
+        Task {
+            let projectsArray = Array(projects.values)
+            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectsArray, days: 90)
+            
+            await MainActor.run {
+                var updateCount = 0
+                for updatedProject in updatedProjects {
+                    if let existing = projects[updatedProject.id], 
+                       existing.git_daily != updatedProject.git_daily {
+                        projects[updatedProject.id] = updatedProject
+                        updateCount += 1
+                    }
+                }
+                
+                if updateCount > 0 {
+                    projectOperations.saveAllToCache()
+                    print("✅ 成功更新了 \(updateCount) 个项目的git_daily数据")
+                } else {
+                    print("ℹ️ 所有项目的git_daily数据都已是最新")
+                }
+            }
+        }
+    }
+    
     /// 刷新单个项目
     /// - Parameter projectId: 要刷新的项目ID
     func refreshSingleProject(_ projectId: UUID) {
@@ -649,7 +677,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             let refreshedData = ProjectOperations.refreshSingleProject(projectData)
             
             // 转换回Project并同步系统标签
-            let syncedProject = Project.fromProjectData(refreshedData)
+            var syncedProject = Project.fromProjectData(refreshedData)
+            
+            // 更新git_daily数据
+            print("🔄 正在更新项目 \(syncedProject.name) 的git_daily数据...")
+            syncedProject = syncedProject.withUpdatedGitDaily(days: 90)
             // 加载最新的系统标签并合并
             let systemTags = TagSystemSync.loadTagsFromFile(at: refreshedData.path)
             let mergedTags = refreshedData.tags.union(systemTags)

@@ -115,7 +115,7 @@ enum HeatmapLogic {
         }
     }
     
-    /// 获取最近N天的热力图数据 - 支持真实的多天Git历史
+    /// 获取最近N天的热力图数据 - 支持真实的多天Git历史（扁平结构优化）
     static func generateHeatmapData(
         from projects: [ProjectData],
         days: Int = 30
@@ -124,7 +124,7 @@ enum HeatmapLogic {
         let today = Date()
         var heatmapData: [HeatmapData] = []
         
-        // 遍历每一天，实时查询Git历史
+        // 遍历每一天，使用git_daily数据
         for dayOffset in 0..<days {
             guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
                 continue
@@ -132,12 +132,12 @@ enum HeatmapLogic {
             
             let startOfDay = calendar.startOfDay(for: targetDate)
             
-            // 实时查询每个项目在这一天的提交数
+            // 使用git_daily数据快速查询每个项目在这一天的提交数
             var dailyCommitCount = 0
             var dailyProjects: [ProjectData] = []
             
             for project in projects {
-                let commitsOnDay = getCommitsForDate(project: project, date: startOfDay)
+                let commitsOnDay = project.getCommitCount(for: startOfDay)
                 if commitsOnDay > 0 {
                     dailyCommitCount += commitsOnDay
                     dailyProjects.append(project)
@@ -154,25 +154,23 @@ enum HeatmapLogic {
         return heatmapData.reversed() // 最早的日期在前
     }
     
-    /// 获取项目在指定日期的提交数 - 实时Git查询，不存储数据
+    /// 获取项目在指定日期的提交数 - 临时禁用Git查询，解决卡顿问题
     private static func getCommitsForDate(project: ProjectData, date: Date) -> Int {
-        // 直接检查是否是Git仓库，不依赖缓存的gitInfo
-        let gitPath = "\(project.path)/.git"
-        guard FileManager.default.fileExists(atPath: gitPath) else { return 0 }
+        // Linus式紧急修复：暂时禁用Git查询，防止界面卡死
+        // TODO: 后续优化Git查询性能或改为后台批量处理
         
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateString = formatter.string(from: date)
+        // 回退到简单逻辑：只检查lastCommitDate
+        guard let gitInfo = project.gitInfo else { 
+            return 0 
+        }
+        let lastCommitDate = gitInfo.lastCommitDate
         
-        // 计算下一天的日期
         let calendar = Calendar.current
-        let nextDay = calendar.date(byAdding: .day, value: 1, to: date) ?? date
-        let nextDayString = formatter.string(from: nextDay)
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
         
-        // Git命令：查询指定日期的提交数（使用--since和--until的正确格式）
-        let gitCommand = "cd '\(project.path)' && git log --oneline --since='\(dateString)' --until='\(nextDayString)' 2>/dev/null | wc -l"
-        
-        return executeGitCommand(gitCommand)
+        // 如果最后提交日期在目标日期范围内，返回1
+        return (lastCommitDate >= startOfDay && lastCommitDate < endOfDay) ? 1 : 0
     }
     
     /// 执行Git命令并返回提交数
@@ -1152,37 +1150,40 @@ enum AppStateLogic {
 /// Dashboard 业务逻辑 - 最简单可工作的实现
 enum DashboardLogic {
     
-    /// 生成每日活动数据 - 基于实际项目数据，修正提交数计算逻辑
+    /// 生成每日活动数据 - 基于git_daily扁平数据，真实多天统计
     static func generateDailyActivities(from projects: [ProjectData], days: Int = 90) -> [DailyActivity] {
+        print("🔄 DashboardLogic: 开始生成每日活动数据，项目数: \(projects.count)")
+        
+        // 检查项目中git_daily数据的可用性
+        let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
+        let projectsWithoutGitDaily = projects.count - projectsWithGitDaily.count
+        print("📊 Git Daily 数据状态: \(projectsWithGitDaily.count) 个项目有数据，\(projectsWithoutGitDaily) 个项目无数据")
+        
+        if projectsWithGitDaily.isEmpty {
+            print("⚠️ 警告: 所有项目都缺少git_daily数据！热力图将显示空数据")
+        } else {
+            print("✅ 找到 \(projectsWithGitDaily.count) 个项目有git_daily数据")
+            // 输出前几个项目的git_daily样例
+            projectsWithGitDaily.prefix(3).forEach { project in
+                print("   📁 \(project.name): \(project.git_daily?.prefix(50) ?? "nil")")
+            }
+        }
+        
         let calendar = Calendar.current
         let today = Date()
         var activities: [DailyActivity] = []
         
-        // 创建日期到活跃项目数的映射（更合理的统计方式）
-        var dailyActiveProjects: [Date: Set<UUID>] = [:]
-        
-        // 统计每个项目的最后活跃日期
-        for project in projects {
-            guard let gitInfo = project.gitInfo else { continue }
-            
-            let lastCommitDate = gitInfo.lastCommitDate
-            let dayStart = calendar.startOfDay(for: lastCommitDate)
-            
-            // 如果这个日期在我们的统计范围内，记录这个项目在这一天是活跃的
-            if let daysAgo = calendar.dateComponents([.day], from: dayStart, to: calendar.startOfDay(for: today)).day,
-               daysAgo >= 0 && daysAgo < days {
-                dailyActiveProjects[dayStart, default: Set<UUID>()].insert(project.id)
-            }
-        }
-        
-        // 生成指定天数的活动数据
+        // 生成指定天数的活动数据，使用git_daily数据
         for dayOffset in 0..<days {
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
             let dayStart = calendar.startOfDay(for: date)
             
-            // 使用当天活跃的项目数作为活动强度指标
-            let activeProjectCount = dailyActiveProjects[dayStart]?.count ?? 0
-            activities.append(DailyActivity(date: date, commitCount: activeProjectCount))
+            // 统计当天的总提交数
+            let totalCommits = projects.reduce(0) { total, project in
+                total + project.getCommitCount(for: dayStart)
+            }
+            
+            activities.append(DailyActivity(date: date, commitCount: totalCommits))
         }
         
         return activities.reversed() // 按时间顺序
