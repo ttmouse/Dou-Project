@@ -47,6 +47,10 @@ struct BranchListView: View {
         .onAppear {
             loadBranches()
         }
+        .onChange(of: projectPath) { _ in
+            // 当项目路径发生变化时，重新加载分支数据
+            loadBranches()
+        }
         .onDisappear {
             statusMonitor.stopMonitoring()
         }

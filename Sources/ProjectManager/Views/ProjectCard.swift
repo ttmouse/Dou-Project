@@ -288,7 +288,16 @@ struct ProjectCard: View {
         )
         .onTapGesture {
             let flags = NSEvent.modifierFlags
-            onSelect(flags.contains(.shift))
+            let isShiftPressed = flags.contains(.shift)
+            let isCommandPressed = flags.contains(.command)
+            
+            if isShiftPressed || isCommandPressed {
+                // 按住修饰键时，执行多选逻辑
+                onSelect(isShiftPressed)
+            } else {
+                // 单击时打开详情侧边栏
+                onShowDetail()
+            }
         }
         .onDrag {
             // 确保当前项目被选中

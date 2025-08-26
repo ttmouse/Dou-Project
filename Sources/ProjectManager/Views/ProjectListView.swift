@@ -181,9 +181,24 @@ struct ProjectListView: View {
     }
     
     private func showProjectDetail(_ project: Project) {
-        selectedProjectForDetail = project
-        withAnimation(.easeInOut(duration: 0.3)) {
-            showDetailPanel = true
+        // 检查当前选择状态
+        let currentSelectedCount = selectedProjects.count
+        
+        if currentSelectedCount <= 1 {
+            // 单个项目或无选择时，更新详情面板并单选该项目
+            selectedProjectForDetail = project
+            selectedProjects = [project.id]
+            
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showDetailPanel = true
+            }
+        } else {
+            // 多选状态时，只更新详情面板内容，不改变选择状态
+            selectedProjectForDetail = project
+            
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showDetailPanel = true
+            }
         }
     }
     

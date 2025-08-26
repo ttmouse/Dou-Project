@@ -96,7 +96,7 @@ enum AppTheme {
     /// 侧边栏目录按钮边框色
     static let sidebarDirectoryBorder = Color(hex: "#2D2D2D")
     /// 侧边栏最小宽度
-    static let sidebarMinWidth: CGFloat = 200
+    static let sidebarMinWidth: CGFloat = 220
     /// 侧边栏最大宽度
     static let sidebarMaxWidth: CGFloat = 220
     /// 侧边栏边框线位置偏移量
