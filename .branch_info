@@ -1,6 +1,4 @@
-{
-    "name": "UI",
-    "created": "2025-08-25T18:17:26+07:00",
-    "description": "",
-    "type": "git-worktree"
-}
+BRANCH_NAME=reli
+DESCRIPTION=
+CREATED_AT=2025-08-25T18:23:28Z
+BASE_PATH=/Users/douba/Projects/project-list

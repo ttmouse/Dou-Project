@@ -633,6 +633,66 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         directoryWatcher.clearCacheAndReloadProjects()
     }
     
+    /// 批量更新所有项目的git_daily数据
+    func updateAllProjectsGitDaily() {
+        print("🔄 开始批量更新所有项目的git_daily数据...")
+        
+        // 临时修复：强制清除现有git_daily数据以确保重新收集
+        for (id, project) in projects {
+            if project.git_daily == nil {
+                let clearedProject = Project(
+                    id: project.id,
+                    name: project.name,
+                    path: project.path,
+                    tags: project.tags,
+                    mtime: project.mtime,
+                    size: project.size,
+                    checksum: project.checksum,
+                    git_commits: project.git_commits,
+                    git_last_commit: project.git_last_commit,
+                    git_daily: "", // 设置为空字符串而不是nil，强制更新
+                    created: project.created,
+                    checked: project.checked
+                )
+                projects[id] = clearedProject
+            }
+        }
+        
+        Task {
+            let projectsArray = Array(projects.values)
+            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectsArray, days: 365)
+            
+            await MainActor.run {
+                var updateCount = 0
+                for updatedProject in updatedProjects {
+                    if let existing = projects[updatedProject.id] {
+                        // 检查git_daily是否有变化（处理nil值情况）
+                        let existingGitDaily = existing.git_daily ?? ""
+                        let updatedGitDaily = updatedProject.git_daily ?? ""
+                        
+                        if existingGitDaily != updatedGitDaily {
+                            projects[updatedProject.id] = updatedProject
+                            updateCount += 1
+                            print("🔄 更新项目 \(updatedProject.name) 的git_daily: \(updatedGitDaily.prefix(50))...")
+                        }
+                    } else {
+                        // 新项目，直接添加
+                        projects[updatedProject.id] = updatedProject
+                        updateCount += 1
+                        print("➕ 添加新项目 \(updatedProject.name) 的git_daily数据")
+                    }
+                }
+                
+                if updateCount > 0 {
+                    projectOperations.saveAllToCache()
+                    print("✅ 成功更新了 \(updateCount) 个项目的git_daily数据")
+                } else {
+                    print("ℹ️ 所有项目的git_daily数据都已是最新")
+                }
+            }
+        }
+    }
+    
     /// 刷新单个项目
     /// - Parameter projectId: 要刷新的项目ID
     func refreshSingleProject(_ projectId: UUID) {
@@ -649,7 +709,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             let refreshedData = ProjectOperations.refreshSingleProject(projectData)
             
             // 转换回Project并同步系统标签
-            let syncedProject = Project.fromProjectData(refreshedData)
+            var syncedProject = Project.fromProjectData(refreshedData)
+            
+            // 更新git_daily数据
+            print("🔄 正在更新项目 \(syncedProject.name) 的git_daily数据...")
+            syncedProject = syncedProject.withUpdatedGitDaily(days: 365)
             // 加载最新的系统标签并合并
             let systemTags = TagSystemSync.loadTagsFromFile(at: refreshedData.path)
             let mergedTags = refreshedData.tags.union(systemTags)
@@ -768,6 +832,49 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     // MARK: - DirectoryWatcherDelegate 实现
     
     // 所有必需的属性已经在类中定义了，不需要额外实现
+    
+    // MARK: - Git Daily 数据收集功能
+    
+    /// 更新所有项目的git_daily数据
+    func updateAllProjectsGitDaily(days: Int = 90) {
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            guard let self = self else { return }
+            
+            print("📊 开始收集所有项目的Git历史数据...")
+            let projectList = Array(self.projects.values)
+            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectList, days: days)
+            
+            DispatchQueue.main.async {
+                var updateCount = 0
+                for updatedProject in updatedProjects {
+                    if let existing = self.projects[updatedProject.id] {
+                        // 检查git_daily是否有变化（处理nil值情况）
+                        let existingGitDaily = existing.git_daily ?? ""
+                        let updatedGitDaily = updatedProject.git_daily ?? ""
+                        
+                        if existingGitDaily != updatedGitDaily {
+                            self.projects[updatedProject.id] = updatedProject
+                            updateCount += 1
+                            print("🔄 更新项目 \(updatedProject.name) 的git_daily: \(updatedGitDaily.prefix(50))...")
+                        }
+                    } else {
+                        // 新项目，直接添加
+                        self.projects[updatedProject.id] = updatedProject
+                        updateCount += 1
+                        print("➕ 添加新项目 \(updatedProject.name) 的git_daily数据")
+                    }
+                }
+                
+                if updateCount > 0 {
+                    print("✅ 成功更新 \(updateCount) 个项目的Git历史数据")
+                    self.saveAll(force: true)
+                    self.sortManager.updateSortedProjects(Array(self.projects.values))
+                } else {
+                    print("⚠️ 没有项目包含Git历史数据")
+                }
+            }
+        }
+    }
     
     // MARK: - 标签数据备份功能
     

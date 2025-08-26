@@ -27,7 +27,7 @@ final class DashboardViewModel: ObservableObject {
     
     init(projects: [ProjectData] = []) {
         self.projects = projects
-        loadDashboardData()
+        // 移除自动加载，让DashboardView的onAppear来控制数据加载时机
     }
     
     // MARK: - Public Methods
@@ -82,7 +82,7 @@ final class DashboardViewModel: ObservableObject {
             group.addTask {
                 let activities = await DashboardLogic.generateDailyActivities(
                     from: projects, 
-                    days: await self.heatmapConfig.daysToShow
+                    days: 365  // 数据看板显示一年内的数据
                 )
                 return .activities(activities)
             }
@@ -122,7 +122,7 @@ final class DashboardViewModel: ObservableObject {
         Task {
             let activities = DashboardLogic.generateDailyActivities(
                 from: self.projects,
-                days: heatmapConfig.daysToShow
+                days: 365  // 数据看板显示一年内的数据
             )
             
             await MainActor.run {

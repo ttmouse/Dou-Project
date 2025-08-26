@@ -15,6 +15,15 @@ struct SidebarView: View {
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
     
+    // 侧边栏项目数据
+    private var sidebarProjectsData: [ProjectData] {
+        let allProjects = tagManager.projects.values.map { project in
+            ProjectData(from: project)
+        }
+        // 过滤掉包含"隐藏标签"的项目
+        return ProjectLogic.filterProjectsByHiddenTags(allProjects)
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // 添加目录列表
@@ -102,8 +111,9 @@ struct SidebarView: View {
                 .background(AppTheme.accent.opacity(0.1))
             }
             
-            HeatmapView(
-                heatmapData: generateHeatmapData(),
+            UnifiedHeatmapView(
+                projects: sidebarProjectsData,
+                config: .sidebar,
                 onDateSelected: { projects in
                     selectedProjects = projects
                     selectedDateString = formatSelectedDate(from: projects)
@@ -123,62 +133,6 @@ struct SidebarView: View {
         }
     }
     
-    // MARK: - 热力图数据生成 (Linus式：直接从TagManager获取数据，不搞复杂转换)
-    private func generateHeatmapData() -> [HeatmapLogic.HeatmapData] {
-        // Linus式解决方案：直接用现有的Project结构，不转换
-        let calendar = Calendar.current
-        let today = Date()
-        var heatmapData: [HeatmapLogic.HeatmapData] = []
-        
-        // Linus式：根据侧边栏空间优化，显示更多天数
-        for dayOffset in 0..<90 {
-            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
-                continue
-            }
-            
-            let startOfDay = calendar.startOfDay(for: targetDate)
-            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
-            
-            // 找出当天有提交的项目（直接使用Project）
-            var dailyCommitCount = 0
-            var dailyProjects: [ProjectData] = []
-            
-            for project in tagManager.projects.values {
-                if let gitInfo = project.gitInfo,
-                   gitInfo.lastCommitDate >= startOfDay && gitInfo.lastCommitDate < endOfDay {
-                    dailyCommitCount += 1
-                    
-                    // 简单转换到ProjectData
-                    let projectData = ProjectData(
-                        id: project.id,
-                        name: project.name,
-                        path: project.path,
-                        lastModified: project.lastModified,
-                        tags: project.tags,
-                        gitInfo: ProjectData.GitInfoData(
-                            commitCount: gitInfo.commitCount,
-                            lastCommitDate: gitInfo.lastCommitDate
-                        ),
-                        fileSystemInfo: ProjectData.FileSystemInfoData(
-                            modificationDate: project.fileSystemInfo.modificationDate,
-                            size: project.fileSystemInfo.size,
-                            checksum: project.fileSystemInfo.checksum,
-                            lastCheckTime: project.fileSystemInfo.lastCheckTime
-                        )
-                    )
-                    dailyProjects.append(projectData)
-                }
-            }
-            
-            heatmapData.append(HeatmapLogic.HeatmapData(
-                date: startOfDay,
-                commitCount: dailyCommitCount,
-                projects: dailyProjects
-            ))
-        }
-        
-        return heatmapData.reversed() // 最早的日期在前
-    }
     
     // MARK: - 日期格式化
     private func formatSelectedDate(from projects: [ProjectData]) -> String {

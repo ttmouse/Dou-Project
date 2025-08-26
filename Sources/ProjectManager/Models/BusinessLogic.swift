@@ -115,34 +115,84 @@ enum HeatmapLogic {
         }
     }
     
-    /// 获取最近N天的热力图数据 - Linus式：直接计算，不搞缓存
+    /// 获取最近N天的热力图数据 - 支持真实的多天Git历史（扁平结构优化）
     static func generateHeatmapData(
         from projects: [ProjectData],
         days: Int = 30
     ) -> [HeatmapData] {
+        print("🔄 HeatmapLogic.generateHeatmapData: 开始生成，项目数=\(projects.count), 天数=\(days)")
+        
+        // 🔧 修复：动态确定日期范围，包含git_daily数据中的实际日期
         let calendar = Calendar.current
         let today = Date()
-        var heatmapData: [HeatmapData] = []
         
-        // 简单直接：遍历每一天
-        for dayOffset in 0..<days {
-            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+        // 收集所有项目git_daily数据中的日期
+        var allAvailableDates = Set<String>()
+        for project in projects {
+            if let gitDaily = project.git_daily, !gitDaily.isEmpty {
+                let dailyData = GitDailyCollector.parseGitDaily(gitDaily)
+                allAvailableDates.formUnion(dailyData.keys)
+            }
+        }
+        
+        print("📅 找到的所有可用日期数: \(allAvailableDates.count)")
+        if !allAvailableDates.isEmpty {
+            let sortedDates = allAvailableDates.sorted()
+            print("   最早日期: \(sortedDates.first ?? "none"), 最晚日期: \(sortedDates.last ?? "none")")
+        }
+        
+        // 计算实际的日期范围：从最早数据日期到今天，最多查询365天
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        
+        var actualDays = days
+        var startDate: Date = calendar.date(byAdding: .day, value: -days, to: today) ?? today
+        
+        // 🎯 数据看板需要显示完整365天：强制使用固定天数
+        if days == 365 {
+            print("🎯 数据看板模式：强制生成365天完整数据")
+            actualDays = 365
+            startDate = calendar.date(byAdding: .day, value: -365, to: today) ?? today
+        } else {
+            // 侧边栏模式：使用数据驱动的优化范围
+            if !allAvailableDates.isEmpty {
+                let sortedDates = allAvailableDates.sorted()
+                if let earliestDateStr = sortedDates.first,
+                   let earliestDate = dateFormatter.date(from: earliestDateStr) {
+                    // 使用更早的日期作为起始点，但限制在指定天数内
+                    let maxLookback = calendar.date(byAdding: .day, value: -days, to: today) ?? today
+                    startDate = max(earliestDate, maxLookback)
+                    print("📅 侧边栏模式：调整起始日期为 \(dateFormatter.string(from: startDate))")
+                }
+            }
+            
+            // 计算实际天数
+            actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? days
+        }
+        
+        print("📅 最终查询参数：天数=\(actualDays)，起始日期=\(dateFormatter.string(from: startDate))")
+        
+        var heatmapData: [HeatmapData] = []
+        var totalFoundCommits = 0
+        
+        // 遍历实际日期范围
+        for dayOffset in 0..<actualDays {
+            guard let targetDate = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
                 continue
             }
             
-            // 获取当天开始和结束时间
             let startOfDay = calendar.startOfDay(for: targetDate)
-            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
             
-            // 找出当天有提交的项目
+            // 使用git_daily数据快速查询每个项目在这一天的提交数
             var dailyCommitCount = 0
             var dailyProjects: [ProjectData] = []
             
             for project in projects {
-                if let lastCommitDate = project.gitInfo?.lastCommitDate,
-                   lastCommitDate >= startOfDay && lastCommitDate < endOfDay {
-                    dailyCommitCount += 1 // 简化：每个项目当天算1个提交
+                let commitsOnDay = project.getCommitCount(for: startOfDay)
+                if commitsOnDay > 0 {
+                    dailyCommitCount += commitsOnDay
                     dailyProjects.append(project)
+                    totalFoundCommits += commitsOnDay
                 }
             }
             
@@ -153,7 +203,57 @@ enum HeatmapLogic {
             ))
         }
         
-        return heatmapData.reversed() // 最早的日期在前
+        let daysWithData = heatmapData.filter { $0.commitCount > 0 }.count
+        print("✅ HeatmapLogic.generateHeatmapData: 完成，生成\(heatmapData.count)个数据点，\(daysWithData)天有数据，总提交数=\(totalFoundCommits)")
+        
+        return heatmapData // 已经按时间顺序排列
+    }
+    
+    /// 获取项目在指定日期的提交数 - 临时禁用Git查询，解决卡顿问题
+    private static func getCommitsForDate(project: ProjectData, date: Date) -> Int {
+        // Linus式紧急修复：暂时禁用Git查询，防止界面卡死
+        // TODO: 后续优化Git查询性能或改为后台批量处理
+        
+        // 回退到简单逻辑：只检查lastCommitDate
+        guard let gitInfo = project.gitInfo else { 
+            return 0 
+        }
+        let lastCommitDate = gitInfo.lastCommitDate
+        
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+        
+        // 如果最后提交日期在目标日期范围内，返回1
+        return (lastCommitDate >= startOfDay && lastCommitDate < endOfDay) ? 1 : 0
+    }
+    
+    /// 执行Git命令并返回提交数
+    private static func executeGitCommand(_ command: String) -> Int {
+        let process = Process()
+        process.launchPath = "/bin/bash"
+        process.arguments = ["-c", command]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe() // 忽略错误输出
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               let count = Int(output) {
+                return count
+            }
+        } catch {
+            // Git命令执行失败，静默返回0
+            return 0
+        }
+        
+        return 0
     }
     
     /// 获取某天的项目列表 - Linus式：简单查找
@@ -168,6 +268,24 @@ enum HeatmapLogic {
             }
         }
         return []
+    }
+    
+    /// 为特定项目生成热力图数据 - Linus式：最小改动实现单项目支持
+    static func generateProjectHeatmapData(
+        for project: ProjectData,
+        days: Int = 30
+    ) -> [HeatmapData] {
+        // 复用现有逻辑，只传入单个项目
+        return generateHeatmapData(from: [project], days: days)
+    }
+    
+    /// 为多个特定项目生成热力图数据 - 支持项目组合分析
+    static func generateProjectsHeatmapData(
+        for projects: [ProjectData],
+        days: Int = 30
+    ) -> [HeatmapData] {
+        // 直接复用现有逻辑
+        return generateHeatmapData(from: projects, days: days)
     }
     
     /// 检查项目是否存在
@@ -1087,40 +1205,53 @@ enum AppStateLogic {
 /// Dashboard 业务逻辑 - 最简单可工作的实现
 enum DashboardLogic {
     
-    /// 生成每日活动数据 - 基于实际项目数据，修正提交数计算逻辑
+    /// 生成每日活动数据 - Linus式修复：复用已验证正确的HeatmapLogic
     static func generateDailyActivities(from projects: [ProjectData], days: Int = 90) -> [DailyActivity] {
-        let calendar = Calendar.current
-        let today = Date()
-        var activities: [DailyActivity] = []
+        print("🔄 DashboardLogic: 复用HeatmapLogic生成每日活动数据，项目数: \(projects.count)，请求天数: \(days)")
         
-        // 创建日期到活跃项目数的映射（更合理的统计方式）
-        var dailyActiveProjects: [Date: Set<UUID>] = [:]
-        
-        // 统计每个项目的最后活跃日期
-        for project in projects {
-            guard let gitInfo = project.gitInfo else { continue }
-            
-            let lastCommitDate = gitInfo.lastCommitDate
-            let dayStart = calendar.startOfDay(for: lastCommitDate)
-            
-            // 如果这个日期在我们的统计范围内，记录这个项目在这一天是活跃的
-            if let daysAgo = calendar.dateComponents([.day], from: dayStart, to: calendar.startOfDay(for: today)).day,
-               daysAgo >= 0 && daysAgo < days {
-                dailyActiveProjects[dayStart, default: Set<UUID>()].insert(project.id)
+        // 🔧 详细调试：检查数据看板收到的项目数据
+        let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
+        print("🔧 DashboardLogic: 有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
+        if !projectsWithGitDaily.isEmpty {
+            projectsWithGitDaily.prefix(3).forEach { project in
+                print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(100) ?? "nil")")
+            }
+        } else {
+            // 如果没有git_daily数据，显示前3个项目的信息
+            print("⚠️ DashboardLogic: 没有项目包含git_daily数据！前3个项目信息：")
+            projects.prefix(3).forEach { project in
+                print("   📁 \(project.name): git_daily=\(project.git_daily ?? "nil"), path=\(project.path)")
             }
         }
         
-        // 生成指定天数的活动数据
-        for dayOffset in 0..<days {
-            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
-            let dayStart = calendar.startOfDay(for: date)
-            
-            // 使用当天活跃的项目数作为活动强度指标
-            let activeProjectCount = dailyActiveProjects[dayStart]?.count ?? 0
-            activities.append(DailyActivity(date: date, commitCount: activeProjectCount))
+        // 直接复用侧边栏已验证正确的热力图数据生成逻辑
+        // Linus式修复：数据看板强制使用365天，忽略传入的days参数
+        print("🎯 DashboardLogic: 强制调用HeatmapLogic.generateHeatmapData(days=365)")
+        let heatmapData = HeatmapLogic.generateHeatmapData(from: projects, days: 365)
+        
+        // 转换为DailyActivity格式
+        let activities = heatmapData.map { data in
+            DailyActivity(
+                date: data.date,
+                commitCount: data.commitCount,
+                projects: Set(data.projects.map { $0.id })
+            )
         }
         
-        return activities.reversed() // 按时间顺序
+        let totalCommits = activities.reduce(0) { $0 + $1.commitCount }
+        let activeDays = activities.filter { $0.commitCount > 0 }.count
+        print("✅ DashboardLogic: 复用HeatmapLogic完成，生成\(activities.count)个数据点，\(activeDays)天有数据，总提交数=\(totalCommits)")
+        
+        return activities
+    }
+    
+    // MARK: - 辅助方法
+    
+    /// 解析日期字符串为Date对象
+    private static func parseDateString(_ dateString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: dateString)
     }
     
     /// 获取热力图网格数据 - 修正的实现
