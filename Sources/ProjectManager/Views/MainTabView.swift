@@ -101,37 +101,37 @@ struct MainTabView: View {
         case .projects:
             ProjectListMainContent()
         case .dashboard:
-            DashboardView(projects: projectDataArray)
+            DashboardView(projects: sidebarProjectDataArray)
         }
     }
     
     // MARK: - 计算属性
     
+    /// 项目列表使用的数据（过滤隐藏标签）
     private var projectDataArray: [ProjectData] {
         let allProjectData = Array(tagManager.projects.values).map { project in
-            ProjectData(
-                id: project.id,
-                name: project.name,
-                path: project.path,
-                lastModified: project.lastModified,
-                tags: project.tags,
-                gitInfo: project.gitInfo.map { gitInfo in
-                    ProjectData.GitInfoData(
-                        commitCount: gitInfo.commitCount,
-                        lastCommitDate: gitInfo.lastCommitDate
-                    )
-                },
-                fileSystemInfo: ProjectData.FileSystemInfoData(
-                    modificationDate: project.fileSystemInfo.modificationDate,
-                    size: project.fileSystemInfo.size,
-                    checksum: project.fileSystemInfo.checksum,
-                    lastCheckTime: project.fileSystemInfo.lastCheckTime
-                )
-            )
+            ProjectData(from: project)
+        }
+        return ProjectLogic.filterProjectsByHiddenTags(allProjectData)
+    }
+    
+    /// 数据看板使用的数据（复用侧边栏逻辑，确保一致性）
+    private var sidebarProjectDataArray: [ProjectData] {
+        // Linus式修复：直接复用侧边栏的项目数据生成逻辑
+        let projects = tagManager.projects.values.map { project in
+            ProjectData(from: project)
         }
         
-        // 过滤掉包含"隐藏标签"的项目，确保数据看板统计准确
-        return ProjectLogic.filterProjectsByHiddenTags(allProjectData)
+        // 🔧 调试：验证git_daily数据传递
+        let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
+        print("🔧 MainTabView.sidebarProjectDataArray: 转换后有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
+        if !projectsWithGitDaily.isEmpty {
+            projectsWithGitDaily.prefix(2).forEach { project in
+                print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(50) ?? "nil")")
+            }
+        }
+        
+        return projects
     }
 }
 

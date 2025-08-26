@@ -145,23 +145,32 @@ enum HeatmapLogic {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         
+        var actualDays = days
         var startDate: Date = calendar.date(byAdding: .day, value: -days, to: today) ?? today
         
-        // 如果有git_daily数据，使用数据中的最早日期
-        if !allAvailableDates.isEmpty {
-            let sortedDates = allAvailableDates.sorted()
-            if let earliestDateStr = sortedDates.first,
-               let earliestDate = dateFormatter.date(from: earliestDateStr) {
-                // 使用更早的日期作为起始点，但限制在365天内
-                let maxLookback = calendar.date(byAdding: .day, value: -365, to: today) ?? today
-                startDate = max(earliestDate, maxLookback)
-                print("📅 调整起始日期为: \(dateFormatter.string(from: startDate))")
+        // 🎯 数据看板需要显示完整365天：强制使用固定天数
+        if days == 365 {
+            print("🎯 数据看板模式：强制生成365天完整数据")
+            actualDays = 365
+            startDate = calendar.date(byAdding: .day, value: -365, to: today) ?? today
+        } else {
+            // 侧边栏模式：使用数据驱动的优化范围
+            if !allAvailableDates.isEmpty {
+                let sortedDates = allAvailableDates.sorted()
+                if let earliestDateStr = sortedDates.first,
+                   let earliestDate = dateFormatter.date(from: earliestDateStr) {
+                    // 使用更早的日期作为起始点，但限制在指定天数内
+                    let maxLookback = calendar.date(byAdding: .day, value: -days, to: today) ?? today
+                    startDate = max(earliestDate, maxLookback)
+                    print("📅 侧边栏模式：调整起始日期为 \(dateFormatter.string(from: startDate))")
+                }
             }
+            
+            // 计算实际天数
+            actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? days
         }
         
-        // 计算实际天数
-        let actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? days
-        print("📅 实际查询天数: \(actualDays)")
+        print("📅 最终查询参数：天数=\(actualDays)，起始日期=\(dateFormatter.string(from: startDate))")
         
         var heatmapData: [HeatmapData] = []
         var totalFoundCommits = 0
@@ -1196,43 +1205,53 @@ enum AppStateLogic {
 /// Dashboard 业务逻辑 - 最简单可工作的实现
 enum DashboardLogic {
     
-    /// 生成每日活动数据 - 基于git_daily扁平数据，真实多天统计
+    /// 生成每日活动数据 - Linus式修复：复用已验证正确的HeatmapLogic
     static func generateDailyActivities(from projects: [ProjectData], days: Int = 90) -> [DailyActivity] {
-        print("🔄 DashboardLogic: 开始生成每日活动数据，项目数: \(projects.count)")
+        print("🔄 DashboardLogic: 复用HeatmapLogic生成每日活动数据，项目数: \(projects.count)，请求天数: \(days)")
         
-        // 检查项目中git_daily数据的可用性
+        // 🔧 详细调试：检查数据看板收到的项目数据
         let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
-        let projectsWithoutGitDaily = projects.count - projectsWithGitDaily.count
-        print("📊 Git Daily 数据状态: \(projectsWithGitDaily.count) 个项目有数据，\(projectsWithoutGitDaily) 个项目无数据")
-        
-        if projectsWithGitDaily.isEmpty {
-            print("⚠️ 警告: 所有项目都缺少git_daily数据！热力图将显示空数据")
-        } else {
-            print("✅ 找到 \(projectsWithGitDaily.count) 个项目有git_daily数据")
-            // 输出前几个项目的git_daily样例
+        print("🔧 DashboardLogic: 有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
+        if !projectsWithGitDaily.isEmpty {
             projectsWithGitDaily.prefix(3).forEach { project in
-                print("   📁 \(project.name): \(project.git_daily?.prefix(50) ?? "nil")")
+                print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(100) ?? "nil")")
+            }
+        } else {
+            // 如果没有git_daily数据，显示前3个项目的信息
+            print("⚠️ DashboardLogic: 没有项目包含git_daily数据！前3个项目信息：")
+            projects.prefix(3).forEach { project in
+                print("   📁 \(project.name): git_daily=\(project.git_daily ?? "nil"), path=\(project.path)")
             }
         }
         
-        let calendar = Calendar.current
-        let today = Date()
-        var activities: [DailyActivity] = []
+        // 直接复用侧边栏已验证正确的热力图数据生成逻辑
+        // Linus式修复：数据看板强制使用365天，忽略传入的days参数
+        print("🎯 DashboardLogic: 强制调用HeatmapLogic.generateHeatmapData(days=365)")
+        let heatmapData = HeatmapLogic.generateHeatmapData(from: projects, days: 365)
         
-        // 生成指定天数的活动数据，使用git_daily数据
-        for dayOffset in 0..<days {
-            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
-            let dayStart = calendar.startOfDay(for: date)
-            
-            // 统计当天的总提交数
-            let totalCommits = projects.reduce(0) { total, project in
-                total + project.getCommitCount(for: dayStart)
-            }
-            
-            activities.append(DailyActivity(date: date, commitCount: totalCommits))
+        // 转换为DailyActivity格式
+        let activities = heatmapData.map { data in
+            DailyActivity(
+                date: data.date,
+                commitCount: data.commitCount,
+                projects: Set(data.projects.map { $0.id })
+            )
         }
         
-        return activities.reversed() // 按时间顺序
+        let totalCommits = activities.reduce(0) { $0 + $1.commitCount }
+        let activeDays = activities.filter { $0.commitCount > 0 }.count
+        print("✅ DashboardLogic: 复用HeatmapLogic完成，生成\(activities.count)个数据点，\(activeDays)天有数据，总提交数=\(totalCommits)")
+        
+        return activities
+    }
+    
+    // MARK: - 辅助方法
+    
+    /// 解析日期字符串为Date对象
+    private static func parseDateString(_ dateString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: dateString)
     }
     
     /// 获取热力图网格数据 - 修正的实现

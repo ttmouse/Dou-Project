@@ -660,7 +660,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         
         Task {
             let projectsArray = Array(projects.values)
-            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectsArray, days: 90)
+            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectsArray, days: 365)
             
             await MainActor.run {
                 var updateCount = 0
@@ -713,7 +713,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             // 更新git_daily数据
             print("🔄 正在更新项目 \(syncedProject.name) 的git_daily数据...")
-            syncedProject = syncedProject.withUpdatedGitDaily(days: 90)
+            syncedProject = syncedProject.withUpdatedGitDaily(days: 365)
             // 加载最新的系统标签并合并
             let systemTags = TagSystemSync.loadTagsFromFile(at: refreshedData.path)
             let mergedTags = refreshedData.tags.union(systemTags)

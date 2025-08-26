@@ -9,9 +9,9 @@ struct GitDailyCollector {
     /// 批量收集项目的Git历史数据
     /// - Parameters:
     ///   - projects: 项目列表
-    ///   - days: 收集天数（默认90天）
+    ///   - days: 保留参数以保持接口兼容性（实际获取完整历史记录）
     /// - Returns: 项目ID到git_daily字符串的映射
-    static func collectGitDaily(for projects: [Project], days: Int = 90) -> [UUID: String] {
+    static func collectGitDaily(for projects: [Project], days: Int = 365) -> [UUID: String] {
         var results: [UUID: String] = [:]
         
         for project in projects {
@@ -26,19 +26,19 @@ struct GitDailyCollector {
     /// 收集单个项目的Git历史数据
     /// - Parameters:
     ///   - project: 项目
-    ///   - days: 收集天数
+    ///   - days: 保留参数以保持接口兼容性（实际获取完整历史记录）
     /// - Returns: git_daily字符串，如果失败返回nil
-    static func collectSingleProjectGitDaily(project: Project, days: Int = 90) -> String? {
+    static func collectSingleProjectGitDaily(project: Project, days: Int = 365) -> String? {
         // 检查是否是Git仓库
         let gitPath = "\(project.path)/.git"
         guard FileManager.default.fileExists(atPath: gitPath) else {
             return nil
         }
         
-        // 使用TRD中推荐的单一命令批量获取历史
+        // 获取完整Git历史记录，不限制时间范围
         let command = """
         cd '\(project.path)' && \
-        git log --pretty=format:'%cd' --date=short --since='\(days) days ago' | \
+        git log --pretty=format:'%cd' --date=short | \
         sort | uniq -c | \
         awk '{print $2":"$1}' | \
         tr '\\n' ',' | \
@@ -101,7 +101,7 @@ struct GitDailyCollector {
         // 🔧 调试：详细日志输出
         if !dailyData.isEmpty {
             let availableDates = dailyData.keys.sorted().prefix(5).joined(separator: ", ")
-            print("🔍 GitDailyCollector.getCommitCount: 查找日期=\(dateString), 可用日期=\(availableDates)..., 找到提交数=\(commitCount)")
+            // print("🔍 GitDailyCollector.getCommitCount: 查找日期=\(dateString), 可用日期=\(availableDates)..., 找到提交数=\(commitCount)")
         }
         
         return commitCount
@@ -132,9 +132,9 @@ struct GitDailyCollector {
     /// 批量更新项目的git_daily数据
     /// - Parameters:
     ///   - projects: 原项目列表
-    ///   - days: 收集天数
+    ///   - days: 保留参数以保持接口兼容性（实际获取完整历史记录）
     /// - Returns: 更新了git_daily的项目列表
-    static func updateProjectsWithGitDaily(_ projects: [Project], days: Int = 90) -> [Project] {
+    static func updateProjectsWithGitDaily(_ projects: [Project], days: Int = 365) -> [Project] {
         let gitDailyData = collectGitDaily(for: projects, days: days)
         
         return projects.map { project in
@@ -212,7 +212,7 @@ extension Project {
     }
     
     /// 更新git_daily数据
-    func withUpdatedGitDaily(days: Int = 90) -> Project {
+    func withUpdatedGitDaily(days: Int = 365) -> Project {
         if let gitDaily = GitDailyCollector.collectSingleProjectGitDaily(project: self, days: days) {
             return Project(
                 id: id,

@@ -4,9 +4,18 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var viewModel: DashboardViewModel
     @State private var selectedTimeRange: TimeRange = .threeMonths
+    @EnvironmentObject var tagManager: TagManager
     
     let projects: [ProjectData]
     let onClose: (() -> Void)?
+    
+    private var dashboardProjects: [ProjectData] {
+        let allProjects = tagManager.projects.values.map { project in
+            ProjectData(from: project)
+        }
+        // 过滤掉包含"隐藏标签"的项目
+        return ProjectLogic.filterProjectsByHiddenTags(allProjects)
+    }
     
     init(projects: [ProjectData] = [], onClose: (() -> Void)? = nil) {
         self.projects = projects
@@ -36,7 +45,21 @@ struct DashboardView: View {
         }
         .navigationTitle("开发活动概览")
         .onChange(of: projects) { newProjects in
-            viewModel.refreshData(with: newProjects)
+            // Linus式修复：使用tagManager重新获取最新的项目数据，确保包含git_daily
+            let freshProjects = tagManager.projects.values.map { project in
+                ProjectData(from: project)
+            }
+            print("🔧 DashboardView: 使用tagManager重新获取项目数据，项目数: \(freshProjects.count)")
+            viewModel.refreshData(with: freshProjects)
+        }
+        .onAppear {
+            // Linus式修复：初始化时也使用tagManager获取最新数据
+            let freshProjects = tagManager.projects.values.map { project in
+                ProjectData(from: project)
+            }
+            print("🔧 DashboardView.onAppear: 使用tagManager获取项目数据，项目数: \(freshProjects.count)")
+            print("🔧 DashboardView.onAppear: 强制清空缓存数据，重新生成365天数据")
+            viewModel.refreshData(with: freshProjects)
         }
         .background(
             // 隐藏的 ESC 键处理按钮
@@ -167,8 +190,9 @@ struct DashboardView: View {
                     .font(.headline)
                     .fontWeight(.semibold)
                 
-                SimpleHeatmapView(
-                    activities: viewModel.dailyActivities
+                UnifiedHeatmapView(
+                    projects: dashboardProjects,
+                    config: .dashboard
                 )
                 .background(Color(.controlBackgroundColor))
                 .cornerRadius(10)
@@ -421,220 +445,7 @@ struct RecentCommitProjectRow: View {
     }
 }
 
-// MARK: - 简化的热力图和统计组件
-
-/// 简化的热力图视图
-struct SimpleHeatmapView: View {
-    let activities: [DailyActivity]
-    @State private var hoveredActivity: DailyActivity?
-    @State private var mouseLocation: CGPoint = .zero
-    @State private var showTooltip = false
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            // GitHub 风格热力图
-            ZStack {
-                githubStyleHeatmap
-                
-                // 悬停工具提示
-                if showTooltip, let activity = hoveredActivity {
-                    tooltipView(for: activity)
-                        .position(x: mouseLocation.x + 60, y: max(30, mouseLocation.y - 10))
-                        .zIndex(1000)
-                }
-            }
-            .frame(height: 120)
-            
-            // 简单的图例
-            HStack {
-                Text("少")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 1) {
-                    ForEach(ActivityLevel.allCases, id: \.self) { level in
-                        Rectangle()
-                            .frame(width: 9, height: 9)
-                            .foregroundColor(level.color)
-                            .cornerRadius(1)
-                    }
-                }
-                
-                Text("多")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-    }
-    
-    private var githubStyleHeatmap: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // 月份标签
-            monthLabels
-            
-            HStack(alignment: .top, spacing: 0) {
-                // 星期标签
-                weekdayLabels
-                
-                // 热力图网格
-                heatmapGrid
-            }
-        }
-        .background(
-            // 透明的鼠标追踪区域
-            Rectangle()
-                .fill(Color.clear)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                        .onChanged { value in
-                            mouseLocation = value.location
-                        }
-                )
-        )
-    }
-    
-    private var monthLabels: some View {
-        HStack(spacing: 0) {
-            // 左侧留空对齐星期标签
-            Spacer()
-                .frame(width: 20)
-            
-            ForEach(0..<12) { monthIndex in
-                Text(monthName(monthIndex))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .frame(width: monthWidth(monthIndex), alignment: .leading)
-            }
-            
-            Spacer() // 右侧填充
-        }
-    }
-    
-    private var weekdayLabels: some View {
-        VStack(spacing: 2) {
-            // 上方留空对齐月份标签
-            Spacer().frame(height: 12)
-            
-            ForEach(["", "一", "", "三", "", "五", ""], id: \.self) { label in
-                Text(label)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .frame(width: 16, height: 11)
-            }
-        }
-    }
-    
-    private var heatmapGrid: some View {
-        VStack(spacing: 2) {
-            // 上方留空对齐月份标签
-            Spacer().frame(height: 12)
-            
-            ForEach(0..<7) { weekday in
-                HStack(spacing: 2) {
-                    ForEach(0..<53) { weekIndex in
-                        let dayIndex = weekIndex * 7 + weekday
-                        if dayIndex < 365 {
-                            let activity = dayIndex < activities.count ? activities[dayIndex] : DailyActivity(date: Date(), commitCount: 0)
-                            
-                            Rectangle()
-                                .frame(width: 11, height: 11)
-                                .foregroundColor(activity.activityLevel.color)
-                                .cornerRadius(2)
-                                .scaleEffect(hoveredActivity?.id == activity.id ? 1.2 : 1.0)
-                                .animation(.easeInOut(duration: 0.15), value: hoveredActivity?.id == activity.id)
-                                .onHover { isHovering in
-                                    withAnimation(.easeInOut(duration: 0.1)) {
-                                        if isHovering {
-                                            hoveredActivity = activity
-                                            showTooltip = true
-                                        } else {
-                                            if hoveredActivity?.id == activity.id {
-                                                hoveredActivity = nil
-                                                showTooltip = false
-                                            }
-                                        }
-                                    }
-                                }
-                        } else {
-                            Rectangle()
-                                .frame(width: 11, height: 11)
-                                .foregroundColor(.clear)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - 辅助方法
-    
-    private func monthName(_ index: Int) -> String {
-        // 从去年9月开始到今年8月的顺序
-        let monthSequence = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
-        let monthNumber = monthSequence[index]
-        return "\(monthNumber)月"
-    }
-    
-    private func monthWidth(_ index: Int) -> CGFloat {
-        // 简化计算：每个月大约占用4.3周的宽度
-        // 每个单元格 11px + 2px 间距 = 13px
-        return 4.3 * 13.0 // 约56px每月
-    }
-    
-    private func tooltipView(for activity: DailyActivity) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(formatDate(activity.date))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                
-                Text(commitCountText(activity.commitCount))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            
-            Rectangle()
-                .frame(width: 8, height: 8)
-                .foregroundColor(activity.activityLevel.color)
-                .cornerRadius(1)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(.controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(.separatorColor), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-        )
-    }
-    
-    // MARK: - 辅助方法
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy年M月d日"
-        return formatter.string(from: date)
-    }
-    
-    private func commitCountText(_ count: Int) -> String {
-        switch count {
-        case 0:
-            return "无提交"
-        case 1:
-            return "1次提交"
-        default:
-            return "\(count)次提交"
-        }
-    }
-}
+// MARK: - 统计组件
 
 /// 简化的统计卡片
 struct SimpleStatsCard: View {
@@ -690,22 +501,6 @@ struct SimpleStatsCard: View {
     }
 }
 
-/// 热力图单元格组件
-struct HeatmapCell: View {
-    let activity: DailyActivity
-    let isHovered: Bool
-    let onHover: (Bool) -> Void
-    
-    var body: some View {
-        Rectangle()
-            .frame(width: 11, height: 11)
-            .foregroundColor(activity.activityLevel.color)
-            .cornerRadius(2)
-            .scaleEffect(isHovered ? 1.2 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-            .onHover(perform: onHover)
-    }
-}
 
 // TimeRange 枚举已移动到 DashboardModels.swift
 

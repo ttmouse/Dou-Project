@@ -15,9 +15,14 @@ struct SidebarView: View {
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
     
-    // 缓存热力图数据，避免重复计算
-    @State private var cachedHeatmapData: [HeatmapLogic.HeatmapData] = []
-    @State private var isGeneratingHeatmap = false
+    // 侧边栏项目数据
+    private var sidebarProjectsData: [ProjectData] {
+        let allProjects = tagManager.projects.values.map { project in
+            ProjectData(from: project)
+        }
+        // 过滤掉包含"隐藏标签"的项目
+        return ProjectLogic.filterProjectsByHiddenTags(allProjects)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -106,8 +111,9 @@ struct SidebarView: View {
                 .background(AppTheme.accent.opacity(0.1))
             }
             
-            HeatmapView(
-                heatmapData: cachedHeatmapData,
+            UnifiedHeatmapView(
+                projects: sidebarProjectsData,
+                config: .sidebar,
                 onDateSelected: { projects in
                     selectedProjects = projects
                     selectedDateString = formatSelectedDate(from: projects)
@@ -124,47 +130,9 @@ struct SidebarView: View {
                     searchBarRef?.clearFocus()
                 }
             )
-            .onAppear {
-                if cachedHeatmapData.isEmpty && !isGeneratingHeatmap {
-                    generateHeatmapDataAsync()
-                }
-            }
         }
     }
     
-    // MARK: - 热力图数据生成 - 异步版本，避免UI阻塞
-    private func generateHeatmapDataAsync() {
-        isGeneratingHeatmap = true
-        
-        Task {
-            // 在后台线程生成数据 - 修复：使用ProjectData.from()转换器保留git_daily数据
-            let projectDataArray = await MainActor.run {
-                let projects = tagManager.projects.values.map { project in
-                    ProjectData(from: project)
-                }
-                
-                // 🔧 调试：验证git_daily数据传递
-                let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
-                print("🔧 SidebarView: 转换后有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
-                projectsWithGitDaily.prefix(2).forEach { project in
-                    print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(50) ?? "nil")")
-                }
-                
-                return projects
-            }
-            
-            // 后台生成热力图数据（Git查询）
-            print("🔄 SidebarView: 开始生成热力图数据，项目数: \(projectDataArray.count)")
-            let heatmapData = HeatmapLogic.generateHeatmapData(from: Array(projectDataArray), days: 90)
-            print("✅ SidebarView: 热力图数据生成完成，数据点数: \(heatmapData.count)")
-            
-            // 回到主线程更新UI
-            await MainActor.run {
-                cachedHeatmapData = heatmapData
-                isGeneratingHeatmap = false
-            }
-        }
-    }
     
     // MARK: - 日期格式化
     private func formatSelectedDate(from projects: [ProjectData]) -> String {

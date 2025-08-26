@@ -167,7 +167,7 @@ class ProjectOperationManager {
         print("🔄 开始注册 \(projects.count) 个项目，准备收集git_daily数据...")
         
         // 批量更新项目的git_daily数据
-        let projectsWithGitDaily = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 90)
+        let projectsWithGitDaily = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 365)
         print("✅ 已为 \(projectsWithGitDaily.count) 个项目更新git_daily数据")
         
         var allNewTags = Set<String>()
