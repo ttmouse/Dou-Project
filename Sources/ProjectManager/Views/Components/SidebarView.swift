@@ -137,33 +137,26 @@ struct SidebarView: View {
         isGeneratingHeatmap = true
         
         Task {
-            // 在后台线程生成数据
+            // 在后台线程生成数据 - 修复：使用ProjectData.from()转换器保留git_daily数据
             let projectDataArray = await MainActor.run {
-                tagManager.projects.values.map { project in
-                    ProjectData(
-                        id: project.id,
-                        name: project.name,
-                        path: project.path,
-                        lastModified: project.lastModified,
-                        tags: project.tags,
-                        gitInfo: project.gitInfo.map { gitInfo in
-                            ProjectData.GitInfoData(
-                                commitCount: gitInfo.commitCount,
-                                lastCommitDate: gitInfo.lastCommitDate
-                            )
-                        },
-                        fileSystemInfo: ProjectData.FileSystemInfoData(
-                            modificationDate: project.fileSystemInfo.modificationDate,
-                            size: project.fileSystemInfo.size,
-                            checksum: project.fileSystemInfo.checksum,
-                            lastCheckTime: project.fileSystemInfo.lastCheckTime
-                        )
-                    )
+                let projects = tagManager.projects.values.map { project in
+                    ProjectData(from: project)
                 }
+                
+                // 🔧 调试：验证git_daily数据传递
+                let projectsWithGitDaily = projects.filter { $0.git_daily != nil && !$0.git_daily!.isEmpty }
+                print("🔧 SidebarView: 转换后有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
+                projectsWithGitDaily.prefix(2).forEach { project in
+                    print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(50) ?? "nil")")
+                }
+                
+                return projects
             }
             
             // 后台生成热力图数据（Git查询）
+            print("🔄 SidebarView: 开始生成热力图数据，项目数: \(projectDataArray.count)")
             let heatmapData = HeatmapLogic.generateHeatmapData(from: Array(projectDataArray), days: 90)
+            print("✅ SidebarView: 热力图数据生成完成，数据点数: \(heatmapData.count)")
             
             // 回到主线程更新UI
             await MainActor.run {

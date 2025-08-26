@@ -5,27 +5,26 @@ import SwiftUI
 // Linus式设计：简单的数据转换，无副作用，便于BusinessLogic处理
 
 extension Project {
-    /// 转换为纯数据模型，用于BusinessLogic处理
+    /// 转换为纯数据模型，用于BusinessLogic处理（扁平结构）
     func toProjectData() -> ProjectData {
-        return ProjectData(
-            id: self.id,
-            name: self.name,
-            path: self.path,
-            lastModified: self.lastModified,
-            tags: self.tags,
-            gitInfo: self.gitInfo?.toProjectDataGitInfo(),
-            fileSystemInfo: self.fileSystemInfo.toProjectDataFileSystemInfo()
-        )
+        return ProjectData(from: self)
     }
     
-    /// 从纯数据模型创建Project实例
+    /// 从纯数据模型创建Project实例（扁平结构）
     static func fromProjectData(_ data: ProjectData) -> Project {
         return Project(
             id: data.id,
             name: data.name,
             path: data.path,
-            lastModified: data.lastModified,
-            tags: data.tags
+            tags: data.tags,
+            mtime: data.mtime,
+            size: data.size,
+            checksum: data.checksum,
+            git_commits: data.git_commits,
+            git_last_commit: data.git_last_commit,
+            git_daily: data.git_daily,
+            created: data.created,
+            checked: data.checked
         )
     }
 }

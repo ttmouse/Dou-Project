@@ -120,13 +120,55 @@ enum HeatmapLogic {
         from projects: [ProjectData],
         days: Int = 30
     ) -> [HeatmapData] {
+        print("🔄 HeatmapLogic.generateHeatmapData: 开始生成，项目数=\(projects.count), 天数=\(days)")
+        
+        // 🔧 修复：动态确定日期范围，包含git_daily数据中的实际日期
         let calendar = Calendar.current
         let today = Date()
-        var heatmapData: [HeatmapData] = []
         
-        // 遍历每一天，使用git_daily数据
-        for dayOffset in 0..<days {
-            guard let targetDate = calendar.date(byAdding: .day, value: -dayOffset, to: today) else {
+        // 收集所有项目git_daily数据中的日期
+        var allAvailableDates = Set<String>()
+        for project in projects {
+            if let gitDaily = project.git_daily, !gitDaily.isEmpty {
+                let dailyData = GitDailyCollector.parseGitDaily(gitDaily)
+                allAvailableDates.formUnion(dailyData.keys)
+            }
+        }
+        
+        print("📅 找到的所有可用日期数: \(allAvailableDates.count)")
+        if !allAvailableDates.isEmpty {
+            let sortedDates = allAvailableDates.sorted()
+            print("   最早日期: \(sortedDates.first ?? "none"), 最晚日期: \(sortedDates.last ?? "none")")
+        }
+        
+        // 计算实际的日期范围：从最早数据日期到今天，最多查询365天
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        
+        var startDate: Date = calendar.date(byAdding: .day, value: -days, to: today) ?? today
+        
+        // 如果有git_daily数据，使用数据中的最早日期
+        if !allAvailableDates.isEmpty {
+            let sortedDates = allAvailableDates.sorted()
+            if let earliestDateStr = sortedDates.first,
+               let earliestDate = dateFormatter.date(from: earliestDateStr) {
+                // 使用更早的日期作为起始点，但限制在365天内
+                let maxLookback = calendar.date(byAdding: .day, value: -365, to: today) ?? today
+                startDate = max(earliestDate, maxLookback)
+                print("📅 调整起始日期为: \(dateFormatter.string(from: startDate))")
+            }
+        }
+        
+        // 计算实际天数
+        let actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? days
+        print("📅 实际查询天数: \(actualDays)")
+        
+        var heatmapData: [HeatmapData] = []
+        var totalFoundCommits = 0
+        
+        // 遍历实际日期范围
+        for dayOffset in 0..<actualDays {
+            guard let targetDate = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
                 continue
             }
             
@@ -141,6 +183,7 @@ enum HeatmapLogic {
                 if commitsOnDay > 0 {
                     dailyCommitCount += commitsOnDay
                     dailyProjects.append(project)
+                    totalFoundCommits += commitsOnDay
                 }
             }
             
@@ -151,7 +194,10 @@ enum HeatmapLogic {
             ))
         }
         
-        return heatmapData.reversed() // 最早的日期在前
+        let daysWithData = heatmapData.filter { $0.commitCount > 0 }.count
+        print("✅ HeatmapLogic.generateHeatmapData: 完成，生成\(heatmapData.count)个数据点，\(daysWithData)天有数据，总提交数=\(totalFoundCommits)")
+        
+        return heatmapData // 已经按时间顺序排列
     }
     
     /// 获取项目在指定日期的提交数 - 临时禁用Git查询，解决卡顿问题

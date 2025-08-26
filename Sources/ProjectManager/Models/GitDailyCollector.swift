@@ -87,12 +87,24 @@ struct GitDailyCollector {
     ///   - date: 目标日期
     /// - Returns: 该日期的提交数，没有数据返回0
     static func getCommitCount(from gitDaily: String?, for date: Date) -> Int {
+        guard let gitDaily = gitDaily, !gitDaily.isEmpty else {
+            return 0
+        }
+        
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let dateString = dateFormatter.string(from: date)
         
         let dailyData = parseGitDaily(gitDaily)
-        return dailyData[dateString] ?? 0
+        let commitCount = dailyData[dateString] ?? 0
+        
+        // 🔧 调试：详细日志输出
+        if !dailyData.isEmpty {
+            let availableDates = dailyData.keys.sorted().prefix(5).joined(separator: ", ")
+            print("🔍 GitDailyCollector.getCommitCount: 查找日期=\(dateString), 可用日期=\(availableDates)..., 找到提交数=\(commitCount)")
+        }
+        
+        return commitCount
     }
     
     /// 获取最近N天的提交统计
@@ -151,25 +163,35 @@ struct GitDailyCollector {
     
     /// 执行shell命令并返回输出
     private static func executeShellCommand(_ command: String) -> String? {
+        print("🐚 GitDailyCollector: 执行命令 - \(command)")
+        
         let process = Process()
         process.launchPath = "/bin/bash"
         process.arguments = ["-c", command]
         
         let pipe = Pipe()
+        let errorPipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe() // 忽略错误输出
+        process.standardError = errorPipe
         
         do {
             try process.run()
             process.waitUntilExit()
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            
+            if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                print("⚠️ GitDailyCollector: 命令stderr - \(errorOutput)")
+            }
+            
             let output = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             
+            print("📊 GitDailyCollector: 命令输出 - \(output ?? "nil")")
             return output?.isEmpty == false ? output : nil
         } catch {
-            print("GitDailyCollector: 执行命令失败 - \(error)")
+            print("❌ GitDailyCollector: 执行命令失败 - \(error)")
             return nil
         }
     }

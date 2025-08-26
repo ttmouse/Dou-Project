@@ -38,7 +38,9 @@ struct ContentView: View {
                 // 延迟启动git_daily数据收集，避免阻塞UI
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     print("🚀 启动git_daily数据收集...")
-                    tagManager.updateAllProjectsGitDaily()
+                    // 临时注释掉自动收集，避免阻塞
+                    // tagManager.updateAllProjectsGitDaily()
+                    print("⏭️ 跳过自动git_daily收集，可手动触发")
                 }
             }
     }

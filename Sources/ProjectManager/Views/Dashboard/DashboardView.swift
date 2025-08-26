@@ -732,7 +732,7 @@ struct DashboardView_Previews: PreviewProvider {
         let today = Date()
         
         return (0..<15).map { index in
-            let commitDate = calendar.date(byAdding: .day, value: -index * 2, to: today) ?? today
+            let commitDate = calendar.date(byAdding: .day, value: -(index * 2), to: today) ?? today
             let commitCount = [0, 1, 3, 5, 8, 12, 20].randomElement() ?? 1
             
             return ProjectData(

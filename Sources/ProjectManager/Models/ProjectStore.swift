@@ -51,9 +51,36 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
         let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
         do {
             let data = try Data(contentsOf: cacheURL)
-            let decoder = JSONDecoder()
-            let projects = try decoder.decode([Project].self, from: data)
-            return projects
+            
+            // 检测数据版本
+            let version = ProjectDataMigration.detectDataVersion(data)
+            print("ProjectStore: 检测到数据版本 - \(version.description)")
+            
+            switch version {
+            case .flatStructure:
+                // 新格式，直接解析
+                let decoder = JSONDecoder()
+                let projects = try decoder.decode([Project].self, from: data)
+                return projects
+                
+            case .nestedStructure:
+                // 旧格式，使用迁移工具
+                print("ProjectStore: 开始数据迁移...")
+                let migratedProjects = ProjectDataMigration.migrateFromJSON(data)
+                let projectArray = Array(migratedProjects.values)
+                
+                // 迁移后立即保存新格式
+                saveProjectsToCache(projectArray)
+                print("ProjectStore: 数据迁移完成，已保存新格式")
+                
+                return projectArray
+                
+            case .unknown, .invalid:
+                print("ProjectStore: 数据格式无法识别，尝试直接解析...")
+                let decoder = JSONDecoder()
+                let projects = try decoder.decode([Project].self, from: data)
+                return projects
+            }
         } catch {
             print("ProjectStore: 加载项目缓存失败（可能是首次运行）: \(error)")
             return nil
@@ -205,13 +232,17 @@ class DefaultProjectStore: ProjectStore, ObservableObject {
     
     // MARK: - 数据持久化
     func saveProjectsToCache() {
+        saveProjectsToCache(Array(projects.values))
+    }
+    
+    private func saveProjectsToCache(_ projectsToSave: [Project]) {
         let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(Array(projects.values))
+            let data = try encoder.encode(projectsToSave)
             try data.write(to: cacheURL)
-            print("ProjectStore: 项目数据已保存到缓存")
+            print("ProjectStore: 项目数据已保存到缓存 (\(projectsToSave.count) 个项目)")
         } catch {
             print("ProjectStore: 保存项目缓存失败: \(error)")
         }
