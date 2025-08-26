@@ -269,6 +269,7 @@ struct HeatmapTooltip: View {
         .frame(maxWidth: 200)
         .fixedSize()
         .allowsHitTesting(false) // 让鼠标事件穿透
+        .zIndex(999) // 确保提示始终在最前面
     }
     
     private var dateString: String {
