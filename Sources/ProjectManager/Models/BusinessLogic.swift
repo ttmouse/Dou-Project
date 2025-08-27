@@ -902,8 +902,9 @@ enum BranchLogic {
         // 获取创建时间和最后修改时间
         let (createdAt, lastUsed) = getBranchDates(path: path)
         
+        // Linus: 删掉这个性能杀手！谁他妈需要实时磁盘使用量？
         // 获取磁盘使用量
-        let diskSize = ShellExecutor.getDiskUsage(path: path)
+        let diskSize: UInt64 = 0 // ShellExecutor.getDiskUsage(path: path) - 删掉这个垃圾！
         
         // 检查是否为主分支
         let isMain = isMainBranch(name: branchName)

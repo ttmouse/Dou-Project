@@ -294,7 +294,9 @@ class ShellExecutor {
                    let commit = currentWorktree["HEAD"] {
                     
                     let isMain = path == basePath
-                    let status = getGitStatus(path: path).clean ? BranchStatus.clean : BranchStatus.hasChanges
+                    // Linus: 不要为每个分支都检查状态！这是性能杀手！
+                    // let status = getGitStatus(path: path).clean ? BranchStatus.clean : BranchStatus.hasChanges
+                    let status = BranchStatus.unknown // 够用了！需要时再检查
                     let lastModified = getLastModifiedDate(path: path)
                     
                     let worktree = WorktreeInfo(
@@ -325,7 +327,9 @@ class ShellExecutor {
            let commit = currentWorktree["HEAD"] {
             
             let isMain = path == basePath
-            let status = getGitStatus(path: path).clean ? BranchStatus.clean : BranchStatus.hasChanges
+            // Linus: 同样的垃圾代码，删掉！
+            // let status = getGitStatus(path: path).clean ? BranchStatus.clean : BranchStatus.hasChanges
+            let status = BranchStatus.unknown // 简单粗暴！
             let lastModified = getLastModifiedDate(path: path)
             
             let worktree = WorktreeInfo(
