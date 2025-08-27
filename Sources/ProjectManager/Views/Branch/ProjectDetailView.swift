@@ -315,6 +315,7 @@ struct ProjectDetailView: View {
                 showAdvancedMergeDialog = true
             }
         )
+        .id(project.id) // 强制刷新：当project.id变化时，重新创建BranchListView
     }
     
     // MARK: - Helper Views
