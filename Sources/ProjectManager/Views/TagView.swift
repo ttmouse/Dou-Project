@@ -18,54 +18,42 @@ struct TagView: View {
     }
 
     var body: some View {
-        Button(action: {
-            // 添加点击反馈动画
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    isPressed = false
+        tagContent
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isHovered = hovering
                 }
             }
-            // 调用点击回调
-            print("🏷️ TagView 点击: \(tag)")
-            onClick?()
-        }) {
-            HStack(spacing: 4) {
-                Text(tag)
-                    .font(.system(size: fontSize))
-                    .foregroundColor(textColor)
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .animation(.easeInOut(duration: 0.1), value: isPressed)
+            .id(viewId)  // 使用动态 id 确保视图更新
+    }
+    
+    private var tagContent: some View {
+        HStack(spacing: 4) {
+            Text(tag)
+                .font(.system(size: fontSize))
+                .foregroundColor(textColor)
 
-                if isHovered && onDelete != nil {
-                    Button(action: {
-                        onDelete?()
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: fontSize))
-                            .foregroundColor(textColor.opacity(0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
+            if isHovered && onDelete != nil {
+                Button(action: {
+                    onDelete?()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: fontSize))
+                        .foregroundColor(textColor.opacity(0.8))
                 }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(backgroundColor)
-                    .scaleEffect(isPressed ? 0.95 : 1.0)
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isHovered = hovering
+                .buttonStyle(.plain)
+                .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .animation(.easeInOut(duration: 0.1), value: isPressed)
-        .id(viewId)  // 使用动态 id 确保视图更新
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(backgroundColor)
+                .scaleEffect(isPressed ? 0.95 : 1.0)
+        )
     }
     
     // 计算文字颜色

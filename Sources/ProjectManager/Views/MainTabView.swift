@@ -153,7 +153,8 @@ struct ProjectSidebarContent: View {
             isShowingNewTagDialog: $isShowingNewTagDialog,
             tagToRename: $tagToRename,
             selectedDirectory: $selectedDirectory,
-            heatmapFilteredProjectIds: $heatmapFilteredProjectIds
+            heatmapFilteredProjectIds: $heatmapFilteredProjectIds,
+            onTagSelected: { _ in }  // MainTabView暂时使用空回调
         )
     }
 }
