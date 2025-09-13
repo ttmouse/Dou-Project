@@ -16,75 +16,77 @@ struct TagRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button {
-            action()
-        } label: {
-            HStack {
-                TagView(
-                    tag: tag,
-                    color: tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors
-                        .randomElement()?.color ?? AppTheme.accent,
-                    fontSize: 13,
-                    isSelected: isSelected
-                )
-
-                Spacer()
-
-                if isEditing {
-                    TextField("重命名标签", text: $tempName)
-                }
-
-                Spacer()
-                
-                // 小眼睛隐藏按钮 - 垂直对齐
-                HStack(spacing: 0) {
-                    Button {
-                        tagManager.toggleTagVisibility(tag)
-                    } label: {
-                        if tagManager.isTagHidden(tag) {
-                            // 隐藏标签：始终显示eye.slash
-                            Image(systemName: "eye.slash")
-                                .foregroundColor(AppTheme.sidebarSecondaryText.opacity(0.6))
-                                .font(.system(size: 11))
-                                .frame(width: 14, height: 14)
-                        } else {
-                            // 正常标签：悬停时显示eye，不悬停时透明占位
-                            Image(systemName: "eye")
-                                .foregroundColor(AppTheme.sidebarSecondaryText)
-                                .font(.system(size: 11))
-                                .frame(width: 14, height: 14)
-                                .opacity(isHovered ? 0.8 : 0.0)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .animation(.easeInOut(duration: 0.2), value: isHovered)
-                }
-                
-                Text("\(count)")
-                    .font(.caption)
-                    .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
-                    .frame(minWidth: 24, alignment: .center) // 固定最小宽度，居中对齐
-                    .padding(.horizontal, AppTheme.tagCountPaddingH)
-                    .padding(.vertical, AppTheme.tagCountPaddingV)
-                    .background(
-                        isSelected
-                            ? AppTheme.accent.opacity(0.2)
-                            : AppTheme.sidebarDirectoryBackground
-                    )
-                    .cornerRadius(AppTheme.tagCountCornerRadius)
+        HStack {
+            // 可点击的标签区域
+            HStack(spacing: 4) {
+                Text(tag)
+                    .font(.system(size: 13))
+                    .foregroundColor(textColor)
             }
-            .padding(.horizontal, AppTheme.tagRowPaddingH)
-            .padding(.vertical, AppTheme.tagRowPaddingV)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
-                    .fill(
-                        isSelected ? AppTheme.sidebarSelectedBackground : 
-                        (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
-                    )
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(tagBackgroundColor)
             )
-            .contentShape(Rectangle())
+
+            Spacer()
+
+            if isEditing {
+                TextField("重命名标签", text: $tempName)
+            }
+
+            Spacer()
+            
+            // 小眼睛隐藏按钮 - 独立处理点击
+            Button {
+                tagManager.toggleTagVisibility(tag)
+            } label: {
+                if tagManager.isTagHidden(tag) {
+                    // 隐藏标签：始终显示eye.slash
+                    Image(systemName: "eye.slash")
+                        .foregroundColor(AppTheme.sidebarSecondaryText.opacity(0.6))
+                        .font(.system(size: 11))
+                        .frame(width: 14, height: 14)
+                } else {
+                    // 正常标签：悬停时显示eye，不悬停时透明占位
+                    Image(systemName: "eye")
+                        .foregroundColor(AppTheme.sidebarSecondaryText)
+                        .font(.system(size: 11))
+                        .frame(width: 14, height: 14)
+                        .opacity(isHovered ? 0.8 : 0.0)
+                }
+            }
+            .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 0.2), value: isHovered)
+            
+            Text("\(count)")
+                .font(.caption)
+                .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
+                .frame(minWidth: 24, alignment: .center) // 固定最小宽度，居中对齐
+                .padding(.horizontal, AppTheme.tagCountPaddingH)
+                .padding(.vertical, AppTheme.tagCountPaddingV)
+                .background(
+                    isSelected
+                        ? AppTheme.accent.opacity(0.2)
+                        : AppTheme.sidebarDirectoryBackground
+                )
+                .cornerRadius(AppTheme.tagCountCornerRadius)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, AppTheme.tagRowPaddingH)
+        .padding(.vertical, AppTheme.tagRowPaddingV)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
+                .fill(
+                    isSelected ? AppTheme.sidebarSelectedBackground : 
+                    (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            print("🔥 TagRow onTapGesture triggered for tag: \(tag)")
+            action()
+        }
         .contextMenu { contextMenuContent }
         .onHover { hovering in
             self.isHovered = hovering
@@ -93,6 +95,26 @@ struct TagRow: View {
             handleDrop(providers: providers)
         }
         .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
+    }
+    
+    // 计算标签文字颜色
+    private var textColor: Color {
+        if isSelected {
+            return .white
+        } else {
+            let color = tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
+            return color.opacity(0.9)
+        }
+    }
+    
+    // 计算标签背景颜色  
+    private var tagBackgroundColor: Color {
+        let color = tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
+        if isSelected {
+            return color
+        } else {
+            return color.opacity(0.2)
+        }
     }
 
     // MARK: - View Components
