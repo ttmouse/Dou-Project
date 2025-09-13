@@ -941,7 +941,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                 if newProjects.isEmpty {
                     print("✅ 目录扫描完成，未发现新项目")
                     // 设置进度为100%并显示结果
-                    setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "扫描完成，未发现新项目\n████████████ 100%")
+                    setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "扫描完成，未发现新项目")
                     
                     // 短暂延迟后显示最终结果
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
