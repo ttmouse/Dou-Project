@@ -170,6 +170,12 @@ struct DirectoryListView: View {
                             Label("创建新项目", systemImage: "folder.badge.plus")
                         }
                         
+                        Button(action: {
+                            tagManager.refreshSingleDirectory(path)
+                        }) {
+                            Label("刷新此目录", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        
                         Divider()
                         
                         Button(action: {

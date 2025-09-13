@@ -903,4 +903,381 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     func importTagsFromBackup(at url: URL, strategy: TagDataBackup.ImportStrategy = .merge) throws -> TagDataBackup.ImportResult {
         return try backupManager.importBackupFromFile(at: url, strategy: strategy)
     }
+    
+    // MARK: - 单目录刷新功能
+    
+    /// 刷新单个工作目录的项目（优化版 - 真正的增量检测）
+    /// - Parameter directoryPath: 要刷新的目录路径
+    func refreshSingleDirectory(_ directoryPath: String) {
+        Task {
+            print("🔄 开始快速刷新单个目录: \(directoryPath)")
+            
+            // 🛡️ 安全检查：验证目录是否存在且被监视
+            guard watchedDirectories.contains(directoryPath),
+                  FileManager.default.fileExists(atPath: directoryPath) else {
+                print("❌ 目录不存在或未被监视: \(directoryPath)")
+                await MainActor.run {
+                    showRefreshErrorAlert(message: "目录不存在或未被监视：\n\(directoryPath)")
+                }
+                return
+            }
+            
+            // 显示进度提示并启动进度动画
+            await MainActor.run {
+                startProgressAnimation(directoryName: (directoryPath as NSString).lastPathComponent, initialStatus: "正在扫描 \((directoryPath as NSString).lastPathComponent)...")
+            }
+            
+            // 获取现有项目路径集合，用于增量比较
+            let existingProjectPaths = Set(projects.values.filter { $0.path.hasPrefix(directoryPath) }.map { $0.path })
+            print("🛡️ 该目录现有 \(existingProjectPaths.count) 个项目")
+            
+            // 快速扫描目录，只获取新增项目
+            let discoveredProjects = await scanDirectoryForNewProjects(directoryPath, existingPaths: existingProjectPaths)
+            
+            // 筛选出真正的新项目
+            let newProjects = discoveredProjects.filter { !existingProjectPaths.contains($0.path) }
+            
+            await MainActor.run {
+                if newProjects.isEmpty {
+                    print("✅ 目录扫描完成，未发现新项目")
+                    // 设置进度为100%并显示结果
+                    setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "扫描完成，未发现新项目\n████████████ 100%")
+                    
+                    // 短暂延迟后显示最终结果
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.showRefreshSuccessAlert(
+                            directoryName: (directoryPath as NSString).lastPathComponent,
+                            addedCount: 0,
+                            syncedCount: 0,
+                            totalCount: existingProjectPaths.count
+                        )
+                    }
+                    return
+                }
+                
+                print("🆕 发现 \(newProjects.count) 个新项目，立即添加...")
+                
+                // 更新进度到60%：发现新项目
+                setProgress(0.6, directoryName: (directoryPath as NSString).lastPathComponent, status: "发现 \(newProjects.count) 个新项目...")
+                
+                // 短暂延迟让用户看到发现阶段
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    // 更新进度到80%：正在添加
+                    self.setProgress(0.8, directoryName: (directoryPath as NSString).lastPathComponent, status: "正在添加项目...")
+                    
+                    // 阶段1：立即显示新项目（无Git信息）
+                    var updatedProjects = self.projects
+                    var updatedTags = self.allTags
+                    
+                    for newProject in newProjects {
+                        updatedProjects[newProject.id] = newProject
+                        updatedTags.formUnion(newProject.tags)
+                        self.sortManager.insertProject(newProject)
+                        print("➕ 立即添加新项目: \(newProject.name)")
+                    }
+                    
+                    // 更新数据
+                    self.projects = updatedProjects
+                    self.allTags = updatedTags
+                    self.projectOperations.saveAllToCache()
+                    
+                    // 设置进度为100%
+                    self.setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "完成！")
+                    
+                    // 短暂延迟后显示最终结果
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.showRefreshSuccessAlert(
+                            directoryName: (directoryPath as NSString).lastPathComponent,
+                            addedCount: newProjects.count,
+                            syncedCount: 0,
+                            totalCount: existingProjectPaths.count + newProjects.count
+                        )
+                    }
+                }
+                
+                // 阶段2：后台收集Git信息
+                if !newProjects.isEmpty {
+                    Task {
+                        await collectGitDataForNewProjects(newProjects)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// 扫描目录获取新项目（快速版本，不包含Git数据收集）
+    private func scanDirectoryForNewProjects(_ directoryPath: String, existingPaths: Set<String>) async -> [Project] {
+        return await withTaskGroup(of: [Project].self) { group in
+            group.addTask {
+                // 在后台线程执行扫描
+                var discoveredProjects: [Project] = []
+                
+                do {
+                    let fileManager = FileManager.default
+                    let contents = try fileManager.contentsOfDirectory(atPath: directoryPath)
+                    
+                    for item in contents {
+                        let itemPath = (directoryPath as NSString).appendingPathComponent(item)
+                        var isDirectory: ObjCBool = false
+                        
+                        if fileManager.fileExists(atPath: itemPath, isDirectory: &isDirectory),
+                           isDirectory.boolValue {
+                            
+                            // 快速创建项目（不收集Git信息）
+                            let project = Project(
+                                name: item,
+                                path: itemPath,
+                                lastModified: self.getModificationDate(itemPath),
+                                tags: Set<String>() // 暂时不加载标签
+                            )
+                            discoveredProjects.append(project)
+                        }
+                    }
+                } catch {
+                    print("❌ 扫描目录失败: \(error)")
+                }
+                
+                return discoveredProjects
+            }
+            
+            var allProjects: [Project] = []
+            for await projects in group {
+                allProjects.append(contentsOf: projects)
+            }
+            return allProjects
+        }
+    }
+    
+    /// 后台收集新项目的Git信息
+    private func collectGitDataForNewProjects(_ newProjects: [Project]) async {
+        print("📊 开始后台收集 \(newProjects.count) 个新项目的Git信息...")
+        
+        // 只为新项目收集Git数据
+        let projectsWithGitData = GitDailyCollector.updateProjectsWithGitDaily(newProjects, days: 365)
+        
+        await MainActor.run {
+            var updatedCount = 0
+            for updatedProject in projectsWithGitData {
+                if let _ = projects[updatedProject.id] {
+                    projects[updatedProject.id] = updatedProject
+                    sortManager.updateProject(updatedProject)
+                    updatedCount += 1
+                }
+            }
+            
+            if updatedCount > 0 {
+                projectOperations.saveAllToCache()
+                print("✅ 后台更新完成，为 \(updatedCount) 个新项目收集了Git信息")
+            }
+        }
+    }
+    
+    // MARK: - 刷新提示功能
+    
+    /// 当前显示的进度对话框引用
+    private var currentProgressAlert: NSAlert?
+    /// 自动关闭定时器
+    private var autoCloseTimer: Timer?
+    /// 进度更新定时器
+    private var progressUpdateTimer: Timer?
+    /// 当前进度值 (0.0 - 1.0)
+    private var currentProgress: Double = 0.0
+    /// 是否为进度状态（true）还是完成状态（false）
+    private var isProgressState = true
+    
+    /// 创建进度条显示
+    private func createProgressBar(_ progress: Double) -> String {
+        let totalBars = 10
+        let filledBars = Int(progress * Double(totalBars))
+        // 尝试使用等宽字符组合
+        let filledPart = String(repeating: "●", count: filledBars)
+        let emptyPart = String(repeating: "○", count: totalBars - filledBars)
+        let percentage = Int(progress * 100)
+        return "\(filledPart)\(emptyPart) \(percentage)%"
+    }
+    
+    /// 更新进度值并刷新显示
+    private func updateProgress(_ progress: Double, directoryName: String, status: String) {
+        currentProgress = progress
+        let progressBar = createProgressBar(progress)
+        let fullStatus = "\(status)\n\(progressBar)"
+        updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
+    }
+    
+    /// 启动进度动画
+    private func startProgressAnimation(directoryName: String, initialStatus: String) {
+        currentProgress = 0.0
+        updateProgress(0.1, directoryName: directoryName, status: initialStatus)
+        
+        // 启动定时器，每0.3秒更新一次进度
+        progressUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // 缓慢增加进度到30%（扫描阶段）
+            if self.currentProgress < 0.3 {
+                self.currentProgress += 0.05
+                let progressBar = self.createProgressBar(self.currentProgress)
+                let fullStatus = "\(initialStatus)\n\(progressBar)"
+                self.updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
+            }
+        }
+    }
+    
+    /// 设置进度到特定值
+    private func setProgress(_ progress: Double, directoryName: String, status: String) {
+        // 停止自动进度动画
+        progressUpdateTimer?.invalidate()
+        progressUpdateTimer = nil
+        
+        // 直接设置进度
+        updateProgress(progress, directoryName: directoryName, status: status)
+    }
+    
+    /// 停止进度更新
+    private func stopProgressUpdates() {
+        progressUpdateTimer?.invalidate()
+        progressUpdateTimer = nil
+    }
+    
+    /// 显示或更新刷新对话框
+    private func updateRefreshAlert(directoryName: String, status: String, isProgress: Bool = true) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            if let existingAlert = self.currentProgressAlert {
+                // 更新现有对话框
+                existingAlert.messageText = isProgress ? "正在刷新目录" : "目录刷新完成"
+                existingAlert.informativeText = status
+                
+                // 更新按钮
+                if !isProgress && self.isProgressState {
+                    // 从进度状态切换到完成状态，更改按钮文本
+                    existingAlert.buttons.first?.title = "确定"
+                    self.isProgressState = false
+                    
+                    // 启动3秒自动关闭定时器
+                    self.startAutoCloseTimer()
+                }
+            } else {
+                // 创建新对话框
+                self.createNewRefreshAlert(directoryName: directoryName, status: status, isProgress: isProgress)
+            }
+        }
+    }
+    
+    /// 创建新的刷新对话框
+    private func createNewRefreshAlert(directoryName: String, status: String, isProgress: Bool) {
+        let alert = NSAlert()
+        alert.messageText = isProgress ? "正在刷新目录" : "目录刷新完成"
+        alert.informativeText = status
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: isProgress ? "取消" : "确定")
+        
+        self.currentProgressAlert = alert
+        self.isProgressState = isProgress
+        
+        // 在主线程上显示
+        if let window = NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { [weak self] response in
+                self?.handleAlertResponse(response, isProgress: isProgress)
+            }
+        } else {
+            let response = alert.runModal()
+            self.handleAlertResponse(response, isProgress: isProgress)
+        }
+        
+        // 如果是完成状态，启动自动关闭定时器
+        if !isProgress {
+            self.startAutoCloseTimer()
+        }
+    }
+    
+    /// 处理对话框响应
+    private func handleAlertResponse(_ response: NSApplication.ModalResponse, isProgress: Bool) {
+        if response == .alertFirstButtonReturn {
+            if isProgress {
+                print("🚫 用户取消了刷新操作")
+            } else {
+                print("✅ 用户确认了刷新结果")
+            }
+        }
+        self.cleanupAlert()
+    }
+    
+    /// 启动3秒自动关闭定时器
+    private func startAutoCloseTimer() {
+        // 清除现有定时器
+        autoCloseTimer?.invalidate()
+        
+        // 启动新的3秒定时器
+        autoCloseTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.dismissRefreshAlert()
+            }
+        }
+    }
+    
+    /// 关闭刷新对话框
+    private func dismissRefreshAlert() {
+        DispatchQueue.main.async { [weak self] in
+            if let alert = self?.currentProgressAlert {
+                alert.window.orderOut(nil)
+            }
+            self?.cleanupAlert()
+        }
+    }
+    
+    /// 清理对话框相关资源
+    private func cleanupAlert() {
+        autoCloseTimer?.invalidate()
+        autoCloseTimer = nil
+        progressUpdateTimer?.invalidate()
+        progressUpdateTimer = nil
+        currentProgressAlert = nil
+        isProgressState = true
+        currentProgress = 0.0
+    }
+    
+    /// 显示刷新进度（兼容旧接口）
+    private func showRefreshProgressAlert(directoryName: String, status: String) {
+        updateRefreshAlert(directoryName: directoryName, status: status, isProgress: true)
+    }
+    
+    /// 关闭进度对话框（兼容旧接口，现在改为更新状态）
+    private func dismissRefreshProgressAlert() {
+        // 不再关闭对话框，保留给最终结果使用
+        // 这个方法现在变成空实现，保持向后兼容
+    }
+    
+    /// 显示刷新成功提示（修改为更新现有对话框）
+    private func showRefreshSuccessAlert(directoryName: String, addedCount: Int, syncedCount: Int, totalCount: Int) {
+        var infoText = "当前项目：\(totalCount) 个"
+        
+        if addedCount > 0 {
+            infoText += "\n✅ 新增：\(addedCount) 个"
+        }
+        if syncedCount > 0 {
+            infoText += "\n🏷️ 已同步：\(syncedCount) 个"
+        }
+        if addedCount == 0 && syncedCount == 0 {
+            infoText += "\n📝 未发现新项目"
+        }
+        
+        // 更新现有对话框为完成状态
+        updateRefreshAlert(directoryName: directoryName, status: infoText, isProgress: false)
+    }
+    
+    /// 显示刷新错误提示
+    private func showRefreshErrorAlert(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "目录刷新失败"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "确定")
+        
+        // 在主线程上显示
+        DispatchQueue.main.async {
+            alert.runModal()
+        }
+    }
 }
