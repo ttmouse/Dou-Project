@@ -1100,7 +1100,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     private func updateProgress(_ progress: Double, directoryName: String, status: String) {
         currentProgress = progress
         let progressBar = createProgressBar(progress)
-        let fullStatus = "\(status)\n\(progressBar)"
+        let fullStatus = "\(status) \(progressBar)"
         updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
     }
     
@@ -1117,7 +1117,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             if self.currentProgress < 0.3 {
                 self.currentProgress += 0.05
                 let progressBar = self.createProgressBar(self.currentProgress)
-                let fullStatus = "\(initialStatus)\n\(progressBar)"
+                let fullStatus = "\(initialStatus) \(progressBar)"
                 self.updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
             }
         }
