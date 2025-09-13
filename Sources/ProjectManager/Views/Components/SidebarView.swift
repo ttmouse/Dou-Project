@@ -9,6 +9,7 @@ struct SidebarView: View {
     @Binding var tagToRename: IdentifiableString?
     @Binding var selectedDirectory: String?
     @Binding var heatmapFilteredProjectIds: Set<UUID>
+    let onTagSelected: (String) -> Void  // 添加标签选择回调
     
     // Linus式：简单的状态管理，不搞复杂的
     @State private var selectedProjects: [ProjectData] = []
@@ -50,7 +51,8 @@ struct SidebarView: View {
                 selectedTags: $selectedTags,
                 searchBarRef: $searchBarRef,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
-                tagToRename: $tagToRename
+                tagToRename: $tagToRename,
+                onTagSelected: onTagSelected  // 传递标签选择回调
             )
             .layoutPriority(1) // 给予更高的布局优先级
         }
@@ -340,6 +342,7 @@ struct TagListView: View {
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
     @EnvironmentObject var tagManager: TagManager
+    let onTagSelected: (String) -> Void  // 添加标签选择回调
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
@@ -382,11 +385,7 @@ struct TagListView: View {
                     isSelected: selectedTags.isEmpty,
                     count: tagManager.projects.count,
                     action: { 
-                        // 移除任何现有焦点
-                        NSApp.keyWindow?.makeFirstResponder(nil)
-                        // 清除搜索框焦点
-                        searchBarRef?.clearFocus()
-                        selectedTags.removeAll() 
+                        onTagSelected("全部")  // 使用统一的回调
                     },
                     onDrop: nil,
                     onRename: nil,
@@ -399,11 +398,7 @@ struct TagListView: View {
                     isSelected: selectedTags.contains("没有标签"),
                     count: tagManager.projects.values.filter { $0.tags.isEmpty }.count,
                     action: { 
-                        // 移除任何现有焦点
-                        NSApp.keyWindow?.makeFirstResponder(nil)
-                        // 清除搜索框焦点
-                        searchBarRef?.clearFocus()
-                        selectedTags = ["没有标签"] 
+                        onTagSelected("没有标签")  // 使用统一的回调
                     },
                     onDrop: nil,
                     onRename: nil,
@@ -421,7 +416,7 @@ struct TagListView: View {
                         tag: tag,
                         isSelected: selectedTags.contains(tag),
                         count: tagManager.getUsageCount(for: tag),
-                        action: { handleTagSelection(tag) },
+                        action: { onTagSelected(tag) },  // 使用统一的回调
                         onDrop: { _ in handleDrop(tag: tag) },
                         onRename: {
                             tagToRename = IdentifiableString(tag)
@@ -443,16 +438,6 @@ struct TagListView: View {
         }
         .buttonStyle(.plain)
         .opacity(selectedTags.isEmpty ? 0.5 : 1)
-    }
-    
-    private func handleTagSelection(_ tag: String) {
-        // 移除任何现有焦点
-        NSApp.keyWindow?.makeFirstResponder(nil)
-        // 清除搜索框焦点
-        searchBarRef?.clearFocus()
-        
-        // 选择点击的标签
-        selectedTags = [tag]  // 直接选择点击的标签
     }
     
     private func handleDrop(tag: String) -> Bool {
@@ -497,7 +482,8 @@ struct SidebarView_Previews: PreviewProvider {
             isShowingNewTagDialog: .constant(false),
             tagToRename: .constant(nil),
             selectedDirectory: .constant(nil),
-            heatmapFilteredProjectIds: .constant([])
+            heatmapFilteredProjectIds: .constant([]),
+            onTagSelected: { _ in }  // 添加预览用的空回调
         )
         .environmentObject({
             let container = TagManager()

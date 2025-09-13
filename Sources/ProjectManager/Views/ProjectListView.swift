@@ -115,7 +115,8 @@ struct ProjectListView: View {
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
                 selectedDirectory: $selectedDirectory,
-                heatmapFilteredProjectIds: $heatmapFilteredProjectIds
+                heatmapFilteredProjectIds: $heatmapFilteredProjectIds,
+                onTagSelected: handleTagSelection  // 传递统一的标签处理回调
             )
             
             MainContentView(
@@ -176,7 +177,11 @@ struct ProjectListView: View {
         // 清除搜索框焦点
         searchBarRef?.clearFocus()
         // 选择点击的标签
-        selectedTags = [tag]
+        if tag == "全部" {
+            selectedTags.removeAll()  // "全部"标签等同于清空选择
+        } else {
+            selectedTags = [tag]
+        }
         print("🏷️ 已选中标签: \(selectedTags)")
     }
     
