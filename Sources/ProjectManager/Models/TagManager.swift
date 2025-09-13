@@ -906,11 +906,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     // MARK: - 单目录刷新功能
     
-    /// 刷新单个工作目录的项目（优化版 - 真正的增量检测）
+    /// 刷新单个工作目录的项目（完整版 - 支持增加和删除）
     /// - Parameter directoryPath: 要刷新的目录路径
     func refreshSingleDirectory(_ directoryPath: String) {
         Task {
-            print("🔄 开始快速刷新单个目录: \(directoryPath)")
+            print("🔄 开始完整刷新单个目录: \(directoryPath)")
             
             // 🛡️ 安全检查：验证目录是否存在且被监视
             guard watchedDirectories.contains(directoryPath),
@@ -927,75 +927,75 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                 startProgressAnimation(directoryName: (directoryPath as NSString).lastPathComponent, initialStatus: "扫描中...")
             }
             
-            // 获取现有项目路径集合，用于增量比较
-            let existingProjectPaths = Set(projects.values.filter { $0.path.hasPrefix(directoryPath) }.map { $0.path })
+            // 获取该目录下现有的所有项目
+            let existingProjectsInDir = projects.values.filter { $0.path.hasPrefix(directoryPath) }
+            let existingProjectPaths = Set(existingProjectsInDir.map { $0.path })
             print("🛡️ 该目录现有 \(existingProjectPaths.count) 个项目")
             
-            // 快速扫描目录，只获取新增项目
-            let discoveredProjects = await scanDirectoryForNewProjects(directoryPath, existingPaths: existingProjectPaths)
+            // 扫描目录，获取实际存在的项目
+            let discoveredProjects = await scanDirectoryForAllProjects(directoryPath)
+            let discoveredProjectPaths = Set(discoveredProjects.map { $0.path })
             
-            // 筛选出真正的新项目
-            let newProjects = discoveredProjects.filter { !existingProjectPaths.contains($0.path) }
+            // 计算变化
+            let newProjectPaths = discoveredProjectPaths.subtracting(existingProjectPaths)
+            let deletedProjectPaths = existingProjectPaths.subtracting(discoveredProjectPaths)
+            let newProjects = discoveredProjects.filter { newProjectPaths.contains($0.path) }
             
             await MainActor.run {
-                if newProjects.isEmpty {
-                    print("✅ 目录扫描完成，未发现新项目")
-                    // 设置进度为100%并显示结果
-                    setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "扫描完成，未发现新项目")
-                    
-                    // 短暂延迟后显示最终结果
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.showRefreshSuccessAlert(
-                            directoryName: (directoryPath as NSString).lastPathComponent,
-                            addedCount: 0,
-                            syncedCount: 0,
-                            totalCount: existingProjectPaths.count
-                        )
-                    }
-                    return
-                }
+                // 更新进度到60%：分析变化
+                setProgress(0.6, directoryName: (directoryPath as NSString).lastPathComponent, 
+                           status: "发现 \(newProjects.count) 个新项目，\(deletedProjectPaths.count) 个已删除")
                 
-                print("🆕 发现 \(newProjects.count) 个新项目，立即添加...")
-                
-                // 更新进度到60%：发现新项目
-                setProgress(0.6, directoryName: (directoryPath as NSString).lastPathComponent, status: "发现 \(newProjects.count) 个新项目...")
-                
-                // 短暂延迟让用户看到发现阶段
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    // 更新进度到80%：正在添加
-                    self.setProgress(0.8, directoryName: (directoryPath as NSString).lastPathComponent, status: "正在添加项目...")
-                    
-                    // 阶段1：立即显示新项目（无Git信息）
-                    var updatedProjects = self.projects
-                    var updatedTags = self.allTags
-                    
-                    for newProject in newProjects {
-                        updatedProjects[newProject.id] = newProject
-                        updatedTags.formUnion(newProject.tags)
-                        self.sortManager.insertProject(newProject)
-                        print("➕ 立即添加新项目: \(newProject.name)")
-                    }
-                    
-                    // 更新数据
-                    self.projects = updatedProjects
-                    self.allTags = updatedTags
-                    self.projectOperations.saveAllToCache()
-                    
-                    // 设置进度为100%
-                    self.setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "完成！")
-                    
-                    // 短暂延迟后显示最终结果
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.showRefreshSuccessAlert(
-                            directoryName: (directoryPath as NSString).lastPathComponent,
-                            addedCount: newProjects.count,
-                            syncedCount: 0,
-                            totalCount: existingProjectPaths.count + newProjects.count
-                        )
+                // 处理删除的项目
+                var deletedCount = 0
+                for deletedPath in deletedProjectPaths {
+                    if let project = projects.values.first(where: { $0.path == deletedPath }) {
+                        projects.removeValue(forKey: project.id)
+                        sortManager.removeProject(project)
+                        deletedCount += 1
+                        print("🗑️ 删除不存在的项目: \(project.name)")
                     }
                 }
                 
-                // 阶段2：后台收集Git信息
+                // 更新进度到80%：处理变化
+                setProgress(0.8, directoryName: (directoryPath as NSString).lastPathComponent, 
+                           status: "正在更新项目列表...")
+                
+                // 添加新项目
+                var updatedProjects = projects
+                var updatedTags = allTags
+                
+                for newProject in newProjects {
+                    updatedProjects[newProject.id] = newProject
+                    updatedTags.formUnion(newProject.tags)
+                    sortManager.insertProject(newProject)
+                    print("➕ 添加新项目: \(newProject.name)")
+                }
+                
+                // 更新数据
+                projects = updatedProjects
+                allTags = updatedTags
+                
+                // 使标签统计缓存失效
+                invalidateTagUsageCache()
+                
+                // 保存缓存
+                projectOperations.saveAllToCache()
+                
+                // 设置进度为100%
+                setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "完成！")
+                
+                // 短暂延迟后显示最终结果
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.showRefreshSuccessAlert(
+                        directoryName: (directoryPath as NSString).lastPathComponent,
+                        addedCount: newProjects.count,
+                        syncedCount: deletedCount,
+                        totalCount: existingProjectPaths.count + newProjects.count - deletedCount
+                    )
+                }
+                
+                // 后台收集新项目的Git信息
                 if !newProjects.isEmpty {
                     Task {
                         await collectGitDataForNewProjects(newProjects)
@@ -1010,6 +1010,48 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         return await withTaskGroup(of: [Project].self) { group in
             group.addTask {
                 // 在后台线程执行扫描
+                var discoveredProjects: [Project] = []
+                
+                do {
+                    let fileManager = FileManager.default
+                    let contents = try fileManager.contentsOfDirectory(atPath: directoryPath)
+                    
+                    for item in contents {
+                        let itemPath = (directoryPath as NSString).appendingPathComponent(item)
+                        var isDirectory: ObjCBool = false
+                        
+                        if fileManager.fileExists(atPath: itemPath, isDirectory: &isDirectory),
+                           isDirectory.boolValue {
+                            
+                            // 快速创建项目（不收集Git信息）
+                            let project = Project(
+                                name: item,
+                                path: itemPath,
+                                lastModified: self.getModificationDate(itemPath),
+                                tags: Set<String>() // 暂时不加载标签
+                            )
+                            discoveredProjects.append(project)
+                        }
+                    }
+                } catch {
+                    print("❌ 扫描目录失败: \(error)")
+                }
+                
+                return discoveredProjects
+            }
+            
+            var allProjects: [Project] = []
+            for await projects in group {
+                allProjects.append(contentsOf: projects)
+            }
+            return allProjects
+        }
+    }
+    
+    /// 扫描目录获取所有项目（完整版本，用于检测删除）
+    private func scanDirectoryForAllProjects(_ directoryPath: String) async -> [Project] {
+        return await withTaskGroup(of: [Project].self) { group in
+            group.addTask {
                 var discoveredProjects: [Project] = []
                 
                 do {
@@ -1257,10 +1299,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             infoText += "\n✅ 新增：\(addedCount) 个"
         }
         if syncedCount > 0 {
-            infoText += "\n🏷️ 已同步：\(syncedCount) 个"
+            infoText += "\n🗑️ 已移除：\(syncedCount) 个"
         }
         if addedCount == 0 && syncedCount == 0 {
-            infoText += "\n📝 未发现新项目"
+            infoText += "\n📝 无变化"
         }
         
         // 更新现有对话框为完成状态
