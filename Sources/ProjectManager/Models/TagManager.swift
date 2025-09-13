@@ -924,7 +924,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             // 显示进度提示并启动进度动画
             await MainActor.run {
-                startProgressAnimation(directoryName: (directoryPath as NSString).lastPathComponent, initialStatus: "正在扫描 \((directoryPath as NSString).lastPathComponent)...")
+                startProgressAnimation(directoryName: (directoryPath as NSString).lastPathComponent, initialStatus: "扫描中...")
             }
             
             // 获取现有项目路径集合，用于增量比较
@@ -1146,7 +1146,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             if let existingAlert = self.currentProgressAlert {
                 // 更新现有对话框
-                existingAlert.messageText = isProgress ? "正在刷新目录" : "目录刷新完成"
+                existingAlert.messageText = isProgress ? "刷新目录" : "刷新完成"
                 existingAlert.informativeText = status
                 
                 // 更新按钮
@@ -1168,7 +1168,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     /// 创建新的刷新对话框
     private func createNewRefreshAlert(directoryName: String, status: String, isProgress: Bool) {
         let alert = NSAlert()
-        alert.messageText = isProgress ? "正在刷新目录" : "目录刷新完成"
+        alert.messageText = isProgress ? "刷新目录" : "刷新完成"
         alert.informativeText = status
         alert.alertStyle = .informational
         alert.addButton(withTitle: isProgress ? "取消" : "确定")
