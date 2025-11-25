@@ -46,13 +46,13 @@ struct ProjectCard: View {
             .buttonStyle(.plain)
             .help("编辑标签")
 
-            // 在 Cursor 中打开按钮
-            Button(action: { AppOpenHelper.openInCursor(path: project.path) }) {
+            // 在默认编辑器中打开按钮
+            Button(action: { AppOpenHelper.openInDefaultEditor(path: project.path) }) {
                 Image(systemName: "cursorarrow.rays")
                     .foregroundColor(AppTheme.secondaryIcon)
             }
             .buttonStyle(.plain)
-            .help("在 Cursor 中打开")
+            .help("在默认编辑器中打开")
 
             // 打开文件夹按钮
             Button(action: { AppOpenHelper.openInFinder(path: project.path) }) {

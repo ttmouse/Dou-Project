@@ -322,6 +322,76 @@ struct BranchCard: View {
     // MARK: - Helper Functions
     
     private func openInGhostty() {
+        // 首先激活 Ghostty 应用
+        let activateScript = """
+        tell application "Ghostty"
+            activate
+        end tell
+        """
+        
+        if let activateScriptObject = NSAppleScript(source: activateScript) {
+            var errorInfo: NSDictionary?
+            activateScriptObject.executeAndReturnError(&errorInfo)
+            
+            if let error = errorInfo {
+                print("Failed to activate Ghostty: \(error)")
+                fallbackToOpenCommand()
+                return
+            }
+        }
+        
+        // 等待应用激活，然后发送快捷键
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.sendNewTabShortcut()
+        }
+    }
+    
+    private func sendNewTabShortcut() {
+        let shortcutScript = """
+        tell application "System Events"
+            -- 发送 Cmd+T 创建新标签页
+            keystroke "t" using command down
+        end tell
+        """
+        
+        if let shortcutScriptObject = NSAppleScript(source: shortcutScript) {
+            var errorInfo: NSDictionary?
+            shortcutScriptObject.executeAndReturnError(&errorInfo)
+            
+            if let error = errorInfo {
+                print("Failed to send new tab shortcut: \(error)")
+                fallbackToOpenCommand()
+            } else {
+                print("New tab shortcut sent successfully")
+                // 发送快捷键后，等待一下再发送 cd 命令
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.sendCdCommand(path: self.branch.path)
+                }
+            }
+        }
+    }
+    
+    private func sendCdCommand(path: String) {
+        let cdScript = """
+        tell application "System Events"
+            -- 发送 cd 命令
+            keystroke "cd '\(path)'" & return
+        end tell
+        """
+        
+        if let cdScriptObject = NSAppleScript(source: cdScript) {
+            var errorInfo: NSDictionary?
+            cdScriptObject.executeAndReturnError(&errorInfo)
+            
+            if let error = errorInfo {
+                print("Failed to send cd command: \(error)")
+            } else {
+                print("cd command sent successfully")
+            }
+        }
+    }
+    
+    private func fallbackToOpenCommand() {
         let task = Process()
         task.launchPath = "/usr/bin/open"
         task.arguments = ["-a", "Ghostty", branch.path]
@@ -329,7 +399,7 @@ struct BranchCard: View {
         do {
             try task.run()
         } catch {
-            print("Failed to open Ghostty: \(error)")
+            print("Failed to open Ghostty with open command: \(error)")
             // 如果 Ghostty 打开失败，尝试默认终端
             fallbackToDefaultTerminal()
         }

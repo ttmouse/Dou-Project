@@ -69,18 +69,39 @@ struct EditorConfig: Codable, Identifiable, Equatable, Hashable {
             displayOrder: 2
         ),
         EditorConfig(
+            name: "TRAE",
+            bundleId: "com.trae.app",
+            commandPath: nil,
+            arguments: [],
+            displayOrder: 3
+        ),
+        EditorConfig(
+            name: "CodeBuddy CN",
+            bundleId: "com.tencent.codebuddycn",
+            commandPath: nil,
+            arguments: [],
+            displayOrder: 4
+        ),
+        EditorConfig(
+            name: "Antigravity",
+            bundleId: "com.google.antigravity",
+            commandPath: nil,
+            arguments: [],
+            displayOrder: 5
+        ),
+        EditorConfig(
             name: "Sublime Text",
             bundleId: "com.sublimetext.4",
             commandPath: "/usr/local/bin/subl",
             arguments: [],
-            displayOrder: 4
+            displayOrder: 6
         ),
         EditorConfig(
             name: "Ghostty",
             bundleId: "com.mitchellh.ghostty",
             commandPath: nil,
             arguments: [],
-            displayOrder: 7
+            displayOrder: 8
         )
     ]
 }

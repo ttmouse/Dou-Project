@@ -23,17 +23,66 @@ class EditorManager: ObservableObject {
             
             // 打印加载的编辑器列表
             for editor in editors {
-                print("  - \(editor.name) (启用: \(editor.isEnabled), 顺序: \(editor.displayOrder))")
+                print("  - \(editor.name) (启用: \(editor.isEnabled), 顺序: \(editor.displayOrder), command: \(editor.commandPath ?? "nil"), bundle: \(editor.bundleId ?? "nil"))")
             }
             
-            // 检查是否需要添加新的默认编辑器
+            // 检查是否需要添加新的默认编辑器或更新现有编辑器
             let existingNames = Set(editors.map { $0.name })
             let defaultNames = Set(EditorConfig.defaultEditors.map { $0.name })
             let missingEditors = EditorConfig.defaultEditors.filter { !existingNames.contains($0.name) }
             
+            var needsUpdate = false
+            
+            // 添加缺失的编辑器
             if !missingEditors.isEmpty {
                 print("🆕 发现新的默认编辑器，添加: \(missingEditors.map { $0.name })")
                 editors.append(contentsOf: missingEditors)
+                needsUpdate = true
+            }
+            
+            // 更新现有编辑器的配置（如果默认配置有更新的字段）
+            for defaultEditor in EditorConfig.defaultEditors {
+                if let existingIndex = editors.firstIndex(where: { $0.name == defaultEditor.name }) {
+                    let existingEditor = editors[existingIndex]
+                    
+                    // 检查需要更新的字段
+                    var shouldUpdate = false
+                    
+                    // 如果 commandPath 从 nil 变为有值，需要更新
+                    if existingEditor.commandPath == nil && defaultEditor.commandPath != nil {
+                        shouldUpdate = true
+                        print("🔄 更新 \(defaultEditor.name) 的 commandPath: \(defaultEditor.commandPath!)")
+                    }
+                    
+                    // 如果 arguments 有变化，需要更新
+                    if existingEditor.arguments != defaultEditor.arguments {
+                        shouldUpdate = true
+                        print("🔄 更新 \(defaultEditor.name) 的 arguments: \(defaultEditor.arguments)")
+                    }
+                    
+                    // 如果 bundleId 有变化，需要更新
+                    if existingEditor.bundleId != defaultEditor.bundleId {
+                        shouldUpdate = true
+                        print("🔄 更新 \(defaultEditor.name) 的 bundleId: \(defaultEditor.bundleId ?? "nil")")
+                    }
+                    
+                    if shouldUpdate {
+                        editors[existingIndex] = EditorConfig(
+                            name: defaultEditor.name,
+                            bundleId: defaultEditor.bundleId,
+                            commandPath: defaultEditor.commandPath,
+                            arguments: defaultEditor.arguments,
+                            isEnabled: existingEditor.isEnabled, // 保留启用状态
+                            displayOrder: existingEditor.displayOrder, // 保留显示顺序
+                            isDefault: existingEditor.isDefault // 保留默认状态
+                        )
+                        needsUpdate = true
+                        print("✅ 已更新编辑器配置: \(defaultEditor.name)")
+                    }
+                }
+            }
+            
+            if needsUpdate {
                 editors.sort { $0.displayOrder < $1.displayOrder }
                 saveEditors()
             }
@@ -310,6 +359,25 @@ class EditorManager: ObservableObject {
         }
         print("⭐ 设置默认编辑器: \(editor.name)")
         saveEditors()
+    }
+    
+    /// 重置指定编辑器的配置为默认值
+    func resetEditorToDefault(_ editorName: String) {
+        if let defaultConfig = EditorConfig.defaultEditors.first(where: { $0.name == editorName }) {
+            if let index = editors.firstIndex(where: { $0.name == editorName }) {
+                editors[index] = EditorConfig(
+                    name: defaultConfig.name,
+                    bundleId: defaultConfig.bundleId,
+                    commandPath: defaultConfig.commandPath,
+                    arguments: defaultConfig.arguments,
+                    isEnabled: editors[index].isEnabled, // 保留启用状态
+                    displayOrder: editors[index].displayOrder, // 保留显示顺序
+                    isDefault: editors[index].isDefault // 保留默认状态
+                )
+                print("🔄 重置编辑器配置: \(editorName)")
+                saveEditors()
+            }
+        }
     }
     
     /// 检测系统中可用的编辑器
