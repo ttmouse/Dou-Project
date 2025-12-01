@@ -284,13 +284,6 @@ struct ProjectDetailView: View {
         }
     }
     
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
-        }
-    }
-    
     @State private var editingStartupCommand: String = ""
     @State private var editingCustomPort: String = ""
     @State private var isConfigDirty = false
@@ -376,6 +369,26 @@ struct ProjectDetailView: View {
         // 4. 保存
         tagManager.updateProject(updatedProject)
         isConfigDirty = false
+    }
+    
+    private var projectFileSystemInfo: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("文件系统", icon: "folder")
+            
+            VStack(alignment: .leading, spacing: 12) {
+                infoRow("文件大小", formatFileSize(project.fileSystemInfo.size))
+                infoRow("修改时间", formatDate(project.fileSystemInfo.modificationDate))
+                infoRow("上次检查", formatDate(project.fileSystemInfo.lastCheckTime))
+                infoRow("校验和", project.fileSystemInfo.checksum.isEmpty ? "无" : String(project.fileSystemInfo.checksum.prefix(16)) + "...")
+            }
+            .padding(16)
+            .background(AppTheme.cardBackground)
+            .cornerRadius(AppTheme.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
+        }
     }
     
     private var branchManagement: some View {
