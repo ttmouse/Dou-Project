@@ -467,6 +467,19 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     func removeProject(_ id: UUID) {
         projectOperations.removeProject(id)
     }
+    
+    func updateProject(_ project: Project) {
+        print("更新项目: \(project.name)")
+        projects[project.id] = project
+        sortManager.updateProject(project)
+        
+        // 更新 AppState
+        var updatedProjects = appState.projects
+        updatedProjects[project.id] = project.toProjectData()
+        appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+        
+        saveAll()
+    }
 
     // MARK: - 标签操作
 

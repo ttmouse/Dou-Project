@@ -22,6 +22,10 @@ struct ProjectData: Identifiable, Equatable, Codable {
     let git_last_commit: Date    // 最后提交时间
     let git_daily: String?       // 每日提交统计: "2025-08-25:3,2025-08-24:5"
     
+    // 启动配置
+    let startupCommand: String?  // 自定义启动命令
+    let customPort: Int?         // 自定义端口
+    
     // 元数据
     let created: Date            // 首次发现时间
     let checked: Date            // 最后检查时间
@@ -69,6 +73,8 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.git_commits = project.git_commits
         self.git_last_commit = project.git_last_commit
         self.git_daily = project.git_daily
+        self.startupCommand = project.startupCommand
+        self.customPort = project.customPort
         self.created = project.created
         self.checked = project.checked
     }
@@ -85,6 +91,8 @@ struct ProjectData: Identifiable, Equatable, Codable {
         git_commits: Int,
         git_last_commit: Date,
         git_daily: String? = nil,
+        startupCommand: String? = nil,
+        customPort: Int? = nil,
         created: Date,
         checked: Date
     ) {
@@ -98,6 +106,8 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.git_commits = git_commits
         self.git_last_commit = git_last_commit
         self.git_daily = git_daily
+        self.startupCommand = startupCommand
+        self.customPort = customPort
         self.created = created
         self.checked = checked
     }
@@ -123,6 +133,8 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.git_commits = gitInfo?.commitCount ?? 0
         self.git_last_commit = gitInfo?.lastCommitDate ?? Date.distantPast
         self.git_daily = nil
+        self.startupCommand = nil
+        self.customPort = nil
         self.created = fileSystemInfo.lastCheckTime
         self.checked = fileSystemInfo.lastCheckTime
     }

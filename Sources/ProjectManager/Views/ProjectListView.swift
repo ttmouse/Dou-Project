@@ -18,7 +18,13 @@ struct ProjectListView: View {
     @State private var sortOption: SortOption = .timeDesc
     @State private var selectedDirectory: String? = nil
     @State private var showDetailPanel = false
-    @State private var selectedProjectForDetail: Project? = nil
+    @State private var selectedProjectForDetailId: UUID? = nil
+    
+    private var selectedProjectForDetail: Project? {
+        guard let id = selectedProjectForDetailId else { return nil }
+        return tagManager.projects[id]
+    }
+    
     @State private var heatmapFilteredProjectIds: Set<UUID> = []
 
     @EnvironmentObject var tagManager: TagManager
@@ -191,7 +197,7 @@ struct ProjectListView: View {
         
         if currentSelectedCount <= 1 {
             // 单个项目或无选择时，更新详情面板并单选该项目
-            selectedProjectForDetail = project
+            selectedProjectForDetailId = project.id
             selectedProjects = [project.id]
             
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -199,7 +205,7 @@ struct ProjectListView: View {
             }
         } else {
             // 多选状态时，只更新详情面板内容，不改变选择状态
-            selectedProjectForDetail = project
+            selectedProjectForDetailId = project.id
             
             withAnimation(.easeInOut(duration: 0.3)) {
                 showDetailPanel = true

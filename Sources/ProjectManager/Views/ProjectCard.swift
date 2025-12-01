@@ -18,6 +18,9 @@ struct ProjectCard: View {
     let onSelect: (Bool) -> Void
     let onShowDetail: () -> Void  // 添加显示详情回调
 
+    @State private var showPortConflictAlert = false
+    @State private var conflictPort = 0
+    
     // MARK: - 子视图
     
     /// 头部视图，包含项目名称和操作按钮
@@ -37,6 +40,16 @@ struct ProjectCard: View {
             }
             .buttonStyle(.plain)
             .help("显示项目详情和分支管理")
+
+            // 快速启动按钮
+            if project.startupCommand != nil {
+                Button(action: handleQuickStart) {
+                    Image(systemName: "play.fill")
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(.plain)
+                .help("快速启动 (端口: \(project.customPort.map(String.init) ?? "默认"))")
+            }
 
             // 编辑标签按钮
             Button(action: { isEditingTags = true }) {
@@ -238,6 +251,19 @@ struct ProjectCard: View {
             return "app"
         }
     }
+    
+    private func handleQuickStart() {
+        let result = ProjectRunner.run(project)
+        switch result {
+        case .success(_):
+            break
+        case .failure(let error):
+            print("启动失败: \(error)")
+        case .portBusy(let port, _):
+            conflictPort = port
+            showPortConflictAlert = true
+        }
+    }
 
     // MARK: - 主视图
     
@@ -354,6 +380,17 @@ struct ProjectCard: View {
                     print("❌ 项目重命名失败: \(error.localizedDescription)")
                 }
             }
+        }
+        .alert("端口冲突", isPresented: $showPortConflictAlert) {
+            Button("终止占用进程并启动", role: .destructive) {
+                _ = ProjectRunner.killProcessAndRun(project)
+            }
+            Button("使用随机端口启动") {
+                _ = ProjectRunner.run(project, useRandomPort: true)
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("端口 \(conflictPort) 正在被使用。您想如何处理？")
         }
     }
 }

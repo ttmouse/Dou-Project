@@ -26,6 +26,10 @@ struct Project: Identifiable, Equatable, Codable {
     let git_last_commit: Date    // 最后提交时间
     let git_daily: String?       // 每日提交统计: "2025-08-25:3,2025-08-24:5"
     
+    // 启动配置
+    let startupCommand: String?  // 自定义启动命令
+    let customPort: Int?         // 自定义端口
+    
     // 元数据
     let created: Date            // 首次发现时间
     let checked: Date            // 最后检查时间
@@ -73,6 +77,8 @@ struct Project: Identifiable, Equatable, Codable {
         git_commits: Int = 0,
         git_last_commit: Date? = nil,
         git_daily: String? = nil,
+        startupCommand: String? = nil,
+        customPort: Int? = nil,
         created: Date? = nil,
         checked: Date? = nil
     ) {
@@ -91,6 +97,8 @@ struct Project: Identifiable, Equatable, Codable {
         self.git_commits = git_commits > 0 ? git_commits : (gitInfo?.commitCount ?? 0)
         self.git_last_commit = git_last_commit ?? (gitInfo?.lastCommitDate ?? Date.distantPast)
         self.git_daily = git_daily
+        self.startupCommand = startupCommand
+        self.customPort = customPort
         self.created = created ?? Date()
         self.checked = checked ?? Date()
     }
@@ -119,6 +127,7 @@ struct Project: Identifiable, Equatable, Codable {
         case id, name, path, tags
         case mtime, size, checksum
         case git_commits, git_last_commit, git_daily
+        case startupCommand, customPort
         case created, checked
         // 向后兼容键
         case lastModified, gitInfo, fileSystemInfo
@@ -142,6 +151,8 @@ struct Project: Identifiable, Equatable, Codable {
             git_commits = try container.decode(Int.self, forKey: .git_commits)
             git_last_commit = try container.decode(Date.self, forKey: .git_last_commit)
             git_daily = try container.decodeIfPresent(String.self, forKey: .git_daily)
+            startupCommand = try container.decodeIfPresent(String.self, forKey: .startupCommand)
+            customPort = try container.decodeIfPresent(Int.self, forKey: .customPort)
             created = try container.decode(Date.self, forKey: .created)
             checked = try container.decode(Date.self, forKey: .checked)
         } else {
@@ -157,6 +168,8 @@ struct Project: Identifiable, Equatable, Codable {
             git_commits = oldGitInfo?.commitCount ?? 0
             git_last_commit = oldGitInfo?.lastCommitDate ?? Date.distantPast
             git_daily = nil // 旧数据没有多天统计
+            startupCommand = nil
+            customPort = nil
             created = oldFileSystemInfo.lastCheckTime
             checked = Date()
         }
@@ -176,6 +189,8 @@ struct Project: Identifiable, Equatable, Codable {
         try container.encode(git_commits, forKey: .git_commits)
         try container.encode(git_last_commit, forKey: .git_last_commit)
         try container.encodeIfPresent(git_daily, forKey: .git_daily)
+        try container.encodeIfPresent(startupCommand, forKey: .startupCommand)
+        try container.encodeIfPresent(customPort, forKey: .customPort)
         try container.encode(created, forKey: .created)
         try container.encode(checked, forKey: .checked)
     }
@@ -283,6 +298,8 @@ struct Project: Identifiable, Equatable, Codable {
             git_commits: gitInfo?.commitCount ?? 0,
             git_last_commit: gitInfo?.lastCommitDate ?? Date.distantPast,
             git_daily: git_daily, // 保留现有的日统计
+            startupCommand: startupCommand,
+            customPort: customPort,
             created: created,
             checked: Date()
         )
@@ -314,6 +331,8 @@ struct Project: Identifiable, Equatable, Codable {
             git_commits: git_commits,
             git_last_commit: git_last_commit,
             git_daily: git_daily,
+            startupCommand: startupCommand,
+            customPort: customPort,
             created: created,
             checked: checked
         )
@@ -421,6 +440,8 @@ struct Project: Identifiable, Equatable, Codable {
                 git_commits: gitInfo?.commitCount ?? 0,
                 git_last_commit: gitInfo?.lastCommitDate ?? Date.distantPast,
                 git_daily: existingProject.git_daily, // 保持现有的日统计
+                startupCommand: existingProject.startupCommand,
+                customPort: existingProject.customPort,
                 created: existingProject.created,
                 checked: Date()
             )
@@ -439,6 +460,8 @@ struct Project: Identifiable, Equatable, Codable {
             git_commits: gitInfo?.commitCount ?? 0,
             git_last_commit: gitInfo?.lastCommitDate ?? Date.distantPast,
             git_daily: nil,
+            startupCommand: nil,
+            customPort: nil,
             created: Date(),
             checked: Date()
         )

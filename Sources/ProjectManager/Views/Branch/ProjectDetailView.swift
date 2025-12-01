@@ -195,6 +195,9 @@ struct ProjectDetailView: View {
                 // 标签信息
                 projectTagInfo
                 
+                // 启动配置
+                projectConfigInfo
+                
                 // 文件系统信息
                 projectFileSystemInfo
             }
@@ -281,15 +284,51 @@ struct ProjectDetailView: View {
         }
     }
     
-    private var projectFileSystemInfo: some View {
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
+            )
+        }
+    }
+    
+    @State private var editingStartupCommand: String = ""
+    @State private var editingCustomPort: String = ""
+    @State private var isConfigDirty = false
+    
+    private var projectConfigInfo: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("文件系统", icon: "folder")
+            HStack {
+                sectionHeader("启动配置", icon: "gearshape")
+                Spacer()
+                if isConfigDirty {
+                    Button("保存") {
+                        saveConfig()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
             
             VStack(alignment: .leading, spacing: 12) {
-                infoRow("文件大小", formatFileSize(project.fileSystemInfo.size))
-                infoRow("修改时间", formatDate(project.fileSystemInfo.modificationDate))
-                infoRow("上次检查", formatDate(project.fileSystemInfo.lastCheckTime))
-                infoRow("校验和", project.fileSystemInfo.checksum.isEmpty ? "无" : String(project.fileSystemInfo.checksum.prefix(16)) + "...")
+                // 启动命令
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("启动命令")
+                        .font(AppTheme.captionFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                    TextField("例如: npm start", text: $editingStartupCommand)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: editingStartupCommand) { _ in isConfigDirty = true }
+                }
+                
+                // 端口
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("端口")
+                        .font(AppTheme.captionFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                    TextField("例如: 3000", text: $editingCustomPort)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: editingCustomPort) { _ in isConfigDirty = true }
+                }
             }
             .padding(16)
             .background(AppTheme.cardBackground)
@@ -299,6 +338,44 @@ struct ProjectDetailView: View {
                     .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
             )
         }
+        .onAppear {
+            editingStartupCommand = project.startupCommand ?? ""
+            editingCustomPort = project.customPort.map(String.init) ?? ""
+        }
+    }
+    
+    private func saveConfig() {
+        // 1. 转换当前 ProjectData 为 Project
+        var currentProject = Project.fromProjectData(project)
+        
+        // 2. 更新配置
+        let newCommand = editingStartupCommand.isEmpty ? nil : editingStartupCommand
+        let newPort = Int(editingCustomPort)
+        
+        // 3. 创建更新后的 Project (需要扩展 Project 以支持 copyWith 更新这些字段，或者重新构建)
+        // 由于 Project 是不可变的，我们需要一个新的构造方式或者 copyWith
+        // 这里我们使用重新构建的方式，因为 copyWith 还没有更新支持这些字段
+        
+        let updatedProject = Project(
+            id: currentProject.id,
+            name: currentProject.name,
+            path: currentProject.path,
+            tags: currentProject.tags,
+            mtime: currentProject.mtime,
+            size: currentProject.size,
+            checksum: currentProject.checksum,
+            git_commits: currentProject.git_commits,
+            git_last_commit: currentProject.git_last_commit,
+            git_daily: currentProject.git_daily,
+            startupCommand: newCommand,
+            customPort: newPort,
+            created: currentProject.created,
+            checked: currentProject.checked
+        )
+        
+        // 4. 保存
+        tagManager.updateProject(updatedProject)
+        isConfigDirty = false
     }
     
     private var branchManagement: some View {

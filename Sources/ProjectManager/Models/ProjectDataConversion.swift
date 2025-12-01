@@ -23,6 +23,8 @@ extension Project {
             git_commits: data.git_commits,
             git_last_commit: data.git_last_commit,
             git_daily: data.git_daily,
+            startupCommand: data.startupCommand,
+            customPort: data.customPort,
             created: data.created,
             checked: data.checked
         )
