@@ -11,6 +11,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
     let name: String
     let path: String
     let tags: Set<String>
+    let notes: String?
     
     // 文件系统信息 (扁平化)
     let mtime: Date              // 修改时间 (统一字段)
@@ -67,6 +68,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.name = project.name
         self.path = project.path
         self.tags = project.tags
+        self.notes = project.notes
         self.mtime = project.mtime
         self.size = project.size
         self.checksum = project.checksum
@@ -85,6 +87,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
         name: String,
         path: String,
         tags: Set<String>,
+        notes: String? = nil,
         mtime: Date,
         size: Int64,
         checksum: String,
@@ -100,6 +103,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.name = name
         self.path = path
         self.tags = tags
+        self.notes = notes
         self.mtime = mtime
         self.size = size
         self.checksum = checksum
@@ -120,6 +124,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
         path: String,
         lastModified: Date,
         tags: Set<String>,
+        notes: String? = nil,
         gitInfo: GitInfoData? = nil,
         fileSystemInfo: FileSystemInfoData
     ) {
@@ -127,6 +132,7 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.name = name
         self.path = path
         self.tags = tags
+        self.notes = notes
         self.mtime = lastModified
         self.size = Int64(fileSystemInfo.size)
         self.checksum = fileSystemInfo.checksum

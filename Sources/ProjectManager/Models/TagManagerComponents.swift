@@ -91,7 +91,7 @@ class ProjectSortManager: SortManagerDelegate {
 protocol ProjectOperationDelegate: AnyObject {
     var projects: [UUID: Project] { get set }
     var allTags: Set<String> { get set }
-    
+
     func invalidateTagUsageCache()
     func notifyProjectsChanged()
 }
@@ -163,30 +163,35 @@ class ProjectOperationManager {
     
     func registerProjects(_ projects: [Project]) {
         guard let delegate = delegate else { return }
-        
-        print("🔄 开始注册 \(projects.count) 个项目，准备收集git_daily数据...")
-        
+
+        print("🔄 开始注册 \(projects.count) 个项目")
+        print("📋 当前项目数: \(delegate.projects.count)")
+
         // 批量更新项目的git_daily数据
         let projectsWithGitDaily = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 365)
-        print("✅ 已为 \(projectsWithGitDaily.count) 个项目更新git_daily数据")
-        
+        print("✅ 已更新git_daily数据: \(projectsWithGitDaily.count) 个")
+
         var allNewTags = Set<String>()
         var registeredCount = 0
-        
+        var skippedCount = 0
+
         // 批量注册，不触发单独的保存和系统同步
         for project in projectsWithGitDaily {
             // 检查项目是否已存在
             if Project.isProjectExists(path: project.path, in: delegate.projects) {
+                print("   ⏭️ 跳过已存在: \(project.name)")
+                skippedCount += 1
                 continue
             }
-            
+
+            print("   ✅ 注册新项目: \(project.name) (ID: \(project.id))")
             delegate.projects[project.id] = project
-            
+
             // 收集新标签
             let newTags = project.tags.subtracting(delegate.allTags)
             allNewTags.formUnion(newTags)
             delegate.allTags.formUnion(newTags)
-            
+
             // 使用委托更新排序
             sortDelegate?.insertProject(project)
             registeredCount += 1

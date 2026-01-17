@@ -424,6 +424,7 @@ enum TagLogic {
             path: project.path,
             lastModified: project.lastModified,
             tags: updatedTags,
+            notes: project.notes,
             gitInfo: project.gitInfo,
             fileSystemInfo: project.fileSystemInfo
         )
@@ -439,6 +440,7 @@ enum TagLogic {
             path: project.path,
             lastModified: project.lastModified,
             tags: updatedTags,
+            notes: project.notes,
             gitInfo: project.gitInfo,
             fileSystemInfo: project.fileSystemInfo
         )
@@ -523,6 +525,7 @@ enum ProjectOperations {
             path: project.path,
             lastModified: project.lastModified,
             tags: tags,
+            notes: project.notes,
             gitInfo: project.gitInfo,
             fileSystemInfo: project.fileSystemInfo
         )
@@ -581,6 +584,7 @@ enum ProjectOperations {
             path: updated.path,
             lastModified: updated.lastModified,
             tags: updated.tags,
+            notes: updated.notes,
             gitInfo: updated.gitInfo,
             fileSystemInfo: updated.fileSystemInfo
         )
@@ -612,6 +616,7 @@ enum ProjectOperations {
                 path: project.path,
                 lastModified: modificationDate,
                 tags: project.tags, // 标签将由外部同步
+                notes: project.notes,
                 gitInfo: project.gitInfo, // Git信息将被重新获取
                 fileSystemInfo: ProjectData.FileSystemInfoData(
                     modificationDate: modificationDate,
@@ -639,6 +644,7 @@ enum ProjectOperations {
             path: project.path,
             lastModified: project.lastModified,
             tags: project.tags,
+            notes: project.notes,
             gitInfo: gitInfoData,
             fileSystemInfo: project.fileSystemInfo
         )
@@ -734,6 +740,7 @@ enum ProjectOperations {
             path: newPath,
             lastModified: Date(),
             tags: project.tags,
+            notes: project.notes,
             gitInfo: project.gitInfo,
             fileSystemInfo: ProjectData.FileSystemInfoData(
                 modificationDate: Date(),

@@ -3,6 +3,7 @@ import SwiftUI
 struct SearchSortBar: View {
     @Binding var searchText: String
     @Binding var sortOption: ProjectListView.SortOption
+    @Binding var dateFilter: ProjectListView.DateFilter
     @Binding var searchBarRef: SearchBar?
     @State private var isShowingDashboard = false
     @EnvironmentObject var tagManager: TagManager
@@ -38,6 +39,8 @@ struct SearchSortBar: View {
             SearchBar(text: $searchText)
                 .modifier(ViewReferenceSetter(reference: $searchBarRef))
             
+            DateFilterMenu(dateFilter: $dateFilter)
+
             // 仪表盘按钮
             Button(action: {
                 isShowingDashboard = true
@@ -113,8 +116,44 @@ struct SearchSortBar_Previews: PreviewProvider {
         SearchSortBar(
             searchText: .constant(""),
             sortOption: .constant(.timeDesc),
+            dateFilter: .constant(.all),
             searchBarRef: .constant(nil)
         )
     }
 }
-#endif 
+#endif
+
+// MARK: - 日期筛选菜单
+struct DateFilterMenu: View {
+    @Binding var dateFilter: ProjectListView.DateFilter
+    
+    var body: some View {
+        Menu {
+            ForEach(ProjectListView.DateFilter.allCases, id: \.self) { option in
+                Button(action: { dateFilter = option }) {
+                    if dateFilter == option {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            Label(dateFilter.shortLabel, systemImage: "calendar")
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppTheme.titleBarIcon)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppTheme.searchBarBackground)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(AppTheme.searchBarBorder, lineWidth: 1)
+                )
+                .fixedSize()
+        }
+        .menuStyle(.borderlessButton)
+        .help("按日期筛选项目")
+    }
+}

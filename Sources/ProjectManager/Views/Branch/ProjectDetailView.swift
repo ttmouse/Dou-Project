@@ -7,7 +7,6 @@ struct ProjectDetailView: View {
     let project: ProjectData
     @Binding var isVisible: Bool
     @ObservedObject var tagManager: TagManager
-    
     @State private var selectedTab: DetailTab = .overview
     @State private var showDeleteConfirmation = false
     @State private var branchToDelete: BranchInfo?
@@ -16,6 +15,30 @@ struct ProjectDetailView: View {
     @State private var operationResult: BranchOperationResult?
     @State private var showOperationAlert = false
     @State private var showAdvancedMergeDialog = false
+    
+    // 启动配置状态
+    @State private var editingStartupCommand: String = ""
+    @State private var editingCustomPort: String = ""
+    @State private var isConfigDirty = false
+    @State private var showLaunchErrorAlert = false
+    @State private var launchErrorMessage = ""
+    @State private var showPortConflictDialog = false
+    @State private var conflictPort = 0
+    @State private var pendingLaunchProject: Project?
+    
+    // 备注编辑状态
+    @State private var noteDraft: String = ""
+    @State private var noteLoadedSnapshot: String = ""
+    @State private var noteSaveWorkItem: DispatchWorkItem?
+    @State private var activeProjectId: UUID?
+    @State private var projectSnapshot: ProjectData
+
+    init(project: ProjectData, isVisible: Binding<Bool>, tagManager: TagManager) {
+        self.project = project
+        self._isVisible = isVisible
+        self._tagManager = ObservedObject(initialValue: tagManager)
+        _projectSnapshot = State(initialValue: project)
+    }
     
     enum DetailTab: String, CaseIterable {
         case overview = "概览"
@@ -26,6 +49,66 @@ struct ProjectDetailView: View {
             case .overview: return "info.circle"
             case .branches: return "branch"
             }
+        }
+    }
+
+    private var currentProjectData: ProjectData {
+        return projectSnapshot
+    }
+    
+    
+    // MARK: - 备注编辑逻辑
+    private func syncNoteEditor() {
+        noteSaveWorkItem?.cancel()
+        let snapshot = currentProjectData.notes ?? ""
+        noteLoadedSnapshot = snapshot
+        noteDraft = snapshot
+    }
+    
+    private func refreshNoteEditorFromStore() {
+        refreshProjectSnapshotFromStore()
+        let snapshot = currentProjectData.notes ?? ""
+        let wasDirty = noteDraft != noteLoadedSnapshot
+        noteLoadedSnapshot = snapshot
+        if !wasDirty {
+            noteDraft = snapshot
+        }
+    }
+    
+    private func handleNoteDraftChange(_ newValue: String) {
+        if newValue == noteLoadedSnapshot {
+            noteSaveWorkItem?.cancel()
+            return
+        }
+        scheduleNoteSave(with: newValue)
+    }
+    
+    private func scheduleNoteSave(with text: String) {
+        noteSaveWorkItem?.cancel()
+        let pendingText = text
+        let projectId = currentProjectData.id
+        let workItem = DispatchWorkItem {
+            tagManager.updateProjectNotes(projectId: projectId, notes: pendingText)
+        }
+        noteSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+    }
+
+    private func commitPendingNote(for projectId: UUID? = nil) {
+        noteSaveWorkItem?.cancel()
+        guard noteDraft != noteLoadedSnapshot else { return }
+        let targetId = projectId ?? activeProjectId ?? projectSnapshot.id
+        let currentText = noteDraft
+        tagManager.updateProjectNotes(projectId: targetId, notes: currentText)
+        noteLoadedSnapshot = currentText
+    }
+
+    private func refreshProjectSnapshotFromStore(for targetId: UUID? = nil) {
+        let lookupId = targetId ?? activeProjectId ?? project.id
+        if let liveProject = tagManager.projects[lookupId] {
+            projectSnapshot = ProjectData(from: liveProject)
+        } else if lookupId == project.id {
+            projectSnapshot = project
         }
     }
     
@@ -76,31 +159,58 @@ struct ProjectDetailView: View {
                 MergeConfirmationView(
                     isPresented: $showAdvancedMergeDialog,
                     branch: branch,
-                    projectPath: project.path,
+                    projectPath: currentProjectData.path,
                     onConfirmMerge: { strategy in
                         mergeBranchWithStrategy(branch, strategy: strategy)
                     }
                 )
             }
         }
+        .onAppear {
+            activeProjectId = project.id
+            refreshProjectSnapshotFromStore(for: project.id)
+            loadProjectConfiguration()
+            syncNoteEditor()
+        }
+        .onChange(of: project.id) { newId in
+            commitPendingNote(for: activeProjectId)
+            activeProjectId = newId
+            refreshProjectSnapshotFromStore(for: newId)
+            loadProjectConfiguration()
+            syncNoteEditor()
+        }
+        .onChange(of: noteDraft) { newValue in
+            handleNoteDraftChange(newValue)
+        }
+        .onReceive(tagManager.$projects) { _ in
+            refreshNoteEditorFromStore()
+        }
+        .onDisappear {
+            commitPendingNote(for: activeProjectId)
+        }
     }
     
     // MARK: - View Components
     
     private var headerSection: some View {
-        HStack {
+        let data = currentProjectData
+        return HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(project.name)
+                Text(data.name)
                     .font(AppTheme.titleFont)
                     .foregroundColor(AppTheme.text)
                     .lineLimit(1)
-                
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
+
                 Text(abbreviatedPath)
                     .font(AppTheme.captionFont)
                     .foregroundColor(AppTheme.secondaryText)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Spacer()
             
             // 关闭按钮
@@ -183,167 +293,184 @@ struct ProjectDetailView: View {
     
     private var projectOverview: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                // 基本信息
-                projectBasicInfo
-                
-                // Git 信息
-                if let gitInfo = project.gitInfo {
-                    projectGitInfo(gitInfo)
-                }
-                
-                // 标签信息
+            VStack(spacing: 0) {
+                projectNotesSection
+                sectionDivider
                 projectTagInfo
-                
-                // 启动配置
+                sectionDivider
                 projectConfigInfo
-                
-                // 文件系统信息
-                projectFileSystemInfo
             }
-            .padding(20)
-        }
-        .background(AppTheme.background)
-    }
-    
-    private var projectBasicInfo: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("基本信息", icon: "info.circle")
-            
-            VStack(alignment: .leading, spacing: 12) {
-                infoRow("项目路径", project.path)
-                infoRow("最后修改", formatDate(project.lastModified))
-                infoRow("项目ID", project.id.uuidString)
-            }
-            .padding(16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
+            .background(AppTheme.background)
         }
     }
     
-    private func projectGitInfo(_ gitInfo: ProjectData.GitInfoData) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Git 信息", icon: "branch")
+    private var projectNotesSection: some View {
+        sectionContainer {
+            sectionHeader("项目备注", icon: "note.text")
             
-            VStack(alignment: .leading, spacing: 12) {
-                infoRow("提交数量", "\(gitInfo.commitCount)")
-                infoRow("最后提交", formatDate(gitInfo.lastCommitDate))
+            DetailTextEditor(placeholder: "输入备注…", text: $noteDraft)
+            
+            HStack(spacing: 12) {
+                Text("自动保存 · 搜索可用")
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer()
+
+                Text(noteDraft != noteLoadedSnapshot ? "未保存" : "已保存")
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(noteDraft != noteLoadedSnapshot ? AppTheme.accent : AppTheme.secondaryText)
+
+                Button("清除") {
+                    noteDraft = ""
+                }
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.accent)
+                .buttonStyle(.plain)
+                .disabled(noteDraft.isEmpty)
             }
-            .padding(16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
         }
     }
     
     private var projectTagInfo: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let data = currentProjectData
+        return sectionContainer {
             sectionHeader("标签", icon: "tag")
             
-            VStack(alignment: .leading, spacing: 0) {
-                if project.tags.isEmpty {
-                    HStack {
-                        Text("无标签")
-                            .font(AppTheme.bodyFont)
-                            .foregroundColor(AppTheme.secondaryText)
-                        Spacer()
-                    }
-                    .frame(minHeight: 40)
-                    .padding(16)
-                } else {
-                    HStack {
-                        FlowLayout(spacing: 8, data: Array(project.tags.sorted())) { tag in
-                            AnyView(
-                                TagView(
-                                    tag: tag,
-                                    color: tagManager.getColor(for: tag),
-                                    fontSize: 12
-                                )
-                            )
-                        }
-                        .frame(maxHeight: .infinity)
-                        Spacer()
-                    }
-                    .frame(minHeight: 40)
-                    .padding(16)
+            if data.tags.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "tray")
+                        .foregroundColor(AppTheme.secondaryText)
+                    Text("尚未设置标签")
+                        .font(AppTheme.bodyFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                    Spacer()
                 }
+                .padding(.vertical, 6)
+            } else {
+                FlowLayout(spacing: 8, data: Array(data.tags.sorted())) { tag in
+                    AnyView(
+                        TagView(
+                            tag: tag,
+                            color: tagManager.getColor(for: tag),
+                            fontSize: 12
+                        )
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
         }
     }
     
-    @State private var editingStartupCommand: String = ""
-    @State private var editingCustomPort: String = ""
-    @State private var isConfigDirty = false
-    
     private var projectConfigInfo: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
+        sectionContainer {
+            VStack(alignment: .leading, spacing: 12) {
                 sectionHeader("启动配置", icon: "gearshape")
-                Spacer()
-                if isConfigDirty {
-                    Button("保存") {
+
+                HStack(spacing: 12) {
+                    Button {
                         saveConfig()
+                    } label: {
+                        Label("保存", systemImage: "tray.and.arrow.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.accent.opacity(isConfigDirty ? 1 : 0.35))
+                            )
+                            .foregroundColor(.white)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .disabled(!isConfigDirty)
+                    .opacity(isConfigDirty ? 1 : 0.6)
+
+                    Button {
+                        runStartupCommand()
+                    } label: {
+                        Label("启动", systemImage: "bolt.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.green.opacity(0.9), Color.green.opacity(0.7)],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                            )
+                            .foregroundColor(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasRunnableStartupCommand)
+                    .opacity(hasRunnableStartupCommand ? 1 : 0.4)
+                    .help("在终端运行启动命令")
                 }
             }
             
-            VStack(alignment: .leading, spacing: 12) {
-                // 启动命令
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("启动命令")
-                        .font(AppTheme.captionFont)
-                        .foregroundColor(AppTheme.secondaryText)
-                    TextField("例如: npm start", text: $editingStartupCommand)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: editingStartupCommand) { _ in isConfigDirty = true }
+            VStack(alignment: .leading, spacing: 14) {
+                DetailInputField(
+                    title: "启动命令",
+                    icon: "terminal",
+                    placeholder: "例如: npm start",
+                    text: $editingStartupCommand
+                ) { _ in
+                    isConfigDirty = true
                 }
                 
-                // 端口
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("端口")
-                        .font(AppTheme.captionFont)
-                        .foregroundColor(AppTheme.secondaryText)
-                    TextField("例如: 3000", text: $editingCustomPort)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: editingCustomPort) { _ in isConfigDirty = true }
+                DetailInputField(
+                    title: "端口",
+                    icon: "network",
+                    placeholder: "例如: 3000",
+                    text: $editingCustomPort
+                ) { _ in
+                    isConfigDirty = true
                 }
             }
-            .padding(16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
         }
-        .onAppear {
-            editingStartupCommand = project.startupCommand ?? ""
-            editingCustomPort = project.customPort.map(String.init) ?? ""
+        .alert("启动失败", isPresented: $showLaunchErrorAlert) {
+            Button("确定", role: .cancel) {
+                launchErrorMessage = ""
+            }
+        } message: {
+            Text(launchErrorMessage)
+        }
+        .confirmationDialog(
+            "端口冲突",
+            isPresented: $showPortConflictDialog,
+            titleVisibility: .visible
+        ) {
+            Button("终止占用进程并启动", role: .destructive) {
+                guard let launchProject = pendingLaunchProject else { return }
+                let result = ProjectRunner.killProcessAndRun(launchProject)
+                handleLaunchResult(result, for: launchProject)
+            }
+            Button("使用随机端口启动") {
+                guard let launchProject = pendingLaunchProject else { return }
+                runProject(launchProject, useRandomPort: true)
+            }
+            Button("取消", role: .cancel) {
+                pendingLaunchProject = nil
+            }
+        } message: {
+            Text("端口 \(conflictPort) 正在被使用。请选择操作方式。")
         }
     }
     
     private func saveConfig() {
         // 1. 转换当前 ProjectData 为 Project
-        var currentProject = Project.fromProjectData(project)
+        let currentProject = Project.fromProjectData(currentProjectData)
         
         // 2. 更新配置
-        let newCommand = editingStartupCommand.isEmpty ? nil : editingStartupCommand
-        let newPort = Int(editingCustomPort)
+        let trimmedCommand = editingStartupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newCommand = trimmedCommand.isEmpty ? nil : trimmedCommand
+        let trimmedPort = editingCustomPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newPort = trimmedPort.isEmpty ? nil : Int(trimmedPort)
         
         // 3. 创建更新后的 Project (需要扩展 Project 以支持 copyWith 更新这些字段，或者重新构建)
         // 由于 Project 是不可变的，我们需要一个新的构造方式或者 copyWith
@@ -368,32 +495,76 @@ struct ProjectDetailView: View {
         
         // 4. 保存
         tagManager.updateProject(updatedProject)
+        editingStartupCommand = newCommand ?? ""
+        editingCustomPort = newPort.map(String.init) ?? ""
         isConfigDirty = false
     }
     
-    private var projectFileSystemInfo: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("文件系统", icon: "folder")
-            
-            VStack(alignment: .leading, spacing: 12) {
-                infoRow("文件大小", formatFileSize(project.fileSystemInfo.size))
-                infoRow("修改时间", formatDate(project.fileSystemInfo.modificationDate))
-                infoRow("上次检查", formatDate(project.fileSystemInfo.lastCheckTime))
-                infoRow("校验和", project.fileSystemInfo.checksum.isEmpty ? "无" : String(project.fileSystemInfo.checksum.prefix(16)) + "...")
-            }
-            .padding(16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                    .strokeBorder(AppTheme.cardBorder, lineWidth: 1)
-            )
+    private func loadProjectConfiguration() {
+        editingStartupCommand = currentProjectData.startupCommand ?? ""
+        editingCustomPort = currentProjectData.customPort.map(String.init) ?? ""
+        isConfigDirty = false
+    }
+    
+    private var hasRunnableStartupCommand: Bool {
+        !editingStartupCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    private func makeLaunchProject() -> Project {
+        let trimmedCommand = editingStartupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let portString = editingCustomPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedPort = portString.isEmpty ? nil : Int(portString)
+        let data = currentProjectData
+        
+        return Project(
+            id: data.id,
+            name: data.name,
+            path: data.path,
+            tags: data.tags,
+            mtime: data.mtime,
+            size: data.size,
+            checksum: data.checksum,
+            git_commits: data.git_commits,
+            git_last_commit: data.git_last_commit,
+            git_daily: data.git_daily,
+            startupCommand: trimmedCommand.isEmpty ? nil : trimmedCommand,
+            customPort: resolvedPort,
+            created: data.created,
+            checked: data.checked
+        )
+    }
+    
+    private func runStartupCommand() {
+        let launchProject = makeLaunchProject()
+        runProject(launchProject)
+    }
+    
+    private func runProject(_ project: Project, useRandomPort: Bool = false) {
+        let result = ProjectRunner.run(project, useRandomPort: useRandomPort)
+        handleLaunchResult(result, for: project)
+    }
+    
+    private func handleLaunchResult(_ result: ProjectRunResult, for project: Project) {
+        switch result {
+        case .success:
+            pendingLaunchProject = nil
+            showPortConflictDialog = false
+        case .failure(let error):
+            pendingLaunchProject = nil
+            showPortConflictDialog = false
+            launchErrorMessage = error
+            showLaunchErrorAlert = true
+        case .portBusy(let port, _):
+            conflictPort = port
+            pendingLaunchProject = project
+            showPortConflictDialog = true
         }
     }
     
+    
     private var branchManagement: some View {
         BranchListView(
-            projectPath: findGitRoot(from: project.path),
+            projectPath: findGitRoot(from: currentProjectData.path),
             onOpenBranch: openBranchInEditor,
             onCreateBranch: createBranch,
             onDeleteBranch: { branch in
@@ -405,21 +576,55 @@ struct ProjectDetailView: View {
                 showAdvancedMergeDialog = true
             }
         )
-        .id(project.id) // 强制刷新：当project.id变化时，重新创建BranchListView
+        .id(currentProjectData.id) // 强制刷新：当project.id变化时，重新创建BranchListView
     }
     
     // MARK: - Helper Views
     
-    private func sectionHeader(_ title: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundColor(AppTheme.accent)
-            Text(title)
-                .font(AppTheme.subtitleFont)
-                .foregroundColor(AppTheme.text)
+    private func sectionHeader(_ title: String, icon: String, subtitle: String? = nil) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.accent.opacity(0.15))
+                    .frame(width: 34, height: 34)
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(AppTheme.accent)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTheme.subtitleFont)
+                    .foregroundColor(AppTheme.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(AppTheme.captionFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Spacer()
         }
+    }
+    
+    private func sectionContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            content()
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+    }
+    
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(AppTheme.cardBorder.opacity(0.6))
+            .frame(height: 1)
     }
     
     private func infoRow(_ label: String, _ value: String) -> some View {
@@ -493,7 +698,7 @@ struct ProjectDetailView: View {
     // MARK: - Computed Properties
     
     private var abbreviatedPath: String {
-        let url = URL(fileURLWithPath: project.path)
+        let url = URL(fileURLWithPath: currentProjectData.path)
         let components = url.pathComponents
         
         if components.count > 4 {
@@ -501,7 +706,7 @@ struct ProjectDetailView: View {
             let end = components.suffix(2).joined(separator: "/")
             return "\(start)/…/\(end)"
         } else {
-            return project.path
+            return currentProjectData.path
         }
     }
     
@@ -524,8 +729,9 @@ struct ProjectDetailView: View {
     }
     
     private func deleteBranch(_ branch: BranchInfo, force: Bool) {
+        let projectPath = currentProjectData.path
         DispatchQueue.global(qos: .userInitiated).async {
-            let gitRootPath = self.findGitRoot(from: self.project.path)
+            let gitRootPath = self.findGitRoot(from: projectPath)
             let result = BranchLogic.deleteBranch(
                 name: branch.name,
                 path: branch.path,
@@ -541,8 +747,9 @@ struct ProjectDetailView: View {
     }
     
     private func mergeBranch(_ branch: BranchInfo) {
+        let projectPath = currentProjectData.path
         DispatchQueue.global(qos: .userInitiated).async {
-            let gitRootPath = self.findGitRoot(from: self.project.path)
+            let gitRootPath = self.findGitRoot(from: projectPath)
             let result = BranchLogic.mergeBranch(
                 source: branch.name,
                 target: "main",
@@ -557,8 +764,9 @@ struct ProjectDetailView: View {
     }
     
     private func mergeBranchWithStrategy(_ branch: BranchInfo, strategy: MergeStrategy) {
+        let projectPath = currentProjectData.path
         DispatchQueue.global(qos: .userInitiated).async {
-            let gitRootPath = self.findGitRoot(from: self.project.path)
+            let gitRootPath = self.findGitRoot(from: projectPath)
             let result = BranchLogic.mergeBranch(
                 source: branch.name,
                 target: "main",
@@ -578,23 +786,83 @@ struct ProjectDetailView: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
     
-    private func formatFileSize(_ size: UInt64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(size))
-    }
-    
-    private func copyToClipboard(_ text: String) {
+private func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
     
+}
+
+private struct DetailTextEditor: View {
+    let placeholder: String
+    @Binding var text: String
+    var minHeight: CGFloat = 140
+    var maxHeight: CGFloat = 220
+    
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.secondaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
+            
+            TextEditor(text: $text)
+                .font(AppTheme.bodyFont)
+                .foregroundColor(AppTheme.text)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(Color.clear)
+        }
+        .frame(minHeight: minHeight, maxHeight: maxHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.secondaryBackground.opacity(0.95))
+        )
+    }
+}
+
+private struct DetailInputField: View {
+    let title: String
+    let icon: String
+    let placeholder: String
+    @Binding var text: String
+    var onChanged: ((String) -> Void)? = nil
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.secondaryText)
+            
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundColor(AppTheme.secondaryText)
+                    .font(.system(size: 13))
+                
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(.plain)
+                    .foregroundColor(AppTheme.text)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppTheme.secondaryBackground.opacity(0.9))
+            )
+        }
+        .onChange(of: text) { newValue in
+            onChanged?(newValue)
+        }
+    }
 }
 
 // MARK: - Preview

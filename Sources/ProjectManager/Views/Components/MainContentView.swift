@@ -3,6 +3,7 @@ import SwiftUI
 struct MainContentView: View {
     @Binding var searchText: String
     @Binding var sortOption: ProjectListView.SortOption
+    @Binding var dateFilter: ProjectListView.DateFilter
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager
@@ -17,6 +18,7 @@ struct MainContentView: View {
             SearchSortBar(
                 searchText: $searchText,
                 sortOption: $sortOption,
+                dateFilter: $dateFilter,
                 searchBarRef: $searchBarRef
             )
             
@@ -174,6 +176,7 @@ struct MainContentView_Previews: PreviewProvider {
         MainContentView(
             searchText: .constant(""),
             sortOption: .constant(.timeDesc),
+            dateFilter: .constant(.all),
             selectedProjects: .constant([]),
             searchBarRef: .constant(nil),
             editorManager: EditorManager(),

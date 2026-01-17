@@ -313,22 +313,69 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     func removeTag(_ tag: String) {
         print("移除标签: \(tag)")
         if allTags.contains(tag) {
-            allTags.remove(tag)
-            colorManager.removeColor(for: tag)
+            var updatedEntries: [UUID: Project] = [:]
 
-            // 从所有项目中移除该标签
             for (id, project) in projects {
                 if project.tags.contains(tag) {
-                    let updatedProject = project.withRemovedTag(tag)
-                    projects[id] = updatedProject
-                    sortManager.updateProject(updatedProject)
+                    updatedEntries[id] = project.withRemovedTag(tag)
                 }
             }
 
-            invalidateTagUsageCache()
-            needsSave = true
-            saveAll()
+            if !updatedEntries.isEmpty {
+                let updatedCount = updatedEntries.count
+                print("批量更新了 \(updatedCount) 个项目")
+
+                for (id, project) in updatedEntries {
+                    projects[id] = project
+                }
+
+                var tempAllTags = allTags
+                tempAllTags.remove(tag)
+
+                var tempProjects = projects
+
+                allTags = tempAllTags
+                projects = tempProjects
+
+                sortManager.updateSortedProjects(Array(projects.values))
+                invalidateTagUsageCache()
+                colorManager.removeColor(for: tag)
+                needsSave = true
+
+                objectWillChange.send()
+            }
         }
+    }
+
+    func updateProjectNotes(projectId: UUID, notes: String) {
+        print("更新项目备注: \(projectId) -> \(notes)")
+
+        guard var project = projects[projectId] else {
+            print("⚠️ 项目不存在: \(projectId)")
+            return
+        }
+
+        let updatedProject = Project(
+            id: project.id,
+            name: project.name,
+            path: project.path,
+            tags: project.tags,
+            mtime: project.mtime,
+            size: project.size,
+            checksum: project.checksum,
+            git_commits: project.git_commits,
+            git_last_commit: project.git_last_commit,
+            git_daily: project.git_daily,
+            startupCommand: project.startupCommand,
+            customPort: project.customPort,
+            created: project.created,
+            checked: Date()
+        )
+
+        projects[projectId] = updatedProject
+        sortManager.updateProject(updatedProject)
+        needsSave = true
+        saveAll()
     }
 
     /// Linus式标签操作 - 使用BusinessLogic处理，Manager只管状态同步
@@ -891,32 +938,28 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     // MARK: - 标签数据备份功能
     
-    private lazy var backupManager: TagDataBackup = {
-        return TagDataBackup(storage: storage, tagManager: self)
-    }()
-    
     /// 快速备份标签数据到桌面
     func quickBackupTagsToDesktop() -> URL? {
-        return backupManager.quickBackupToDesktop()
+        print("⚠️ 备份功能已禁用")
+        return nil
     }
-    
+
     /// 备份标签数据到指定位置
     func backupTagsToFile(at url: URL) throws {
-        let backupData = backupManager.createBackup()
-        try backupManager.saveBackupToFile(backupData, to: url)
+        print("⚠️ 备份功能已禁用")
     }
     
     /// 生成标签数据报告
     func generateTagsReport() -> String {
-        let backupData = backupManager.createBackup()
-        return backupManager.generateBackupReport(backupData)
+        return "标签报告功能已禁用"
     }
     
     /// 从备份文件导入标签数据
-    func importTagsFromBackup(at url: URL, strategy: TagDataBackup.ImportStrategy = .merge) throws -> TagDataBackup.ImportResult {
+    func importTagsFromBackup(at url: URL, strategy: TagDataBackup.ImportStrategy) throws -> TagDataBackup.ImportResult {
+        let backupManager = TagDataBackup(storage: storage, tagManager: self)
         return try backupManager.importBackupFromFile(at: url, strategy: strategy)
     }
-    
+
     // MARK: - 单目录刷新功能
     
     /// 刷新单个工作目录的项目（完整版 - 支持增加和删除）

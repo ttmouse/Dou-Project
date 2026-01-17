@@ -6,11 +6,11 @@ class TagStorage {
     private let tagsFileName = "tags.json"
     private let tagColorsFileName = "tag_colors.json"
     private let hiddenTagsFileName = "hidden_tags.json"
+    private let autoTaggingFileName = "auto_tagging.json"
 
     init() {
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
         appSupportURL = paths[0].appendingPathComponent("com.projectmanager")
-        // 确保目录存在
         try? FileManager.default.createDirectory(
             at: appSupportURL, withIntermediateDirectories: true)
     }
@@ -22,9 +22,13 @@ class TagStorage {
     private var tagColorsFileURL: URL {
         return appSupportURL.appendingPathComponent(tagColorsFileName)
     }
-    
+
     private var hiddenTagsFileURL: URL {
         return appSupportURL.appendingPathComponent(hiddenTagsFileName)
+    }
+
+    private var autoTaggingFileURL: URL {
+        return appSupportURL.appendingPathComponent(autoTaggingFileName)
     }
 
     func loadTags() -> Set<String> {
@@ -51,7 +55,6 @@ class TagStorage {
         }
     }
 
-    // 用于保存颜色组件的结构
     private struct ColorComponents: Codable {
         let red: CGFloat
         let green: CGFloat
@@ -98,7 +101,7 @@ class TagStorage {
             print("保存标签颜色失败: \(error)")
         }
     }
-    
+
     func loadHiddenTags() -> Set<String> {
         do {
             let data = try Data(contentsOf: hiddenTagsFileURL)
@@ -111,7 +114,7 @@ class TagStorage {
             return []
         }
     }
-    
+
     func saveHiddenTags(_ hiddenTags: Set<String>) {
         do {
             let encoder = JSONEncoder()
@@ -120,6 +123,28 @@ class TagStorage {
             print("保存隐藏标签列表到文件: \(Array(hiddenTags))")
         } catch {
             print("保存隐藏标签列表失败: \(error)")
+        }
+    }
+
+    func loadAutoTaggingEnabled() -> Bool {
+        do {
+            let data = try Data(contentsOf: autoTaggingFileURL)
+            let enabled = try JSONDecoder().decode(Bool.self, from: data)
+            print("从文件加载自动标签设置: \(enabled)")
+            return enabled
+        } catch {
+            print("加载自动标签设置失败（默认启用）: \(error)")
+            return true
+        }
+    }
+
+    func saveAutoTaggingEnabled(_ enabled: Bool) {
+        do {
+            let data = try JSONEncoder().encode(enabled)
+            try data.write(to: autoTaggingFileURL)
+            print("保存自动标签设置: \(enabled)")
+        } catch {
+            print("保存自动标签设置失败: \(error)")
         }
     }
 }

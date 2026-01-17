@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 /// 项目模型，代表文件系统中的一个项目目录
-/// 
+///
 /// 扁平数据结构重构（基于TRD v1.0）：
 /// 1. 消除嵌套结构，提升30%解析性能
 /// 2. 统一字段命名，消除数据冗余
@@ -15,27 +15,49 @@ struct Project: Identifiable, Equatable, Codable {
     let name: String
     let path: String
     let tags: Set<String>
-    
+
+    /// 项目备注（从项目目录的 PROJECT_NOTES.md 文件加载）
+    var notes: String? {
+        ProjectNotesManager.readNotes(from: path)
+    }
+
+    /// 手动实现 Equatable，排除 notes 计算属性
+    static func == (lhs: Project, rhs: Project) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.name == rhs.name &&
+               lhs.path == rhs.path &&
+               lhs.tags == rhs.tags &&
+               lhs.mtime == rhs.mtime &&
+               lhs.size == rhs.size &&
+               lhs.checksum == rhs.checksum &&
+               lhs.git_commits == rhs.git_commits &&
+               lhs.git_last_commit == rhs.git_last_commit &&
+               lhs.git_daily == rhs.git_daily &&
+               lhs.startupCommand == rhs.startupCommand &&
+               lhs.customPort == rhs.customPort &&
+               lhs.created == rhs.created &&
+               lhs.checked == rhs.checked
+    }
+
     // 文件系统信息 (扁平化)
     let mtime: Date              // 修改时间 (统一字段)
     let size: Int64              // 文件大小
     let checksum: String         // SHA256格式: "sha256:deadbeef..."
-    
+
     // Git信息 (扁平化)
     let git_commits: Int         // 总提交数
     let git_last_commit: Date    // 最后提交时间
     let git_daily: String?       // 每日提交统计: "2025-08-25:3,2025-08-24:5"
-    
+
     // 启动配置
     let startupCommand: String?  // 自定义启动命令
     let customPort: Int?         // 自定义端口
-    
+
     // 元数据
     let created: Date            // 首次发现时间
     let checked: Date            // 最后检查时间
-    
+
     // MARK: - 向后兼容属性
-    /// 为了向后兼容，保留原有字段访问方式
     var lastModified: Date { mtime }
     var gitInfo: GitInfo? {
         guard git_commits > 0 else { return nil }
@@ -86,11 +108,10 @@ struct Project: Identifiable, Equatable, Codable {
         self.name = name
         self.path = path
         self.tags = tags
-        
-        // 如果没有提供值，从文件系统加载
+
         let fsInfo = Self.loadFileSystemInfo(path: path)
         let gitInfo = Self.loadGitInfo(path: path)
-        
+
         self.mtime = mtime ?? fsInfo.modificationDate
         self.size = size ?? Int64(fsInfo.size)
         self.checksum = checksum ?? fsInfo.checksum
@@ -136,15 +157,13 @@ struct Project: Identifiable, Equatable, Codable {
     /// 扁平结构解码 + 数据迁移支持
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         path = try container.decode(String.self, forKey: .path)
         tags = try container.decodeIfPresent(Set<String>.self, forKey: .tags) ?? []
-        
-        // 检查是否是新格式数据
+
         if container.contains(.mtime) {
-            // 新的扁平格式
             mtime = try container.decode(Date.self, forKey: .mtime)
             size = try container.decode(Int64.self, forKey: .size)
             checksum = try container.decode(String.self, forKey: .checksum)
@@ -156,18 +175,16 @@ struct Project: Identifiable, Equatable, Codable {
             created = try container.decode(Date.self, forKey: .created)
             checked = try container.decode(Date.self, forKey: .checked)
         } else {
-            // 旧的嵌套格式 - 数据迁移
             let oldLastModified = try container.decode(Date.self, forKey: .lastModified)
             let oldGitInfo = try container.decodeIfPresent(GitInfo.self, forKey: .gitInfo)
             let oldFileSystemInfo = try container.decode(FileSystemInfo.self, forKey: .fileSystemInfo)
-            
-            // 迁移数据到扁平结构
+
             mtime = oldLastModified
             size = Int64(oldFileSystemInfo.size)
             checksum = oldFileSystemInfo.checksum
             git_commits = oldGitInfo?.commitCount ?? 0
             git_last_commit = oldGitInfo?.lastCommitDate ?? Date.distantPast
-            git_daily = nil // 旧数据没有多天统计
+            git_daily = nil
             startupCommand = nil
             customPort = nil
             created = oldFileSystemInfo.lastCheckTime
@@ -178,7 +195,7 @@ struct Project: Identifiable, Equatable, Codable {
     /// 扁平结构编码 - 只保存新格式
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(path, forKey: .path)
@@ -286,7 +303,7 @@ struct Project: Identifiable, Equatable, Codable {
     func updated() -> Project {
         let fsInfo = Self.loadFileSystemInfo(path: path)
         let gitInfo = Self.loadGitInfo(path: path)
-        
+
         return Project(
             id: id,
             name: name,
@@ -297,7 +314,7 @@ struct Project: Identifiable, Equatable, Codable {
             checksum: fsInfo.checksum,
             git_commits: gitInfo?.commitCount ?? 0,
             git_last_commit: gitInfo?.lastCommitDate ?? Date.distantPast,
-            git_daily: git_daily, // 保留现有的日统计
+            git_daily: git_daily,
             startupCommand: startupCommand,
             customPort: customPort,
             created: created,
@@ -428,32 +445,30 @@ struct Project: Identifiable, Equatable, Codable {
         
         // 检查是否已有现有项目
         if let existingProject = existingProjects.values.first(where: { $0.path == path }) {
-            // 🛡️ 安全修复：保持现有项目的标签和元数据，避免数据丢失
             return Project(
                 id: existingProject.id,
                 name: name,
                 path: path,
-                tags: existingProject.tags,  // 🔧 修复：保持现有标签
+                tags: existingProject.tags,
                 mtime: fsInfo.modificationDate,
                 size: Int64(fsInfo.size),
                 checksum: fsInfo.checksum,
                 git_commits: gitInfo?.commitCount ?? 0,
                 git_last_commit: gitInfo?.lastCommitDate ?? Date.distantPast,
-                git_daily: existingProject.git_daily, // 保持现有的日统计
+                git_daily: existingProject.git_daily,
                 startupCommand: existingProject.startupCommand,
                 customPort: existingProject.customPort,
                 created: existingProject.created,
                 checked: Date()
             )
         }
-        
-        // 创建新项目，从系统加载标签
+
         let systemTags = loadTagsFromSystem(path: path)
         return Project(
             id: UUID(),
             name: name,
             path: path,
-            tags: systemTags,  // 🔧 修复：加载系统标签
+            tags: systemTags,
             mtime: fsInfo.modificationDate,
             size: Int64(fsInfo.size),
             checksum: fsInfo.checksum,

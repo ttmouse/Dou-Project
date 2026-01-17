@@ -75,7 +75,18 @@ class TagColorManager: ObservableObject {
         tagColors.removeValue(forKey: tag)
         lastUpdate = Date()  // 更新时间戳
         saveColors()
-        
+
+        // 通知观察者有更新
+        objectWillChange.send()
+    }
+
+    func removeColors(for tags: Set<String>) {
+        for tag in tags {
+            tagColors.removeValue(forKey: tag)
+        }
+        lastUpdate = Date()
+        saveColors()
+
         // 通知观察者有更新
         objectWillChange.send()
     }

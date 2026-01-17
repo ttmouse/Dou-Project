@@ -3,6 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selectedTags: Set<String>
     @Binding var searchBarRef: SearchBar?
+    @Binding var selectedProjects: Set<UUID>
     @EnvironmentObject var tagManager: TagManager
     @Binding var isDraggingDirectory: Bool
     @Binding var isShowingNewTagDialog: Bool
@@ -12,7 +13,7 @@ struct SidebarView: View {
     let onTagSelected: (String) -> Void  // 添加标签选择回调
     
     // Linus式：简单的状态管理，不搞复杂的
-    @State private var selectedProjects: [ProjectData] = []
+    @State private var heatmapSelectedProjects: [ProjectData] = []
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
     
@@ -37,7 +38,7 @@ struct SidebarView: View {
             
             Divider()
                 .background(AppTheme.divider)
-                .padding(.bottom, 8)
+                .padding(.vertical, 8)
             
             // Linus式热力图 - 简单直接添加
             heatmapSection
@@ -77,7 +78,7 @@ struct SidebarView: View {
         }
         .sheet(isPresented: $showProjectPopover) {
             ProjectListPopover(
-                projects: selectedProjects,
+                projects: heatmapSelectedProjects,
                 date: selectedDateString,
                 isPresented: $showProjectPopover
             )
@@ -117,7 +118,7 @@ struct SidebarView: View {
                 projects: sidebarProjectsData,
                 config: .sidebar,
                 onDateSelected: { projects in
-                    selectedProjects = projects
+                    heatmapSelectedProjects = projects
                     selectedDateString = formatSelectedDate(from: projects)
                     showProjectPopover = true
                 },
@@ -134,7 +135,6 @@ struct SidebarView: View {
             )
         }
     }
-    
     
     // MARK: - 日期格式化
     private func formatSelectedDate(from projects: [ProjectData]) -> String {
@@ -478,6 +478,7 @@ struct SidebarView_Previews: PreviewProvider {
         SidebarView(
             selectedTags: .constant([]),
             searchBarRef: .constant(nil),
+            selectedProjects: .constant([]),
             isDraggingDirectory: .constant(false),
             isShowingNewTagDialog: .constant(false),
             tagToRename: .constant(nil),

@@ -43,7 +43,7 @@ struct ProjectDataMigration {
             checksum: legacyProject.fileSystemInfo.checksum,
             git_commits: legacyProject.gitInfo?.commitCount ?? 0,
             git_last_commit: legacyProject.gitInfo?.lastCommitDate ?? Date.distantPast,
-            git_daily: nil, // 旧数据没有多天统计
+            git_daily: nil,
             created: legacyProject.fileSystemInfo.lastCheckTime,
             checked: Date()
         )

@@ -33,14 +33,6 @@ struct ProjectCard: View {
 
             Spacer()
 
-            // 详情按钮
-            Button(action: onShowDetail) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(AppTheme.secondaryIcon)
-            }
-            .buttonStyle(.plain)
-            .help("显示项目详情和分支管理")
-
             // 快速启动按钮
             if project.startupCommand != nil {
                 Button(action: handleQuickStart) {
@@ -92,9 +84,7 @@ struct ProjectCard: View {
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
                     .foregroundColor(AppTheme.secondaryIcon)
-                Text(project.lastModified, style: .date)
-                    + Text(" ")
-                    + Text(project.lastModified, style: .time)
+                Text(ProjectCard.dateTimeFormatter.string(from: project.lastModified))
             }
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)
@@ -147,7 +137,6 @@ struct ProjectCard: View {
             }
         }
     }
-    
     // MARK: - 右键菜单
     
     @ViewBuilder
@@ -393,6 +382,16 @@ struct ProjectCard: View {
             Text("端口 \(conflictPort) 正在被使用。您想如何处理？")
         }
     }
+}
+
+extension ProjectCard {
+    private static let dateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
 }
 
 #if DEBUG

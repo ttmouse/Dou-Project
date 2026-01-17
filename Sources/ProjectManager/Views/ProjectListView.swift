@@ -16,6 +16,7 @@ struct ProjectListView: View {
     @State private var isDraggingDirectory = false
     @State private var searchBarRef: SearchBar? = nil
     @State private var sortOption: SortOption = .timeDesc
+    @State private var dateFilter: DateFilter = .all
     @State private var selectedDirectory: String? = nil
     @State private var showDetailPanel = false
     @State private var selectedProjectForDetailId: UUID? = nil
@@ -35,6 +36,45 @@ struct ProjectListView: View {
         case timeAsc
         case timeDesc
         case commitCount
+    }
+
+    enum DateFilter: CaseIterable {
+        case all
+        case lastDay
+        case lastWeek
+        
+        var title: String {
+            switch self {
+            case .all:
+                return "全部日期"
+            case .lastDay:
+                return "最近一天"
+            case .lastWeek:
+                return "最近一周"
+            }
+        }
+        
+        var shortLabel: String {
+            switch self {
+            case .all:
+                return "全部"
+            case .lastDay:
+                return "最近1天"
+            case .lastWeek:
+                return "最近7天"
+            }
+        }
+        
+        var cutoffDate: Date? {
+            switch self {
+            case .all:
+                return nil
+            case .lastDay:
+                return Calendar.current.date(byAdding: .day, value: -1, to: Date())
+            case .lastWeek:
+                return Calendar.current.date(byAdding: .day, value: -7, to: Date())
+            }
+        }
     }
 
     // MARK: - 计算属性
@@ -92,7 +132,15 @@ struct ProjectListView: View {
         if !searchText.isEmpty {
             projects = projects.filter { project in
                 project.name.localizedCaseInsensitiveContains(searchText) ||
-                project.path.localizedCaseInsensitiveContains(searchText)
+                project.path.localizedCaseInsensitiveContains(searchText) ||
+                (project.notes?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        }
+
+        // 日期筛选
+        if let cutoff = dateFilter.cutoffDate {
+            projects = projects.filter { project in
+                project.lastModified >= cutoff
             }
         }
         
@@ -117,6 +165,7 @@ struct ProjectListView: View {
             SidebarView(
                 selectedTags: $selectedTags,
                 searchBarRef: $searchBarRef,
+                selectedProjects: $selectedProjects,
                 isDraggingDirectory: $isDraggingDirectory,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
@@ -128,6 +177,7 @@ struct ProjectListView: View {
             MainContentView(
                 searchText: $searchText,
                 sortOption: $sortOption,
+                dateFilter: $dateFilter,
                 selectedProjects: $selectedProjects,
                 searchBarRef: $searchBarRef,
                 editorManager: editorManager,
@@ -214,26 +264,8 @@ struct ProjectListView: View {
     }
     
     private func convertToProjectData(_ project: Project) -> ProjectData {
-        // 将 Project 转换为 ProjectData
-        return ProjectData(
-            id: project.id,
-            name: project.name,
-            path: project.path,
-            lastModified: project.lastModified,
-            tags: project.tags,
-            gitInfo: project.gitInfo.map { gitInfo in
-                ProjectData.GitInfoData(
-                    commitCount: gitInfo.commitCount,
-                    lastCommitDate: gitInfo.lastCommitDate ?? Date()
-                )
-            },
-            fileSystemInfo: ProjectData.FileSystemInfoData(
-                modificationDate: project.lastModified,
-                size: 0, // 这里可以从文件系统获取实际大小
-                checksum: "",
-                lastCheckTime: Date()
-            )
-        )
+        // 使用统一的扁平数据转换，保留启动命令等新字段
+        return ProjectData(from: project)
     }
     
     private func loadProjects() {
