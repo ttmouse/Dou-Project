@@ -22,7 +22,7 @@ enum SettingsTab: String, CaseIterable {
 
 struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .editors
-    @StateObject private var tagManager = TagManager()
+    @ObservedObject var tagManager: TagManager
     @ObservedObject var editorManager = AppOpenHelper.editorManager
 
     var body: some View {
@@ -74,7 +74,7 @@ struct SettingsView: View {
                 case .autoTagging:
                     AutoTaggingTabView(tagManager: tagManager)
                 case .businessTagging:
-                    BusinessTaggingTabView()
+                    BusinessTaggingTabView(tagManager: tagManager)
                 case .other:
                     OtherTabView()
                 }
@@ -203,134 +203,111 @@ struct EditorRowView: View {
 
 struct AutoTaggingTabView: View {
     @ObservedObject var tagManager: TagManager
-    let storage = TagStorage()
-
-    @State private var isEnabled: Bool = true
-    @State private var showingDebugInfo = false
-    @State private var testProjectPath: String = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // 主开关
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("启用自动标签")
+                // 说明区域
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(AppTheme.accent)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("自动标签功能")
+                                .font(.headline)
+                                .foregroundColor(AppTheme.text)
+
+                            Text("请在「业务标签」标签页中配置和管理您的标签规则")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.secondaryText)
+                        }
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.secondaryBackground)
+                .cornerRadius(12)
+
+                // 快速操作
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("快速操作")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(AppTheme.text)
 
-                    Text("基于项目文件特征自动添加标签（package.json、requirements.txt、Dockerfile 等）")
-                        .font(.caption)
-                        .foregroundColor(AppTheme.secondaryText)
-                        .lineLimit(nil)
-
-                    Toggle("", isOn: $isEnabled)
-                        .toggleStyle(SwitchToggleStyle(tint: AppTheme.accent))
-                        .onChange(of: isEnabled) { newValue in
-                            storage.saveAutoTaggingEnabled(newValue)
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            tagManager.applyTaggingRulesToAllProjects()
+                        }) {
+                            HStack(spacing: 6) {
+                                if tagManager.isRunningTaggingRules {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("正在打标...")
+                                } else {
+                                    Image(systemName: "bolt.fill")
+                                    Text("立即运行打标")
+                                }
+                            }
+                            .font(.system(size: 13))
                         }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(tagManager.isRunningTaggingRules)
+
+                        if let message = tagManager.lastTaggingRuleMessage {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundColor(AppTheme.accent)
+                                .lineLimit(2)
+                        }
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AppTheme.secondaryBackground)
+                .background(AppTheme.background)
                 .cornerRadius(8)
 
-                // 操作按钮
-                HStack(spacing: 12) {
-                    Button(action: {
-                        showingDebugInfo.toggle()
-                    }) {
-                        Text("查看规则详情")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.bordered)
+                Divider()
 
-                    Button(action: {
-                        tagManager.reloadProjects()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("重新生成所有标签")
-                        }
-                        .font(.system(size: 13))
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal, 16)
-
-                // 测试区域
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("测试标签生成")
+                // 提示信息
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("提示")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(AppTheme.text)
 
-                    HStack(spacing: 8) {
-                        TextField("项目路径", text: $testProjectPath)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13))
-
-                        Button(action: {
-                            testAutoTagging()
-                        }) {
-                            Text("测试")
-                                .font(.system(size: 13, weight: .medium))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.right.circle")
+                                .foregroundColor(AppTheme.secondaryIcon)
+                                Text("在「业务标签」标签页中添加、编辑或删除规则")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.secondaryText)
                         }
-                        .buttonStyle(.borderedProminent)
-                            .disabled(testProjectPath.isEmpty)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.right.circle")
+                                .foregroundColor(AppTheme.secondaryIcon)
+                                Text("点击「立即运行打标」应用所有已配置的规则")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.secondaryText)
+                        }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.right.circle")
+                                .foregroundColor(AppTheme.secondaryIcon)
+                            Text("规则仅对启用状态的规则生效")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.secondaryText)
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-
-                // 调试信息
-                if showingDebugInfo, !testProjectPath.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("匹配的规则")
-                            .font(.subheadline)
-                            .foregroundColor(AppTheme.text)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            let matchedRules = AutoTagger.debugRules(for: testProjectPath)
-                            if matchedRules.isEmpty {
-                                Text("无匹配规则")
-                                    .font(.caption)
-                                    .foregroundColor(AppTheme.secondaryText)
-                            } else {
-                                ForEach(matchedRules, id: \.self) { rule in
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                        Text(rule)
-                                            .font(.caption)
-                                            .foregroundColor(AppTheme.text)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.secondaryBackground)
-                        .cornerRadius(8)
-                    }
-                }
+                .padding(16)
             }
-            .padding(.vertical, 16)
+            .padding(16)
         }
-    }
-
-    private func testAutoTagging() {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: testProjectPath) else { return }
-
-        let matchedRules = AutoTagger.debugRules(for: testProjectPath)
-        let testTags = AutoTagger.generateTags(for: testProjectPath)
-
-        print("========== 自动标签测试 ==========")
-        print("项目路径: \(testProjectPath)")
-        print("匹配规则数: \(matchedRules.count)")
-        print("生成的标签: \(testTags)")
-        print("================================")
     }
 }
 
@@ -354,6 +331,7 @@ struct OtherTabView: View {
 // MARK: - 业务标签 Tab
 
 struct BusinessTaggingTabView: View {
+    @ObservedObject var tagManager: TagManager
     @StateObject private var ruleStorage = BusinessTagger.getStorage()
     @State private var showingAddRule = false
     @State private var editingRule: BusinessTagRuleStorage.StoredRule?
@@ -387,6 +365,30 @@ struct BusinessTaggingTabView: View {
                         .foregroundColor(AppTheme.secondaryText)
                     
                     Spacer()
+                    
+                    Button(action: {
+                        tagManager.applyTaggingRulesToAllProjects()
+                    }) {
+                        HStack(spacing: 6) {
+                            if tagManager.isRunningTaggingRules {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("正在打标...")
+                            } else {
+                                Image(systemName: "bolt.fill")
+                                Text("立即运行打标")
+                            }
+                        }
+                        .font(.system(size: 13))
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(tagManager.isRunningTaggingRules)
+                    
+                    if let message = tagManager.lastTaggingRuleMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundColor(AppTheme.accent)
+                    }
                     
                     Button(action: { showingAddRule = true }) {
                         HStack(spacing: 6) {
@@ -491,7 +493,8 @@ struct BusinessTaggingTabView: View {
             return
         }
         
-        testResults = BusinessTagger.debugRules(for: testProjectPath)
+        let projectName = (testProjectPath as NSString).lastPathComponent
+        testResults = BusinessTagger.debugRules(for: testProjectPath, projectName: projectName)
         if testResults.isEmpty {
             testResults = ["未匹配任何规则"]
         }

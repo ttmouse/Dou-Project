@@ -28,6 +28,16 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     // 标签隐藏状态管理
     @Published var hiddenTags: Set<String> = []
+    
+    // 状态指示
+    @Published var isRunningTaggingRules: Bool = false
+    @Published var lastTaggingRuleMessage: String? = nil
+
+    /// 倒排索引：标签 -> 项目ID集合 (O(1) 检索受影响项目)
+    private var tagToProjectMap: [String: Set<UUID>] = [:]
+    
+    /// I/O 专用串行队列，确保磁盘操作不阻塞 UI
+    private let ioQueue = DispatchQueue(label: "com.projectmanager.tagmanager.io", qos: .background)
 
     // MARK: - 组件
 
@@ -185,6 +195,39 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // 5. 完全取消启动时的自动加载 - Linus式快速启动
         // 不执行任何后台更新，让用户手动控制
         print("启动加载完成，等待用户手动操作...")
+        
+        // 6. 重建索引
+        rebuildTagIndex()
+    }
+    
+    /// 重建倒排索引 (标签 -> 项目ID) - 仅在初始化时使用
+    private func rebuildTagIndex() {
+        var newMap: [String: Set<UUID>] = [:]
+        for (id, project) in projects {
+            for tag in project.tags {
+                newMap[tag, default: []].insert(id)
+            }
+        }
+        self.tagToProjectMap = newMap
+        print("倒排索引重建完成: \(newMap.count) 个标签")
+    }
+
+    /// 增量更新倒排索引 (O(1) 性能)
+    private func updateTagIndex(for id: UUID, oldTags: Set<String>?, newTags: Set<String>) {
+        // 1. 移除旧标签关联
+        if let old = oldTags {
+            for tag in old {
+                tagToProjectMap[tag]?.remove(id)
+                if tagToProjectMap[tag]?.isEmpty == true {
+                    tagToProjectMap.removeValue(forKey: tag)
+                }
+            }
+        }
+        
+        // 2. 添加新标签关联
+        for tag in newTags {
+            tagToProjectMap[tag, default: []].insert(id)
+        }
     }
     
     // 后台刷新项目，不清空现有UI
@@ -298,6 +341,101 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         return filteredProjectData.toProjectArray()
     }
 
+    /// 立即对所有项目运行自动打标规则（仅使用用户在面板中配置的 BusinessTagger 规则）
+    func applyTaggingRulesToAllProjects() {
+        print("开始对所有项目运行自动打标规则...")
+        
+        isRunningTaggingRules = true
+        lastTaggingRuleMessage = "正在扫描项目..."
+        
+        let projectsSnapshot = Array(projects.values)
+        let total = projectsSnapshot.count
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            var modifiedProjects: [Project] = []
+            
+            for (index, project) in projectsSnapshot.enumerated() {
+                // 仅应用用户在面板中配置的业务标签规则 (BusinessTagger)
+                // 移除了写死的 AutoTagger 技术栈规则
+                var updatedProject = BusinessTagger.applyBusinessTags(to: project)
+                
+                if updatedProject.tags != project.tags {
+                    modifiedProjects.append(updatedProject)
+                }
+                
+                if (index + 1) % 10 == 0 || index == total - 1 {
+                    print("  自动打标进度: \(index + 1)/\(total)")
+                }
+            }
+            
+            if !modifiedProjects.isEmpty {
+                DispatchQueue.main.async {
+                    print("  正在同步 \(modifiedProjects.count) 个项目的更新...")
+                    
+                    var updatedAppStateProjects = self.appState.projects
+                    var newTagsDiscovered = Set<String>()
+                    
+                    for updatedProject in modifiedProjects {
+                        let id = updatedProject.id
+                        if self.projects[id] != nil {
+                            let oldTags = self.projects[id]?.tags
+                            self.projects[id] = updatedProject
+                            
+                            // 同步到 AppState
+                            updatedAppStateProjects[id] = updatedProject.toProjectData()
+                            
+                            // 收集新发现的标签
+                            for tag in updatedProject.tags {
+                                if !self.allTags.contains(tag) {
+                                    newTagsDiscovered.insert(tag)
+                                }
+                            }
+                            
+                            self.updateTagIndex(for: id, oldTags: oldTags, newTags: updatedProject.tags)
+                            self.sortManager.updateProject(updatedProject)
+                        }
+                    }
+                    
+                    // 将新发现的标签合并到全局标签列表
+                    if !newTagsDiscovered.isEmpty {
+                        print("  发现了 \(newTagsDiscovered.count) 个新标签: \(newTagsDiscovered.joined(separator: ", "))")
+                        self.allTags.formUnion(newTagsDiscovered)
+                        
+                        // 确保新标签有颜色
+                        for tag in newTagsDiscovered {
+                            if self.colorManager.getColor(for: tag) == nil {
+                                let hash = abs(tag.hashValue)
+                                let colorIndex = hash % AppTheme.tagPresetColors.count
+                                let color = AppTheme.tagPresetColors[colorIndex].color
+                                self.colorManager.setColor(color, for: tag)
+                            }
+                        }
+                    }
+                    
+                    // 更新 AppState
+                    self.appState = AppStateLogic.updateState(self.appState, projects: updatedAppStateProjects)
+                    
+                    self.invalidateTagUsageCache()
+                    self.needsSave = true
+                    self.saveAll()
+                    
+                    self.objectWillChange.send()
+                    self.isRunningTaggingRules = false
+                    self.lastTaggingRuleMessage = "打标完成：更新了 \(modifiedProjects.count) 个项目"
+                    print("✅ 自动打标规则运行完成，更新了 \(modifiedProjects.count) 个项目")
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.isRunningTaggingRules = false
+                    self.lastTaggingRuleMessage = "打标完成：未发现新标签"
+                }
+                print("✅ 自动打标规则运行完成，无项目更新")
+            }
+        }
+    }
+
     // MARK: - 标签操作
 
     func addTag(_ tag: String, color: Color) {
@@ -312,37 +450,76 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     func removeTag(_ tag: String) {
         print("移除标签: \(tag)")
-        if allTags.contains(tag) {
-            var updatedEntries: [UUID: Project] = [:]
+        guard allTags.contains(tag) else { return }
 
-            for (id, project) in projects {
-                if project.tags.contains(tag) {
-                    updatedEntries[id] = project.withRemovedTag(tag)
+        // --- 乐观 UI: 视觉先行 ---
+        // 1. 立即从全局标签列表移除 (左侧菜单瞬时刷新)
+        allTags.remove(tag)
+        
+        // 2. 如果当前选中了该标签，立即取消选中 (右侧列表清空/重置)
+        if selectedTag == tag {
+            selectedTag = nil
+        }
+        
+        // 3. 立即清理颜色和同步 UI 状态
+        colorManager.removeColor(for: tag)
+        objectWillChange.send()
+        
+        // --- 后台处理: 逻辑落后 ---
+        let affectedIds = tagToProjectMap[tag] ?? []
+        
+        // 如果没有项目使用该标签，直接清理索引并保存
+        if affectedIds.isEmpty {
+            tagToProjectMap.removeValue(forKey: tag)
+            saveAll()
+            return
+        }
+
+        print("乐观 UI 已生效，后台开始静默更新 \(affectedIds.count) 个项目")
+
+        // 捕获主线程数据快照，确保后台计算的线程安全
+        let projectsSnapshot = self.projects
+
+        // 异步计算更新，避免阻塞 UI 线程
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // 仅存储实际发生变化的项目，避免覆盖整个字典导致的 Race Condition
+            var modifiedProjects: [UUID: Project] = [:]
+            for id in affectedIds {
+                if let project = projectsSnapshot[id] {
+                    modifiedProjects[id] = project.withRemovedTag(tag)
                 }
             }
-
-            if !updatedEntries.isEmpty {
-                let updatedCount = updatedEntries.count
-                print("批量更新了 \(updatedCount) 个项目")
-
-                for (id, project) in updatedEntries {
-                    projects[id] = project
+            
+            // 在主线程执行增量更新
+            DispatchQueue.main.async {
+                // 1. 增量更新项目和索引 (右侧列表此时会再次刷新以反映真实数据)
+                var updatedAppStateProjects = self.appState.projects
+                
+                for (id, updatedProject) in modifiedProjects {
+                    if self.projects[id] != nil {
+                        let oldTags = self.projects[id]?.tags
+                        self.projects[id] = updatedProject
+                        
+                        // 同步到 AppState
+                        updatedAppStateProjects[id] = updatedProject.toProjectData()
+                        
+                        self.updateTagIndex(for: id, oldTags: oldTags, newTags: updatedProject.tags)
+                        self.sortManager.updateProject(updatedProject)
+                    }
                 }
-
-                var tempAllTags = allTags
-                tempAllTags.remove(tag)
-
-                var tempProjects = projects
-
-                allTags = tempAllTags
-                projects = tempProjects
-
-                sortManager.updateSortedProjects(Array(projects.values))
-                invalidateTagUsageCache()
-                colorManager.removeColor(for: tag)
-                needsSave = true
-
-                objectWillChange.send()
+                
+                // 更新 AppState
+                self.appState = AppStateLogic.updateState(self.appState, projects: updatedAppStateProjects)
+                
+                // 2. 最终清理索引并落盘
+                self.tagToProjectMap.removeValue(forKey: tag)
+                self.invalidateTagUsageCache()
+                self.needsSave = true
+                self.saveAll()
+                
+                print("✅ 标签 '\(tag)' 后台清理完成，同步了 \(modifiedProjects.count) 个项目")
             }
         }
     }
@@ -394,7 +571,9 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         
         // 同步到旧的数据结构（过渡期间保持兼容）
         let updatedProject = Project.fromProjectData(updatedProjectData)
+        let oldTags = projects[projectId]?.tags
         projects[projectId] = updatedProject
+        updateTagIndex(for: projectId, oldTags: oldTags, newTags: updatedProject.tags)
         sortManager.updateProject(updatedProject)
         
         // 同步到系统（暂时禁用）
@@ -417,7 +596,9 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         
         // 同步到旧的数据结构（过渡期间保持兼容）
         let updatedProject = Project.fromProjectData(updatedProjectData)
+        let oldTags = projects[projectId]?.tags
         projects[projectId] = updatedProject
+        updateTagIndex(for: projectId, oldTags: oldTags, newTags: updatedProject.tags)
         sortManager.updateProject(updatedProject)
         
         // 同步到系统（暂时禁用）
@@ -443,7 +624,9 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             // 同步到旧数据结构（过渡期间）
             let updatedProject = Project.fromProjectData(updatedProjectData)
+            let oldTags = projects[updatedProjectData.id]?.tags
             projects[updatedProjectData.id] = updatedProject
+            updateTagIndex(for: updatedProjectData.id, oldTags: oldTags, newTags: updatedProject.tags)
             sortManager.updateProject(updatedProject)
         }
         
@@ -481,43 +664,51 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     }
 
     private func performSave() {
-        // 保存标签
-        storage.saveTags(allTags)
+        // 捕获当前状态快照，用于后台保存
+        let tagsSnapshot = allTags
+        let hiddenTagsSnapshot = hiddenTags
+        let projectsSnapshot = Array(projects.values)
         
-        // 保存隐藏标签状态
-        storage.saveHiddenTags(hiddenTags)
-        
-        // 保存监视目录
-        directoryWatcher.saveWatchedDirectories()
-        
-        // 保存项目数据
-        projectOperations.saveAllToCache()
-        
-        // 同步系统标签
-        TagSystemSync.syncTagsToSystem(allTags)
-        
-        // 保存所有项目的系统标签
-        for project in projects.values {
-            project.saveTagsToSystem()
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.storage.saveTags(tagsSnapshot)
+            self.storage.saveHiddenTags(hiddenTagsSnapshot)
+            self.storage.saveProjects(projectsSnapshot)
+            self.directoryWatcher.saveWatchedDirectories()
+            
+            TagSystemSync.syncTagsToSystem(tagsSnapshot)
+            for project in projectsSnapshot {
+                project.saveTagsToSystem()
+            }
+            
+            DispatchQueue.main.async {
+                self.needsSave = false
+                print("✅ 所有数据已成功后台同步至磁盘")
+            }
         }
-        
-        needsSave = false
-        print("所有数据保存完成")
     }
 
     // MARK: - 项目管理
 
     func registerProject(_ project: Project) {
+        let oldTags = projects[project.id]?.tags
         projectOperations.registerProject(project)
+        updateTagIndex(for: project.id, oldTags: oldTags, newTags: project.tags)
     }
 
     func removeProject(_ id: UUID) {
+        if let project = projects[id] {
+            updateTagIndex(for: id, oldTags: project.tags, newTags: [])
+        }
         projectOperations.removeProject(id)
     }
     
     func updateProject(_ project: Project) {
         print("更新项目: \(project.name)")
+        let oldTags = projects[project.id]?.tags
         projects[project.id] = project
+        updateTagIndex(for: project.id, oldTags: oldTags, newTags: project.tags)
         sortManager.updateProject(project)
         
         // 更新 AppState
@@ -532,26 +723,74 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     func renameTag(_ oldName: String, to newName: String, color: Color) {
         print("重命名标签: \(oldName) -> \(newName)")
-        if allTags.contains(oldName) && !allTags.contains(newName) {
-            allTags.remove(oldName)
-            allTags.insert(newName)
-            
-            // 更新颜色
-            colorManager.removeColor(for: oldName)
-            colorManager.setColor(color, for: newName)
+        guard allTags.contains(oldName) && !allTags.contains(newName) else { return }
+        
+        // --- 乐观 UI: 视觉先行 ---
+        // 1. 立即更新全局标签列表 (左侧菜单瞬时刷新)
+        allTags.remove(oldName)
+        allTags.insert(newName)
+        
+        // 2. 如果当前选中了旧标签，立即切换到新标签 (保持右侧列表状态)
+        if selectedTag == oldName {
+            selectedTag = newName
+        }
+        
+        // 3. 立即更新颜色和同步 UI 状态
+        colorManager.removeColor(for: oldName)
+        colorManager.setColor(color, for: newName)
+        objectWillChange.send()
 
-            // 更新所有项目中的标签
-            for (id, project) in projects {
-                if project.tags.contains(oldName) {
-                    let updatedProject = project.withRemovedTag(oldName).withAddedTag(newName)
-                    projects[id] = updatedProject
-                    sortManager.updateProject(updatedProject)
+        // --- 后台处理: 逻辑落后 ---
+        let affectedIds = tagToProjectMap[oldName] ?? []
+        
+        if affectedIds.isEmpty {
+            tagToProjectMap.removeValue(forKey: oldName)
+            tagToProjectMap[newName] = []
+            saveAll()
+            return
+        }
+
+        print("乐观 UI 已生效，后台开始静默重命名 \(affectedIds.count) 个项目")
+
+        let projectsSnapshot = self.projects
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            var modifiedProjects: [UUID: Project] = [:]
+            for id in affectedIds {
+                if let project = projectsSnapshot[id] {
+                    modifiedProjects[id] = project.withRemovedTag(oldName).withAddedTag(newName)
                 }
             }
+            
+            DispatchQueue.main.async {
+                // 1. 增量更新项目和索引 (右侧列表此时会再次刷新以反映真实数据)
+                var updatedAppStateProjects = self.appState.projects
 
-            invalidateTagUsageCache()
-            needsSave = true
-            saveAll()
+                for (id, updatedProject) in modifiedProjects {
+                    if self.projects[id] != nil {
+                        let oldTags = self.projects[id]?.tags
+                        self.projects[id] = updatedProject
+                        
+                        // 同步到 AppState
+                        updatedAppStateProjects[id] = updatedProject.toProjectData()
+                        
+                        self.updateTagIndex(for: id, oldTags: oldTags, newTags: updatedProject.tags)
+                        self.sortManager.updateProject(updatedProject)
+                    }
+                }
+                
+                // 更新 AppState
+                self.appState = AppStateLogic.updateState(self.appState, projects: updatedAppStateProjects)
+                
+                // 2. 最终清理旧索引并落盘
+                self.tagToProjectMap.removeValue(forKey: oldName)
+                self.invalidateTagUsageCache()
+                self.saveAll()
+                
+                print("✅ 标签 '\(oldName)' -> '\(newName)' 后台重命名完成")
+            }
         }
     }
 
@@ -882,6 +1121,8 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     func notifyProjectsChanged() {
         // 触发 UI 更新
         objectWillChange.send()
+        // 批量更新后重建索引确保一致性
+        rebuildTagIndex()
     }
     
     // Linus式简化：不需要复杂的缓存失效逻辑，BusinessLogic会处理
