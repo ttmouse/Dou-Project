@@ -144,11 +144,13 @@ struct ProjectSidebarContent: View {
     @State private var searchBarRef: SearchBar? = nil
     @State private var isDraggingDirectory = false
     @State private var heatmapFilteredProjectIds: Set<UUID> = []
+    @State private var selectedProjects: Set<UUID> = []
     
     var body: some View {
         SidebarView(
             selectedTags: $selectedTags,
             searchBarRef: $searchBarRef,
+            selectedProjects: $selectedProjects,
             isDraggingDirectory: $isDraggingDirectory,
             isShowingNewTagDialog: $isShowingNewTagDialog,
             tagToRename: $tagToRename,
@@ -276,9 +278,10 @@ struct StatRow: View {
 /// 项目列表主内容（从原来的 ProjectListView 提取）
 struct ProjectListMainContent: View {
     @EnvironmentObject var tagManager: TagManager
-    
+
     var body: some View {
         ProjectListView()
+            .environmentObject(tagManager)
     }
 }
 

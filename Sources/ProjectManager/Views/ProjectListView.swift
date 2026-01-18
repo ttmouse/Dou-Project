@@ -1,122 +1,182 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
-struct ProjectListView: View {
-    // MARK: - 状态变量
-    @State private var searchText = ""
-    @State private var selectedTags: Set<String> = []
-    @State private var isShowingDirectoryPicker = false
-    @State private var watchedDirectory: String =
-        UserDefaults.standard.string(forKey: "WatchedDirectory")
-        ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path
-        ?? NSHomeDirectory() + "/Desktop"
-    @State private var selectedProjects: Set<UUID> = []
-    @State private var isShowingNewTagDialog = false
-    @State private var tagToRename: IdentifiableString? = nil
-    @State private var isDraggingDirectory = false
-    @State private var searchBarRef: SearchBar? = nil
-    @State private var sortOption: SortOption = .timeDesc
-    @State private var dateFilter: DateFilter = .all
-    @State private var selectedDirectory: String? = nil
-    @State private var showDetailPanel = false
-    @State private var selectedProjectForDetailId: UUID? = nil
+// MARK: - 项目列表视图的枚举定义（共享）
+enum SortOption {
+    case timeAsc
+    case timeDesc
+    case commitCount
+}
+
+enum DateFilter: CaseIterable {
+    case all
+    case lastDay
+    case lastWeek
     
-    private var selectedProjectForDetail: Project? {
-        guard let id = selectedProjectForDetailId else { return nil }
-        return tagManager.projects[id]
+    var title: String {
+        switch self {
+        case .all:
+            return "全部日期"
+        case .lastDay:
+            return "最近一天"
+        case .lastWeek:
+            return "最近一周"
+        }
     }
     
-    @State private var heatmapFilteredProjectIds: Set<UUID> = []
-
-    @EnvironmentObject var tagManager: TagManager
-    @ObservedObject private var editorManager = AppOpenHelper.editorManager
-
-    // MARK: - 枚举
-    enum SortOption {
-        case timeAsc
-        case timeDesc
-        case commitCount
-    }
-
-    enum DateFilter: CaseIterable {
-        case all
-        case lastDay
-        case lastWeek
-        
-        var title: String {
-            switch self {
-            case .all:
-                return "全部日期"
-            case .lastDay:
-                return "最近一天"
-            case .lastWeek:
-                return "最近一周"
-            }
-        }
-        
-        var shortLabel: String {
-            switch self {
-            case .all:
-                return "全部"
-            case .lastDay:
-                return "最近1天"
-            case .lastWeek:
-                return "最近7天"
-            }
-        }
-        
-        var cutoffDate: Date? {
-            switch self {
-            case .all:
-                return nil
-            case .lastDay:
-                return Calendar.current.date(byAdding: .day, value: -1, to: Date())
-            case .lastWeek:
-                return Calendar.current.date(byAdding: .day, value: -7, to: Date())
-            }
+    var shortLabel: String {
+        switch self {
+        case .all:
+            return "全部"
+        case .lastDay:
+            return "最近1天"
+        case .lastWeek:
+            return "最近7天"
         }
     }
+    
+    var cutoffDate: Date? {
+        switch self {
+        case .all:
+            return nil
+        case .lastDay:
+            return Calendar.current.date(byAdding: .day, value: -1, to: Date())
+        case .lastWeek:
+            return Calendar.current.date(byAdding: .day, value: -7, to: Date())
+        }
+    }
+}
 
-    // MARK: - 计算属性
-    private var filteredProjects: [Project] {
-        // 将 Dictionary.Values 转换为 Array
+// MARK: - 性能优化：ViewModel 管理状态和防抖
+@MainActor
+class ProjectListViewModel: ObservableObject {
+    // MARK: - 属性
+    @Published var filteredProjects: [Project] = []
+    @Published var searchText: String = ""
+    @Published var selectedTags: Set<String> = []
+    @Published var sortOption: SortOption = .timeDesc
+    @Published var dateFilter: DateFilter = .all
+    @Published var selectedDirectory: String? = nil
+    @Published var heatmapFilteredProjectIds: Set<UUID> = []
+
+    private weak var tagManager: TagManager?
+    private var debounceWorkItem: DispatchWorkItem?
+    private var cancellables = Set<AnyCancellable>()
+    private var isSetup = false
+
+    init() {
+        // 延迟设置 tagManager，因为需要从环境对象中获取
+    }
+
+    // 设置 tagManager 引用（在视图的 onAppear 中调用）
+    func setTagManager(_ tagManager: TagManager) {
+        guard !isSetup else { return }  // 只设置一次
+        self.tagManager = tagManager
+        setupBindings()
+        updateFilteredProjects()
+        isSetup = true
+    }
+    
+    // MARK: - 绑定监听（带防抖）
+    private func setupBindings() {
+        guard let tagManager = tagManager else { return }
+        
+        // 监听 projects 变化，使用防抖
+        tagManager.$projects
+            .dropFirst()  // 跳过初始值
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)  // 150ms 防抖
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        // 监听 hiddenTags 变化
+        tagManager.$hiddenTags
+            .dropFirst()
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        // 监听其他本地状态变化
+        $searchText
+            .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)  // 搜索 200ms 防抖
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        $selectedTags
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)  // 标签选择 100ms 防抖
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        $sortOption
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        $dateFilter
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        $selectedDirectory
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+        
+        $heatmapFilteredProjectIds
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateFilteredProjects()
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - 核心过滤逻辑（缓存结果）
+    private func updateFilteredProjects() {
+        guard let tagManager = tagManager else { return }
+
+        // 1. 获取原始项目数组
         var projects = Array(tagManager.projects.values)
         
-        // 目录筛选
+        // 2. 目录筛选
         if let selectedDirectory = selectedDirectory {
             projects = projects.filter { $0.path.hasPrefix(selectedDirectory) }
         }
         
-        // 隐藏标签过滤 - 在所有视图下生效，除非当前正在查看被隐藏的标签本身
+        // 3. 隐藏标签过滤
         projects = projects.filter { project in
-            // 获取项目中被隐藏的标签
             let projectHiddenTags = project.tags.filter { tagManager.isTagHidden($0) }
             
-            // 如果项目没有隐藏标签，直接显示
             if projectHiddenTags.isEmpty {
                 return true
             }
             
-            // 如果当前选中的标签中包含项目的某个隐藏标签，则显示该项目
-            // 这样用户可以在选择隐藏标签时仍然看到相关项目
             if !selectedTags.isEmpty && !selectedTags.contains("全部") && !selectedTags.contains("没有标签") {
                 let currentlyViewingHiddenTag = selectedTags.contains { selectedTag in
                     projectHiddenTags.contains(selectedTag)
                 }
-                if currentlyViewingHiddenTag {
-                    return true
-                }
+                return currentlyViewingHiddenTag
             }
             
-            // 其他情况下，如果项目有隐藏标签，则隐藏该项目
             return false
         }
         
-        // 热力图筛选 - 最高优先级
+        // 4. 热力图筛选 - 最高优先级
         if !heatmapFilteredProjectIds.isEmpty {
             projects = projects.filter { heatmapFilteredProjectIds.contains($0.id) }
         }
-        // 标签筛选
+        // 5. 标签筛选
         else if !selectedTags.isEmpty {
             if selectedTags.contains("没有标签") {
                 projects = projects.filter { $0.tags.isEmpty }
@@ -125,10 +185,9 @@ struct ProjectListView: View {
                     selectedTags.isSubset(of: project.tags)
                 }
             }
-            // 如果选择的是"全部"，则不进行额外的标签筛选
         }
         
-        // 搜索文本筛选
+        // 6. 搜索文本筛选
         if !searchText.isEmpty {
             projects = projects.filter { project in
                 project.name.localizedCaseInsensitiveContains(searchText) ||
@@ -137,15 +196,15 @@ struct ProjectListView: View {
             }
         }
 
-        // 日期筛选
+        // 7. 日期筛选
         if let cutoff = dateFilter.cutoffDate {
             projects = projects.filter { project in
                 project.lastModified >= cutoff
             }
         }
         
-        // 排序
-        return projects.sorted { (p1: Project, p2: Project) in
+        // 8. 排序
+        filteredProjects = projects.sorted { (p1: Project, p2: Project) in
             switch sortOption {
             case .timeDesc:
                 return p1.lastModified > p2.lastModified
@@ -158,30 +217,68 @@ struct ProjectListView: View {
             }
         }
     }
+    
+    // MARK: - 手动刷新（用于某些特殊情况）
+    func forceRefresh() {
+        updateFilteredProjects()
+    }
+}
+
+// MARK: - 主视图
+struct ProjectListView: View {
+    // MARK: - 状态变量
+    @State private var isShowingDirectoryPicker = false
+    @State private var watchedDirectory: String =
+        UserDefaults.standard.string(forKey: "WatchedDirectory")
+        ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path
+        ?? NSHomeDirectory() + "/Desktop"
+    @State private var selectedProjects: Set<UUID> = []
+    @State private var isShowingNewTagDialog = false
+    @State private var tagToRename: IdentifiableString? = nil
+    @State private var isDraggingDirectory = false
+    @State private var searchBarRef: SearchBar? = nil
+    @State private var showDetailPanel = false
+    @State private var selectedProjectForDetailId: UUID? = nil
+    // 临时禁用性能监控功能
+    // @State private var showPerformanceMonitor = false
+
+    @EnvironmentObject var tagManager: TagManager
+    @ObservedObject private var editorManager = AppOpenHelper.editorManager
+
+    private var selectedProjectForDetail: Project? {
+        guard let id = selectedProjectForDetailId else { return nil }
+        return tagManager.projects[id]
+    }
+
+    // 延迟初始化 ViewModel（需要 tagManager）
+    @StateObject private var viewModel = ProjectListViewModel()
+
+    // MARK: - 初始化
+    init() {}
 
     // MARK: - 视图
     var body: some View {
         HSplitView {
             SidebarView(
-                selectedTags: $selectedTags,
+                selectedTags: $viewModel.selectedTags,
                 searchBarRef: $searchBarRef,
                 selectedProjects: $selectedProjects,
                 isDraggingDirectory: $isDraggingDirectory,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
-                selectedDirectory: $selectedDirectory,
-                heatmapFilteredProjectIds: $heatmapFilteredProjectIds,
-                onTagSelected: handleTagSelection  // 传递统一的标签处理回调
+                selectedDirectory: $viewModel.selectedDirectory,
+                heatmapFilteredProjectIds: $viewModel.heatmapFilteredProjectIds,
+                onTagSelected: handleTagSelection
             )
             
             MainContentView(
-                searchText: $searchText,
-                sortOption: $sortOption,
-                dateFilter: $dateFilter,
+                searchText: $viewModel.searchText,
+                sortOption: $viewModel.sortOption,
+                dateFilter: $viewModel.dateFilter,
                 selectedProjects: $selectedProjects,
                 searchBarRef: $searchBarRef,
                 editorManager: editorManager,
-                filteredProjects: filteredProjects,
+                filteredProjects: viewModel.filteredProjects,
                 onShowProjectDetail: showProjectDetail,
                 onTagSelected: handleTagSelection
             )
@@ -198,7 +295,22 @@ struct ProjectListView: View {
                 .zIndex(1)
             }
         }
+        .environmentObject(tagManager)
+        // 临时禁用性能监控面板
+        // .overlay(
+        //     // 性能监控面板（可切换显示）
+        //     Group {
+        //         if showPerformanceMonitor {
+        //             PerformanceMonitorView()
+        //                 .padding(.trailing, 20)
+        //                 .padding(.bottom, 20)
+        //                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        //         }
+        //     }
+        // )
         .onAppear {
+            // 设置 viewModel 的 tagManager 引用
+            viewModel.setTagManager(tagManager)
             loadProjects()
             setupSelectAllMenuCommand()
         }
@@ -215,38 +327,36 @@ struct ProjectListView: View {
                 ),
                 tagManager: tagManager
             ) { newName, color in
-                DispatchQueue.main.async {
-                    tagManager.renameTag(identifiableTag.value, to: newName, color: color)
-                    tagToRename = nil
-                }
+                tagManager.renameTag(identifiableTag.value, to: newName, color: color)
+                tagToRename = nil
             }
         }
         .toast()
+        // 临时禁用性能监控通知
+        // .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("togglePerformanceMonitor"))) { _ in
+        //     showPerformanceMonitor.toggle()
+        // }
     }
 
     // MARK: - 私有方法
     
     private func handleTagSelection(_ tag: String) {
         print("🏷️ 标签点击: \(tag)")
-        // 移除任何现有焦点
         NSApp.keyWindow?.makeFirstResponder(nil)
-        // 清除搜索框焦点
         searchBarRef?.clearFocus()
-        // 选择点击的标签
+        
         if tag == "全部" {
-            selectedTags.removeAll()  // "全部"标签等同于清空选择
+            viewModel.selectedTags.removeAll()
         } else {
-            selectedTags = [tag]
+            viewModel.selectedTags = [tag]
         }
-        print("🏷️ 已选中标签: \(selectedTags)")
+        print("🏷️ 已选中标签: \(viewModel.selectedTags)")
     }
     
     private func showProjectDetail(_ project: Project) {
-        // 检查当前选择状态
         let currentSelectedCount = selectedProjects.count
         
         if currentSelectedCount <= 1 {
-            // 单个项目或无选择时，更新详情面板并单选该项目
             selectedProjectForDetailId = project.id
             selectedProjects = [project.id]
             
@@ -254,7 +364,6 @@ struct ProjectListView: View {
                 showDetailPanel = true
             }
         } else {
-            // 多选状态时，只更新详情面板内容，不改变选择状态
             selectedProjectForDetailId = project.id
             
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -264,31 +373,22 @@ struct ProjectListView: View {
     }
     
     private func convertToProjectData(_ project: Project) -> ProjectData {
-        // 使用统一的扁平数据转换，保留启动命令等新字段
         return ProjectData(from: project)
     }
     
     private func loadProjects() {
-        // 立即加载缓存的项目数据
         print("立即加载已缓存的项目数据")
-        
-        // 不再自动触发增量更新，改为手动控制
-        // 如果需要更新项目，用户可以通过菜单或快捷键手动触发
         print("自动更新已关闭，如需更新项目列表请手动刷新")
     }
 
-    // 设置全选菜单命令（通过主菜单实现⌘A）
     private func setupSelectAllMenuCommand() {
-        // Linus式简化：删掉所有依赖注入狗屎
         print("全选功能简化完成")
     }
     
     private func selectAllProjects() {
-        // 清空当前选择
         selectedProjects.removeAll()
         
-        // 选择所有筛选出的项目
-        for project in filteredProjects {
+        for project in viewModel.filteredProjects {
             selectedProjects.insert(project.id)
         }
         
@@ -299,11 +399,8 @@ struct ProjectListView: View {
 #if DEBUG
     struct ProjectListView_Previews: PreviewProvider {
         static var previews: some View {
-            ProjectListView()
-                .environmentObject({
-                    let container = TagManager()
-                    return TagManager()
-                }())
+            let tagManager = TagManager()
+            return ProjectListView(tagManager: tagManager)
         }
     }
 #endif

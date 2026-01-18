@@ -4,10 +4,11 @@ import SwiftUI
 @main
 struct ProjectManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var tagManager = TagManager()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(tagManager: tagManager)
                 .frame(minWidth: 800, minHeight: 600)
                 .background(AppTheme.background)
                 .preferredColorScheme(.dark)
@@ -20,16 +21,32 @@ struct ProjectManagerApp: App {
                 }
                 .keyboardShortcut("a")
             }
+            
+            CommandMenu("项目") {
+                Button("重新生成所有项目标签") {
+                    print("📢 发送 reloadAllProjects 通知")
+                    NotificationCenter.default.post(name: NSNotification.Name("reloadAllProjects"), object: nil)
+                    print("✅ 通知已发送")
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("切换性能监控面板") {
+                    NotificationCenter.default.post(name: NSNotification.Name("togglePerformanceMonitor"), object: nil)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .option])
+            }
         }
         
         Settings {
-            SettingsView()
+            SettingsView(tagManager: tagManager)
         }
     }
 }
 
 struct ContentView: View {
-    @StateObject var tagManager = TagManager()
+    @ObservedObject var tagManager: TagManager
 
     var body: some View {
         ProjectListView()
@@ -42,6 +59,12 @@ struct ContentView: View {
                     // tagManager.updateAllProjectsGitDaily()
                     print("⏭️ 跳过自动git_daily收集，可手动触发")
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("reloadAllProjects"))) { notification in
+                print("🔄 收到重新生成所有项目标签命令")
+                print("📋 通知对象: \(notification.object ?? "无")")
+                tagManager.reloadProjects()
+                print("✅ reloadProjects() 调用完成")
             }
     }
 }
