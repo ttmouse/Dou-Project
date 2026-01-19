@@ -5,6 +5,7 @@ import SwiftUI
 struct ProjectManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var tagManager = TagManager()
+    @StateObject private var focusStateManager = FocusStateManager()
 
     var body: some Scene {
         WindowGroup {
@@ -12,25 +13,16 @@ struct ProjectManagerApp: App {
                 .frame(minWidth: 800, minHeight: 600)
                 .background(AppTheme.background)
                 .preferredColorScheme(.dark)
+                .environmentObject(focusStateManager)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("全选") {
-                    // 检查当前焦点是否在文本输入框中
-                    if let window = NSApp.keyWindow,
-                       let firstResponder = window.firstResponder {
-                        // 如果焦点在 NSTextView (TextField 的底层实现) 或 NSTextField 中，不触发全选
-                        if firstResponder is NSTextView || firstResponder is NSTextField {
-                            // 让系统处理默认的 Command+A (选中文本)
-                            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: firstResponder, from: nil)
-                            return
-                        }
-                    }
-                    // 否则触发全选项目
                     NotificationCenter.default.post(name: NSNotification.Name("selectAll"), object: nil)
                 }
                 .keyboardShortcut("a")
+                .disabled(focusStateManager.isTextFieldFocused)
             }
             
             CommandMenu("项目") {

@@ -38,6 +38,7 @@ struct ProjectRenameDialog: View {
                     .textFieldStyle(CustomTextFieldStyle())
                     .frame(width: 300)
                     .disabled(isRenaming)
+                    .trackTextFieldFocus()
                     .onSubmit {
                         performRename()
                     }
