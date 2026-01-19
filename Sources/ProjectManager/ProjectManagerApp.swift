@@ -15,13 +15,6 @@ struct ProjectManagerApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .toolbar) {
-                Button("全选") {
-                    NotificationCenter.default.post(name: NSNotification.Name("selectAll"), object: nil)
-                }
-                .keyboardShortcut("a")
-            }
-            
             CommandMenu("项目") {
                 Button("重新生成所有项目标签") {
                     print("📢 发送 reloadAllProjects 通知")

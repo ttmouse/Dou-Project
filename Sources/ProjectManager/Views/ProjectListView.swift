@@ -296,18 +296,7 @@ struct ProjectListView: View {
             }
         }
         .environmentObject(tagManager)
-        // 临时禁用性能监控面板
-        // .overlay(
-        //     // 性能监控面板（可切换显示）
-        //     Group {
-        //         if showPerformanceMonitor {
-        //             PerformanceMonitorView()
-        //                 .padding(.trailing, 20)
-        //                 .padding(.bottom, 20)
-        //                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        //         }
-        //     }
-        // )
+        .background(SelectAllResponder(action: selectAllProjects))
         .onAppear {
             // 设置 viewModel 的 tagManager 引用
             viewModel.setTagManager(tagManager)

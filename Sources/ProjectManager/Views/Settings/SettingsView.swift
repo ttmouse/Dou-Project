@@ -493,8 +493,7 @@ struct BusinessTaggingTabView: View {
             return
         }
         
-        let projectName = (testProjectPath as NSString).lastPathComponent
-        testResults = BusinessTagger.debugRules(for: testProjectPath, projectName: projectName)
+        testResults = BusinessTagger.debugRules(for: testProjectPath)
         if testResults.isEmpty {
             testResults = ["未匹配任何规则"]
         }
