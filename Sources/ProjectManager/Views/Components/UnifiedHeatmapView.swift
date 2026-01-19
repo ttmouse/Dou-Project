@@ -487,12 +487,10 @@ struct UnifiedHeatmapView: View {
             let today = Date()
             endDate = today
             startDate = calendar.date(byAdding: .day, value: -365, to: today) ?? today
-            print("🎯 数据看板网格：强制365天范围 \(startDate) 到 \(endDate)")
         } else {
             // 侧边栏模式：使用数据驱动的优化范围
             startDate = data.first?.date ?? Date()
             endDate = data.last?.date ?? Date()
-            print("📅 侧边栏网格：数据驱动范围 \(startDate) 到 \(endDate)")
         }
         
         let startOfFirstWeek = calendar.dateInterval(of: .weekOfYear, for: startDate)?.start ?? startDate
@@ -512,7 +510,6 @@ struct UnifiedHeatmapView: View {
             grid.append(week)
         }
         
-        print("🔧 生成网格：\(grid.count)周，总计\(grid.count * 7)天")
         return grid
     }
     

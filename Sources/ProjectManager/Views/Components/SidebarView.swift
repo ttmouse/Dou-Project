@@ -10,21 +10,12 @@ struct SidebarView: View {
     @Binding var tagToRename: IdentifiableString?
     @Binding var selectedDirectory: String?
     @Binding var heatmapFilteredProjectIds: Set<UUID>
-    let onTagSelected: (String) -> Void  // 添加标签选择回调
+    let onTagSelected: (String) -> Void
     
-    // Linus式：简单的状态管理，不搞复杂的
+    // 热力图弹窗状态
     @State private var heatmapSelectedProjects: [ProjectData] = []
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
-    
-    // 侧边栏项目数据
-    private var sidebarProjectsData: [ProjectData] {
-        let allProjects = tagManager.projects.values.map { project in
-            ProjectData(from: project)
-        }
-        // 过滤掉包含"隐藏标签"的项目
-        return ProjectLogic.filterProjectsByHiddenTags(allProjects)
-    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -32,7 +23,7 @@ struct SidebarView: View {
             DirectoryListView(
                 tagManager: tagManager,
                 selectedDirectory: $selectedDirectory,
-                onDirectorySelected: clearSelectedTags // 添加目录选择的回调
+                onDirectorySelected: clearSelectedTags
             )
             .padding(.bottom, 8)
             
@@ -40,7 +31,7 @@ struct SidebarView: View {
                 .background(AppTheme.divider)
                 .padding(.vertical, 8)
             
-            // Linus式热力图 - 简单直接添加
+            // 热力图 - 使用缓存数据
             heatmapSection
             
             Divider()
@@ -53,9 +44,9 @@ struct SidebarView: View {
                 searchBarRef: $searchBarRef,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
-                onTagSelected: onTagSelected  // 传递标签选择回调
+                onTagSelected: onTagSelected
             )
-            .layoutPriority(1) // 给予更高的布局优先级
+            .layoutPriority(1)
         }
         .frame(minWidth: AppTheme.sidebarMinWidth, maxWidth: AppTheme.sidebarMaxWidth)
         .background(AppTheme.sidebarBackground)
@@ -83,9 +74,24 @@ struct SidebarView: View {
                 isPresented: $showProjectPopover
             )
         }
+        .onAppear {
+            // 启动时触发热力图数据更新
+            triggerHeatmapRefresh()
+        }
+        .onChange(of: tagManager.projects.count) { _ in
+            // 项目数量变化时更新热力图缓存
+            triggerHeatmapRefresh()
+        }
     }
     
-    // MARK: - 热力图部分 (使用标签列表相同的间距)
+    // 触发热力图数据刷新
+    private func triggerHeatmapRefresh() {
+        let allProjects = tagManager.projects.values.map { ProjectData(from: $0) }
+        let filteredProjects = ProjectLogic.filterProjectsByHiddenTags(allProjects)
+        HeatmapDataStore.shared.refreshIfNeeded(projects: filteredProjects)
+    }
+    
+    // MARK: - 热力图部分
     private var heatmapSection: some View {
         VStack(spacing: 0) {
             // 热力图筛选状态提示
@@ -114,21 +120,16 @@ struct SidebarView: View {
                 .background(AppTheme.accent.opacity(0.1))
             }
             
-            UnifiedHeatmapView(
-                projects: sidebarProjectsData,
-                config: .sidebar,
+            SidebarHeatmapView(
                 onDateSelected: { projects in
                     heatmapSelectedProjects = projects
                     selectedDateString = formatSelectedDate(from: projects)
                     showProjectPopover = true
                 },
-                onDateFilter: { projects in
-                    // 筛选该日期的项目
-                    heatmapFilteredProjectIds = Set(projects.map { $0.id })
-                    // 清除其他筛选条件
+                onDateFilter: { projectIds in
+                    heatmapFilteredProjectIds = projectIds
                     selectedTags.removeAll()
                     selectedDirectory = nil
-                    // 清除搜索框焦点
                     NSApp.keyWindow?.makeFirstResponder(nil)
                     searchBarRef?.clearFocus()
                 }
