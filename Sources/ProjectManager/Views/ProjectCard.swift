@@ -157,15 +157,15 @@ struct ProjectCard: View {
                         // 状态指示器
                         if !editor.isEnabled {
                             Image(systemName: "minus.circle")
-                                .foregroundColor(.gray)
+                                .foregroundColor(AppTheme.secondaryText)
                                 .font(.caption)
                         } else if !editor.isAvailable {
                             Image(systemName: "exclamationmark.triangle")
-                                .foregroundColor(.orange)
+                                .foregroundColor(AppTheme.warning)
                                 .font(.caption)
                         } else {
                             Image(systemName: "checkmark.circle")
-                                .foregroundColor(.green)
+                                .foregroundColor(AppTheme.success)
                                 .font(.caption)
                         }
                     }
@@ -351,7 +351,7 @@ struct ProjectCard: View {
             .padding(.vertical, 4)
             .background(AppTheme.cardBackground)
             .cornerRadius(4)
-            .frame(maxWidth: 200)
+            .frame(width: 200, height: 28)
         }
         .contextMenu {
             contextMenuContent
