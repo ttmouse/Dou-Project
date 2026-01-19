@@ -17,6 +17,17 @@ struct ProjectManagerApp: App {
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("全选") {
+                    // 检查当前焦点是否在文本输入框中
+                    if let window = NSApp.keyWindow,
+                       let firstResponder = window.firstResponder {
+                        // 如果焦点在 NSTextView (TextField 的底层实现) 或 NSTextField 中，不触发全选
+                        if firstResponder is NSTextView || firstResponder is NSTextField {
+                            // 让系统处理默认的 Command+A (选中文本)
+                            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: firstResponder, from: nil)
+                            return
+                        }
+                    }
+                    // 否则触发全选项目
                     NotificationCenter.default.post(name: NSNotification.Name("selectAll"), object: nil)
                 }
                 .keyboardShortcut("a")
