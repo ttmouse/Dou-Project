@@ -6,6 +6,7 @@ struct MainContentView: View {
     @Binding var dateFilter: DateFilter
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
+    @Binding var showDetailPanel: Bool
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject var editorManager: EditorManager
 
@@ -20,6 +21,7 @@ struct MainContentView: View {
                 sortOption: $sortOption,
                 dateFilter: $dateFilter,
                 searchBarRef: $searchBarRef,
+                showDetailPanel: $showDetailPanel,
                 tagManager: tagManager
             )
             
@@ -120,6 +122,9 @@ struct ProjectGridView: View {
                         isSelected: selectedProjects.contains(project.id),
                         getSelectedProjects: { selectedProjects },
                         tagManager: tagManager,
+                        displayTags: project.tags.sorted().map { tag in
+                            TagDisplayData(name: tag, color: tagManager.getColor(for: tag))
+                        },
                         editorManager: editorManager,
                         onTagSelected: { tag in
                             print("🏷️ MainContentView onTagSelected: \(tag)")
@@ -130,6 +135,7 @@ struct ProjectGridView: View {
                         },
                         onShowDetail: { onShowProjectDetail(project) }
                     )
+                    .equatable()
                 }
             }
             .padding(AppTheme.cardGridPadding)
@@ -186,6 +192,7 @@ struct MainContentView_Previews: PreviewProvider {
             dateFilter: .constant(.all),
             selectedProjects: .constant([]),
             searchBarRef: .constant(nil),
+            showDetailPanel: .constant(false),
             editorManager: EditorManager(),
             filteredProjects: [],
             onShowProjectDetail: { _ in },

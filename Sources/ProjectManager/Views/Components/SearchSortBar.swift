@@ -5,10 +5,9 @@ struct SearchSortBar: View {
     @Binding var sortOption: SortOption
     @Binding var dateFilter: DateFilter
     @Binding var searchBarRef: SearchBar?
+    @Binding var showDetailPanel: Bool
     let tagManager: TagManager
     @State private var isShowingDashboard = false
-    
-    // MARK: - 计算属性
     
     private var projectDataArray: [ProjectData] {
         return Array(tagManager.projects.values).map { project in
@@ -35,22 +34,40 @@ struct SearchSortBar: View {
     }
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            // 左侧工具按钮组
+            HStack(spacing: 8) {
+                // 仪表盘按钮
+                Button(action: {
+                    isShowingDashboard = true
+                }) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .foregroundColor(AppTheme.titleBarIcon)
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(.plain)
+                .help("项目仪表盘")
+                
+                // 详情面板切换按钮
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showDetailPanel.toggle()
+                    }
+                }) {
+                    Image(systemName: "sidebar.trailing")
+                        .foregroundColor(showDetailPanel ? AppTheme.accent : AppTheme.titleBarIcon)
+                        .font(.system(size: 18))
+                }
+                .buttonStyle(.plain)
+                .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
+            }
+            
+            // 搜索框
             SearchBar(text: $searchText)
                 .modifier(ViewReferenceSetter(reference: $searchBarRef))
             
+            // 右侧筛选和排序
             DateFilterMenu(dateFilter: $dateFilter)
-
-            // 仪表盘按钮
-            Button(action: {
-                isShowingDashboard = true
-            }) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .foregroundColor(AppTheme.titleBarIcon)
-                    .font(.system(size: 20))
-            }
-            .buttonStyle(.plain)
-            .help("项目仪表盘")
             
             SortButtons(sortOption: $sortOption)
         }
@@ -118,6 +135,7 @@ struct SearchSortBar_Previews: PreviewProvider {
             sortOption: .constant(.timeDesc),
             dateFilter: .constant(.all),
             searchBarRef: .constant(nil),
+            showDetailPanel: .constant(false),
             tagManager: TagManager()
         )
     }

@@ -277,6 +277,7 @@ struct ProjectListView: View {
                 dateFilter: $viewModel.dateFilter,
                 selectedProjects: $selectedProjects,
                 searchBarRef: $searchBarRef,
+                showDetailPanel: $showDetailPanel,
                 editorManager: editorManager,
                 filteredProjects: viewModel.filteredProjects,
                 onShowProjectDetail: showProjectDetail,
@@ -348,16 +349,8 @@ struct ProjectListView: View {
         if currentSelectedCount <= 1 {
             selectedProjectForDetailId = project.id
             selectedProjects = [project.id]
-            
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showDetailPanel = true
-            }
         } else {
             selectedProjectForDetailId = project.id
-            
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showDetailPanel = true
-            }
         }
     }
     
