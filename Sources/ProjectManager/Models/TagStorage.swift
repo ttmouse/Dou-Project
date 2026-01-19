@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 
+/// 管理标签数据的存储（旧版）
+/// - Warning: 已废弃。仅用于从旧版本数据结构迁移。
+/// 请使用 `AppStateStorage` 进行所有新的开发。
 class TagStorage {
     let appSupportURL: URL
     private let tagsFileName = "tags.json"
