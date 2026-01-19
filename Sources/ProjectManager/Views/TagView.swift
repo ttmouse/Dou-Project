@@ -54,6 +54,10 @@ struct TagView: View {
                 .fill(backgroundColor)
                 .scaleEffect(isPressed ? 0.95 : 1.0)
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onClick?()
+        }
     }
     
     // 计算文字颜色

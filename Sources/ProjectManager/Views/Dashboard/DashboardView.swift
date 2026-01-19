@@ -95,23 +95,14 @@ struct DashboardView: View {
                     // 关闭按钮
                     if let onClose = onClose {
                         Button(action: onClose) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "xmark")
                                 .font(.system(size: 14))
-                            Text("关闭")
-                                .font(.subheadline)
+                                .foregroundColor(AppTheme.secondaryIcon)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemRed).opacity(0.1))
-                        .foregroundColor(.red)
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .background(AppTheme.buttonBackground)
                         .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color(.systemRed).opacity(0.3), lineWidth: 1)
-                        )
-                        }
-                        .buttonStyle(PlainButtonStyle())
                         .help("关闭数据看板")
                     }
                 }
@@ -140,7 +131,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Color(.controlBackgroundColor))
+            .background(AppTheme.secondaryBackground)
             .cornerRadius(6)
         }
         .menuStyle(BorderlessButtonMenuStyle())
@@ -194,7 +185,7 @@ struct DashboardView: View {
                     projects: dashboardProjects,
                     config: .dashboard
                 )
-                .background(Color(.controlBackgroundColor))
+                .background(AppTheme.secondaryBackground)
                 .cornerRadius(10)
             }
             
@@ -234,7 +225,7 @@ struct DashboardView: View {
                     }
                 }
             }
-            .background(Color(.controlBackgroundColor))
+            .background(AppTheme.secondaryBackground)
             .cornerRadius(12)
         }
     }
@@ -354,7 +345,7 @@ struct QuickStatCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor))
+        .background(AppTheme.secondaryBackground)
         .cornerRadius(12)
     }
 }
@@ -496,7 +487,7 @@ struct SimpleStatsCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.controlBackgroundColor))
+        .background(AppTheme.secondaryBackground)
         .cornerRadius(12)
     }
 }

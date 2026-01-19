@@ -4,16 +4,12 @@ import SwiftUI
 
 enum SettingsTab: String, CaseIterable {
     case editors = "编辑器"
-    case autoTagging = "自动标签"
-    case businessTagging = "业务标签"
-    case other = "其他"
+    case tagging = "自动标签"
 
     var icon: String {
         switch self {
         case .editors: return "pencil"
-        case .autoTagging: return "tag"
-        case .businessTagging: return "doc.text.magnifyingglass"
-        case .other: return "gear"
+        case .tagging: return "tag"
         }
     }
 }
@@ -26,64 +22,75 @@ struct SettingsView: View {
     @ObservedObject var editorManager = AppOpenHelper.editorManager
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 标题栏
-            HStack {
-                Text("偏好设置")
-                    .font(.headline)
-                    .fontWeight(.medium)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("偏好设置")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.sidebarBackground)
+
+                Divider()
+                    .background(AppTheme.divider)
+
+                VStack(spacing: 4) {
+                    ForEach(SettingsTab.allCases, id: \.self) { tab in
+                        Button(action: { selectedTab = tab }) {
+                            HStack(spacing: 10) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(selectedTab == tab ? AppTheme.accent : Color.clear)
+                                    .frame(width: 3, height: 20)
+
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 14))
+                                    .frame(width: 18)
+                                    .foregroundColor(selectedTab == tab ? AppTheme.accent : AppTheme.secondaryIcon)
+                                Text(tab.rawValue)
+                                    .font(.system(size: 13, weight: selectedTab == tab ? .medium : .regular))
+                                Spacer()
+                            }
+                            .foregroundColor(selectedTab == tab ? AppTheme.text : AppTheme.secondaryText)
+                            .padding(.leading, 4)
+                            .padding(.trailing, 8)
+                            .padding(.vertical, 8)
+                            .frame(height: 36)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selectedTab == tab ? AppTheme.accent.opacity(0.1) : Color.clear)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
+                    }
+                }
+                .padding(.top, 12)
+                .animation(.easeInOut(duration: 0.15), value: selectedTab)
 
                 Spacer()
             }
-            .padding(16)
+            .frame(width: 220)
             .background(AppTheme.sidebarBackground)
-
-            // Tab 选择器
-            HStack(spacing: 0) {
-                ForEach(SettingsTab.allCases, id: \.self) { tab in
-                    Button(action: { selectedTab = tab }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 14))
-                            Text(tab.rawValue)
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .foregroundColor(selectedTab == tab ? AppTheme.text : AppTheme.secondaryText)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(selectedTab == tab ? AppTheme.accent.opacity(0.1) : Color.clear)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(AppTheme.secondaryBackground)
 
             Divider()
                 .background(AppTheme.divider)
 
-            // 内容区域
             VStack(spacing: 0) {
                 switch selectedTab {
                 case .editors:
                     EditorsTabView(editorManager: editorManager)
-                case .autoTagging:
-                    AutoTaggingTabView(tagManager: tagManager)
-                case .businessTagging:
-                    BusinessTaggingTabView(tagManager: tagManager)
-                case .other:
-                    OtherTabView()
+                case .tagging:
+                    TaggingTabView(tagManager: tagManager)
                 }
             }
-            .frame(maxHeight: .infinity)
-
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 780, height: 650)
+        .frame(width: 860, height: 650)
         .background(AppTheme.background)
     }
 }
@@ -124,7 +131,7 @@ struct EditorsTabView: View {
                     .font(.system(size: 13))
                     .buttonStyle(.bordered)
                 }
-                .padding(16)
+                .padding(20)
                 .background(AppTheme.secondaryBackground)
                 .cornerRadius(8)
 
@@ -135,7 +142,7 @@ struct EditorsTabView: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(20)
         }
         .sheet(isPresented: $showingAddEditor) {
             AddEditorView(editorManager: editorManager)
@@ -151,7 +158,7 @@ struct EditorRowView: View {
         HStack(spacing: 12) {
             // 可用性指示器
             Circle()
-                .fill(editor.isAvailable ? Color.green.opacity(0.8) : Color.orange.opacity(0.8))
+                .fill(editor.isAvailable ? AppTheme.success.opacity(0.8) : AppTheme.warning.opacity(0.8))
                 .frame(width: 10, height: 10)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -173,7 +180,7 @@ struct EditorRowView: View {
             if editor.isDefault {
                 HStack(spacing: 4) {
                     Image(systemName: "star.fill")
-                        .foregroundColor(.yellow)
+                        .foregroundColor(AppTheme.warning)
                         .font(.system(size: 10))
                     Text("默认")
                         .font(.caption)
@@ -201,153 +208,24 @@ struct EditorRowView: View {
 
 // MARK: - 自动标签 Tab
 
-struct AutoTaggingTabView: View {
-    @ObservedObject var tagManager: TagManager
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // 说明区域
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "info.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(AppTheme.accent)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("自动标签功能")
-                                .font(.headline)
-                                .foregroundColor(AppTheme.text)
-
-                            Text("请在「业务标签」标签页中配置和管理您的标签规则")
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.secondaryText)
-                        }
-                    }
-                }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AppTheme.secondaryBackground)
-                .cornerRadius(12)
-
-                // 快速操作
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("快速操作")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(AppTheme.text)
-
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            tagManager.applyTaggingRulesToAllProjects()
-                        }) {
-                            HStack(spacing: 6) {
-                                if tagManager.isRunningTaggingRules {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                    Text("正在打标...")
-                                } else {
-                                    Image(systemName: "bolt.fill")
-                                    Text("立即运行打标")
-                                }
-                            }
-                            .font(.system(size: 13))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(tagManager.isRunningTaggingRules)
-
-                        if let message = tagManager.lastTaggingRuleMessage {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundColor(AppTheme.accent)
-                                .lineLimit(2)
-                        }
-                    }
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AppTheme.background)
-                .cornerRadius(8)
-
-                Divider()
-
-                // 提示信息
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("提示")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(AppTheme.text)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.right.circle")
-                                .foregroundColor(AppTheme.secondaryIcon)
-                                Text("在「业务标签」标签页中添加、编辑或删除规则")
-                                .font(.caption)
-                                .foregroundColor(AppTheme.secondaryText)
-                        }
-
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.right.circle")
-                                .foregroundColor(AppTheme.secondaryIcon)
-                                Text("点击「立即运行打标」应用所有已配置的规则")
-                                .font(.caption)
-                                .foregroundColor(AppTheme.secondaryText)
-                        }
-
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.right.circle")
-                                .foregroundColor(AppTheme.secondaryIcon)
-                            Text("规则仅对启用状态的规则生效")
-                                .font(.caption)
-                                .foregroundColor(AppTheme.secondaryText)
-                        }
-                    }
-                }
-                .padding(16)
-            }
-            .padding(16)
-        }
-    }
-}
-
-// MARK: - 其他 Tab（占位）
-
-struct OtherTabView: View {
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("更多设置即将推出")
-                .font(.subheadline)
-                .foregroundColor(AppTheme.secondaryText)
-
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 48))
-                .foregroundColor(AppTheme.secondaryIcon)
-        }
-        .frame(maxHeight: .infinity)
-    }
-}
-
-// MARK: - 业务标签 Tab
-
-struct BusinessTaggingTabView: View {
+struct TaggingTabView: View {
     @ObservedObject var tagManager: TagManager
     @StateObject private var ruleStorage = BusinessTagger.getStorage()
     @State private var showingAddRule = false
     @State private var editingRule: BusinessTagRuleStorage.StoredRule?
     @State private var testProjectPath: String = ""
     @State private var testResults: [String] = []
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // 说明区域
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("业务标签规则")
+                    Text("自动标签规则")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(AppTheme.text)
-                    
+
                     Text("基于项目 README.md 等文档内容，自动识别业务场景并添加标签")
                         .font(.caption)
                         .foregroundColor(AppTheme.secondaryText)
@@ -357,15 +235,15 @@ struct BusinessTaggingTabView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(AppTheme.secondaryBackground)
                 .cornerRadius(8)
-                
+
                 // 工具栏
                 HStack(spacing: 12) {
                     Text("已配置 \(ruleStorage.rules.count) 条规则")
                         .font(.caption)
                         .foregroundColor(AppTheme.secondaryText)
-                    
+
                     Spacer()
-                    
+
                     Button(action: {
                         tagManager.applyTaggingRulesToAllProjects()
                     }) {
@@ -376,20 +254,20 @@ struct BusinessTaggingTabView: View {
                                 Text("正在打标...")
                             } else {
                                 Image(systemName: "bolt.fill")
-                                Text("立即运行打标")
+                                Text("立即运行")
                             }
                         }
                         .font(.system(size: 13))
                     }
                     .buttonStyle(.bordered)
                     .disabled(tagManager.isRunningTaggingRules)
-                    
+
                     if let message = tagManager.lastTaggingRuleMessage {
                         Text(message)
                             .font(.caption)
                             .foregroundColor(AppTheme.accent)
                     }
-                    
+
                     Button(action: { showingAddRule = true }) {
                         HStack(spacing: 6) {
                             Image(systemName: "plus.circle")
@@ -399,9 +277,9 @@ struct BusinessTaggingTabView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                .padding(.horizontal, 16)
-                
-                // 规则列表（启用的在上，禁用的在下）
+                .padding(.horizontal, 20)
+
+                // 规则列表
                 VStack(spacing: 8) {
                     let sortedRules = ruleStorage.rules.sorted { $0.isEnabled && !$1.isEnabled }
                     ForEach(sortedRules) { rule in
@@ -413,23 +291,23 @@ struct BusinessTaggingTabView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
-                
+                .padding(.horizontal, 20)
+
                 Divider()
                     .padding(.vertical, 8)
-                
+
                 // 测试区域
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("测试业务标签")
+                    Text("测试规则")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(AppTheme.text)
-                    
+
                     HStack(spacing: 8) {
                         TextField("项目路径", text: $testProjectPath)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 13))
-                        
+
                         Button(action: { testBusinessTagging() }) {
                             Text("测试")
                                 .font(.system(size: 13, weight: .medium))
@@ -437,13 +315,13 @@ struct BusinessTaggingTabView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(testProjectPath.isEmpty)
                     }
-                    
+
                     if !testResults.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("匹配的规则:")
                                 .font(.caption)
                                 .foregroundColor(AppTheme.secondaryText)
-                            
+
                             ForEach(testResults, id: \.self) { ruleName in
                                 HStack(spacing: 6) {
                                     Image(systemName: "checkmark.circle.fill")
@@ -460,9 +338,9 @@ struct BusinessTaggingTabView: View {
                         .cornerRadius(8)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
             }
-            .padding(.vertical, 16)
+            .padding(.vertical, 20)
         }
         .sheet(isPresented: $showingAddRule) {
             BusinessRuleEditView(
@@ -485,14 +363,14 @@ struct BusinessTaggingTabView: View {
             )
         }
     }
-    
+
     private func testBusinessTagging() {
         let fm = FileManager.default
         guard fm.fileExists(atPath: testProjectPath) else {
             testResults = ["路径不存在"]
             return
         }
-        
+
         testResults = BusinessTagger.debugRules(for: testProjectPath)
         if testResults.isEmpty {
             testResults = ["未匹配任何规则"]
@@ -512,7 +390,7 @@ struct BusinessRuleRowView: View {
         HStack(spacing: 12) {
             // 启用状态
             Circle()
-                .fill(rule.isEnabled ? Color.green.opacity(0.8) : Color.gray.opacity(0.5))
+                .fill(rule.isEnabled ? AppTheme.success.opacity(0.8) : AppTheme.secondaryText.opacity(0.5))
                 .frame(width: 10, height: 10)
             
             VStack(alignment: .leading, spacing: 4) {

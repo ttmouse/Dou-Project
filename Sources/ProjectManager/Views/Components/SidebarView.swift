@@ -109,7 +109,9 @@ struct SidebarView: View {
                     Spacer()
                     
                     Button("清除") {
-                        heatmapFilteredProjectIds.removeAll()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            heatmapFilteredProjectIds.removeAll()
+                        }
                     }
                     .font(AppTheme.captionFont)
                     .foregroundColor(AppTheme.accent)
@@ -118,6 +120,7 @@ struct SidebarView: View {
                 .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
                 .padding(.vertical, 4)
                 .background(AppTheme.accent.opacity(0.1))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
             
             SidebarHeatmapView(
