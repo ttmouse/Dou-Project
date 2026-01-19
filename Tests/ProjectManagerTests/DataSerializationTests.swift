@@ -38,16 +38,16 @@ extension DataSerializationTests {
             lastModified: Date().timeIntervalSince1970,
             tags: ["标签1", "标签2", "swift", "测试"]
         )
-        
+
         // When - 序列化
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         let data = try encoder.encode(originalProject)
-        
+
         // Then - 反序列化
         let decoder = JSONDecoder()
         let deserializedProject = try decoder.decode(Project.self, from: data)
-        
+
         XCTAssertEqual(originalProject.id, deserializedProject.id, "项目ID应该匹配")
         XCTAssertEqual(originalProject.name, deserializedProject.name, "项目名称应该匹配")
         XCTAssertEqual(originalProject.path, deserializedProject.path, "项目路径应该匹配")

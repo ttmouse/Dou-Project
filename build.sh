@@ -27,6 +27,9 @@ mkdir -p ProjectManager.app/Contents/Resources
 cp .build/release/ProjectManager ProjectManager.app/Contents/MacOS/
 cp -r Sources/ProjectManager/Resources/* ProjectManager.app/Contents/Resources/ 2>/dev/null || true
 
+# 应用包现在在项目根目录：./ProjectManager.app
+# ⚠️ 严禁复制到桌面或其他位置
+
 # 复制图标
 if [ -f "ProjectManager.icns" ]; then
     cp ProjectManager.icns ProjectManager.app/Contents/Resources/

@@ -169,19 +169,22 @@ enum BusinessTagger {
     // MARK: - 公共 API
 
     /// 为指定项目路径生成业务标签
-    static func generateBusinessTags(for projectPath: String, existingTags: Set<String> = []) -> Set<String> {
+    static func generateBusinessTags(for projectPath: String, projectName: String? = nil, existingTags: Set<String> = []) -> Set<String> {
         let documentContent = scanProjectDocuments(at: projectPath)
+        
+        // 将项目名称也加入到待分析内容中，提升匹配能力
+        let analysisContent = (projectName ?? "") + "\n\n" + documentContent
 
-        guard !documentContent.isEmpty else {
-            print("⚠️ 未找到文档，跳过业务标签生成")
+        guard !analysisContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("⚠️ 未找到文档且无项目名称，跳过业务标签生成")
             return []
         }
 
         var businessTags: Set<String> = []
 
         for rule in activeRules {
-            if rule.matches(content: documentContent) {
-                let matchedKeywords = rule.matchedKeywords(content: documentContent)
+            if rule.matches(content: analysisContent) {
+                let matchedKeywords = rule.matchedKeywords(content: analysisContent)
                 print("   ✅ 匹配规则 [\(rule.name)]: 关键词 \(matchedKeywords)")
 
                 for tag in rule.tags {
@@ -197,7 +200,7 @@ enum BusinessTagger {
 
     /// 为指定的 Project 对象应用业务标签
     static func applyBusinessTags(to project: Project, overwrite: Bool = false) -> Project {
-        let newTags = generateBusinessTags(for: project.path, existingTags: project.tags)
+        let newTags = generateBusinessTags(for: project.path, projectName: project.name, existingTags: project.tags)
 
         if overwrite {
             return Project(
@@ -238,8 +241,9 @@ enum BusinessTagger {
     }
 
     /// 调试信息：返回指定路径匹配的规则名称
-    static func debugRules(for projectPath: String) -> [String] {
+    static func debugRules(for projectPath: String, projectName: String? = nil) -> [String] {
         let documentContent = scanProjectDocuments(at: projectPath)
-        return activeRules.filter { $0.matches(content: documentContent) }.map { $0.name }
+        let analysisContent = (projectName ?? "") + "\n\n" + documentContent
+        return activeRules.filter { $0.matches(content: analysisContent) }.map { $0.name }
     }
 }

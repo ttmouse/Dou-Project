@@ -42,13 +42,12 @@ class ProjectRunner {
     }
     
     private static func executeCommand(_ command: String, at path: String, port: Int?) -> ProjectRunResult {
-        let process = Process()
-        process.currentDirectoryURL = URL(fileURLWithPath: path)
+        print("🚀 ProjectRunner: 准备执行命令")
+        print("   命令: \(command)")
+        print("   路径: \(path)")
+        print("   端口: \(port?.description ?? "无")")
         
         // 使用终端执行，以便用户可以看到输出
-        // 这里我们使用 Terminal.app 或 iTerm2 打开一个新的标签页/窗口来运行命令
-        // 这样更符合 "Quick Start" 的直觉
-        
         let scriptSource: String
         if let port = port {
             // 注入 PORT 环境变量
@@ -57,19 +56,34 @@ class ProjectRunner {
             scriptSource = command
         }
         
+        // 转义路径和命令中的特殊字符
+        let escapedPath = path.replacingOccurrences(of: "\\", with: "\\\\")
+                              .replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedCommand = scriptSource.replacingOccurrences(of: "\\", with: "\\\\")
+                                         .replacingOccurrences(of: "\"", with: "\\\"")
+        
         let appleScript = """
         tell application "Terminal"
-            do script "cd \(path) && \(scriptSource)"
+            do script "cd " & quoted form of "\(escapedPath)" & " && \(escapedCommand)"
             activate
         end tell
         """
         
+        print("📝 AppleScript:")
+        print(appleScript)
+        
         let script = NSAppleScript(source: appleScript)
         var error: NSDictionary?
-        script?.executeAndReturnError(&error)
+        let result = script?.executeAndReturnError(&error)
         
         if let error = error {
+            print("❌ AppleScript 执行失败: \(error)")
             return .failure("无法启动终端: \(error)")
+        }
+        
+        print("✅ AppleScript 执行成功")
+        if let result = result {
+            print("   结果: \(result)")
         }
         
         return .success(pid: 0) // 外部进程，无法追踪 PID

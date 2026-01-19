@@ -31,6 +31,10 @@ class TagStorage {
         return appSupportURL.appendingPathComponent(autoTaggingFileName)
     }
 
+    private var projectsFileURL: URL {
+        return appSupportURL.appendingPathComponent("projects.json")
+    }
+
     func loadTags() -> Set<String> {
         do {
             let data = try Data(contentsOf: tagsFileURL)
@@ -99,6 +103,17 @@ class TagStorage {
             print("保存标签颜色成功")
         } catch {
             print("保存标签颜色失败: \(error)")
+        }
+    }
+
+    func saveProjects(_ projects: [Project]) {
+        do {
+            let encoder = JSONEncoder()
+            // 移除了 .prettyPrinted 以提升大型数据集的编码性能
+            let data = try encoder.encode(projects)
+            try data.write(to: projectsFileURL)
+        } catch {
+            print("保存项目数据失败: \(error)")
         }
     }
 

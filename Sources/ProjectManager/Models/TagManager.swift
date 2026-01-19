@@ -151,16 +151,21 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         
         // 1. 加载标签
         allTags = storage.loadTags()
-        print("已加载标签: \(allTags)")
+        print("已加载标签: \(allTags.count) 个")
         
         // 1.5. 加载隐藏标签状态
         hiddenTags = storage.loadHiddenTags()
         print("已加载隐藏标签: \(hiddenTags)")
 
-        // 2. 暂时注销系统标签加载
-        // let systemTags = TagSystemSync.loadSystemTags()
-        // allTags.formUnion(systemTags)
-        print("已注销系统标签加载，当前标签: \(allTags)")
+        // 2. 从 colorManager 恢复丢失的标签
+        // colorManager 中保存了所有曾经使用过的标签的颜色记录
+        // 如果某些标签在 tags.json 中丢失，从这里恢复
+        let colorManagerTags = colorManager.getAllTags()
+        let missingTags = colorManagerTags.subtracting(allTags)
+        if !missingTags.isEmpty {
+            print("⚠️ 从颜色记录中恢复了 \(missingTags.count) 个丢失的标签: \(missingTags)")
+            allTags.formUnion(missingTags)
+        }
 
         // 3. 加载项目缓存并同步到新状态系统
         if let cachedProjects = loadProjectsFromCache() {
@@ -180,7 +185,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             appState = AppStateLogic.updateState(appState, projects: projectDataDict)
             
-            // 将项目标签添加到全部标签集合中
+            // 将项目标签添加到全部标签集合中（确保项目使用的标签都存在）
             for project in cachedProjects {
                 allTags.formUnion(project.tags)
             }

@@ -103,14 +103,16 @@ class MockProject {
     static func createTestProject(
         name: String = "TestProject",
         path: String = "/test/path",
-        tags: Set<String> = []
+        tags: Set<String> = [],
+        notes: String? = nil
     ) -> Project {
         return Project(
             id: UUID(),
             name: name,
             path: path,
             lastModified: Date().timeIntervalSince1970,
-            tags: tags
+            tags: tags,
+            notes: notes
         )
     }
     

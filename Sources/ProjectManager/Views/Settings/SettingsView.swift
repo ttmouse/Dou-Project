@@ -83,7 +83,7 @@ struct SettingsView: View {
 
             Spacer()
         }
-        .frame(width: 700, height: 650)
+        .frame(width: 780, height: 650)
         .background(AppTheme.background)
     }
 }
@@ -723,7 +723,11 @@ struct BusinessRuleEditView: View {
 #if DEBUG
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingsView()
+        let tagManager = TagManager()
+        let editorManager = AppOpenHelper.editorManager
+
+        return SettingsView(tagManager: tagManager, editorManager: editorManager)
+            .frame(width: 800, height: 600)
     }
 }
 #endif

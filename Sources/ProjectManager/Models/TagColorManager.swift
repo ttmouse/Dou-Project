@@ -90,4 +90,9 @@ class TagColorManager: ObservableObject {
         // 通知观察者有更新
         objectWillChange.send()
     }
+    
+    /// 获取所有有颜色记录的标签 - 用于启动时恢复丢失的标签
+    func getAllTags() -> Set<String> {
+        return Set(tagColors.keys)
+    }
 }

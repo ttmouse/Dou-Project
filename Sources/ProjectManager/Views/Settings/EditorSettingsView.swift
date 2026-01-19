@@ -7,71 +7,81 @@ struct EditorSettingsView: View {
     @State private var selectedEditor: EditorConfig?
     
     var body: some View {
-        HSplitView {
-            // 左侧编辑器列表
-            VStack(alignment: .leading, spacing: 0) {
-                // 工具栏
-                HStack {
-                    Text("已配置的编辑器")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Spacer()
-                    
-                    // 添加编辑器按钮
-                    Button(action: {
-                        showingAddEditor = true
-                    }) {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("添加自定义编辑器")
-                    
-                    // 检测编辑器按钮
-                    Button(action: {
-                        editorManager.detectAvailableEditors()
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("检测可用编辑器")
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(AppTheme.sidebarBackground)
-                
-                // 编辑器列表
-                List(selection: $selectedEditor) {
-                    ForEach(editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }, id: \.id) { editor in
-                        EditorListRow(
-                            editor: editor,
-                            isSelected: selectedEditor?.id == editor.id,
-                            editorManager: editorManager
-                        )
-                        .tag(editor)
-                    }
-                    .onMove { source, destination in
-                        editorManager.moveEditors(from: source, to: destination)
-                    }
-                }
-                .listStyle(.sidebar)
-            }
-            .frame(minWidth: 250)
+        VStack(spacing: 0) {
+            AutomationPermissionView()
+                .padding()
+                .background(AppTheme.secondaryBackground)
             
-            // 右侧详细配置
-            if let editor = selectedEditor {
-                EditorDetailView(editor: editor, editorManager: editorManager)
-                    .frame(minWidth: 300)
-            } else {
-                VStack {
-                    Image(systemName: "app.dashed")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("选择一个编辑器以查看配置")
-                        .foregroundColor(.secondary)
+            Divider()
+                .background(AppTheme.border)
+            
+            HSplitView {
+                // 左侧编辑器列表
+                VStack(alignment: .leading, spacing: 0) {
+                    // 工具栏
+                    HStack {
+                        Text("已配置的编辑器")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        // 添加编辑器按钮
+                        Button(action: {
+                            showingAddEditor = true
+                        }) {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("添加自定义编辑器")
+                        
+                        // 检测编辑器按钮
+                        Button(action: {
+                            editorManager.detectAvailableEditors()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("检测可用编辑器")
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(AppTheme.sidebarBackground)
+                    
+                    // 编辑器列表
+                    List(selection: $selectedEditor) {
+                        ForEach(editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }, id: \.id) { editor in
+                            EditorListRow(
+                                editor: editor,
+                                isSelected: selectedEditor?.id == editor.id,
+                                editorManager: editorManager
+                            )
+                            .tag(editor)
+                        }
+                        .onMove { source, destination in
+                            editorManager.moveEditors(from: source, to: destination)
+                        }
+                    }
+                    .listStyle(.sidebar)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 250)
+                
+                // 右侧详细配置
+                if let editor = selectedEditor {
+                    EditorDetailView(editor: editor, editorManager: editorManager)
+                        .frame(minWidth: 300)
+                } else {
+                    VStack {
+                        Image(systemName: "app.dashed")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("选择一个编辑器以查看配置")
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -269,6 +279,88 @@ struct EditorDetailView: View {
         .onChange(of: editor) { newEditor in
             editedEditor = newEditor
             hasChanges = false
+        }
+    }
+}
+
+/// 终端授权状态视图
+struct AutomationPermissionView: View {
+    @State private var status: AutomationPermissionStatus = .unknown
+    
+    var body: some View {
+        GroupBox("终端授权") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Image(systemName: status.systemImageName)
+                        .font(.system(size: 24))
+                        .foregroundColor(status.tintColor)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Terminal AppleScript 权限")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("ProjectManager 需要向 Terminal 发送 Apple 事件以启动快捷命令。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(status.localizedDescription)
+                        .font(.headline)
+                        .foregroundColor(status.tintColor)
+                }
+                
+                HStack(spacing: 12) {
+                    Button("请求授权") {
+                        refreshStatus(prompt: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(status == .authorized)
+                    
+                    Button("打开系统设置…") {
+                        openAutomationSettings()
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button("刷新状态") {
+                        refreshStatus()
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Spacer()
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .onAppear {
+            refreshStatus()
+        }
+    }
+    
+    private func refreshStatus(prompt: Bool = false) {
+        status = AutomationPermissionManager.terminalPermissionStatus(promptIfNeeded: prompt)
+    }
+    
+    private func openAutomationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private extension AutomationPermissionStatus {
+    var tintColor: Color {
+        switch self {
+        case .authorized:
+            return .green
+        case .denied:
+            return .red
+        case .notDetermined:
+            return .orange
+        case .unknown:
+            return .gray
         }
     }
 }

@@ -399,8 +399,8 @@ struct ProjectListView: View {
 #if DEBUG
     struct ProjectListView_Previews: PreviewProvider {
         static var previews: some View {
-            let tagManager = TagManager()
-            return ProjectListView(tagManager: tagManager)
+            ProjectListView()
+                .environmentObject(TagManager())
         }
     }
 #endif

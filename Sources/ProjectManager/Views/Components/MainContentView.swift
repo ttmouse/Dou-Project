@@ -2,13 +2,13 @@ import SwiftUI
 
 struct MainContentView: View {
     @Binding var searchText: String
-    @Binding var sortOption: ProjectListView.SortOption
-    @Binding var dateFilter: ProjectListView.DateFilter
+    @Binding var sortOption: SortOption
+    @Binding var dateFilter: DateFilter
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager
     @ObservedObject var editorManager: EditorManager
-    
+
     let filteredProjects: [Project]
     let onShowProjectDetail: (Project) -> Void
     let onTagSelected: (String) -> Void
@@ -19,7 +19,8 @@ struct MainContentView: View {
                 searchText: $searchText,
                 sortOption: $sortOption,
                 dateFilter: $dateFilter,
-                searchBarRef: $searchBarRef
+                searchBarRef: $searchBarRef,
+                tagManager: tagManager
             )
             
             if filteredProjects.isEmpty {
