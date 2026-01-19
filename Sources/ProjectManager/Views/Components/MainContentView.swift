@@ -2,8 +2,8 @@ import SwiftUI
 
 struct MainContentView: View {
     @Binding var searchText: String
-    @Binding var sortOption: ProjectListView.SortOption
-    @Binding var dateFilter: ProjectListView.DateFilter
+    @Binding var sortOption: SortOption
+    @Binding var dateFilter: DateFilter
     @Binding var selectedProjects: Set<UUID>
     @Binding var searchBarRef: SearchBar?
     @EnvironmentObject var tagManager: TagManager

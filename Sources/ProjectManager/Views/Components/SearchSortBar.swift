@@ -2,8 +2,8 @@ import SwiftUI
 
 struct SearchSortBar: View {
     @Binding var searchText: String
-    @Binding var sortOption: ProjectListView.SortOption
-    @Binding var dateFilter: ProjectListView.DateFilter
+    @Binding var sortOption: SortOption
+    @Binding var dateFilter: DateFilter
     @Binding var searchBarRef: SearchBar?
     @State private var isShowingDashboard = false
     @EnvironmentObject var tagManager: TagManager
@@ -77,7 +77,7 @@ struct SearchSortBar: View {
 
 // MARK: - 排序按钮组件
 struct SortButtons: View {
-    @Binding var sortOption: ProjectListView.SortOption
+    @Binding var sortOption: SortOption
     
     var body: some View {
         HStack(spacing: 8) {
@@ -125,11 +125,11 @@ struct SearchSortBar_Previews: PreviewProvider {
 
 // MARK: - 日期筛选菜单
 struct DateFilterMenu: View {
-    @Binding var dateFilter: ProjectListView.DateFilter
-    
+    @Binding var dateFilter: DateFilter
+
     var body: some View {
         Menu {
-            ForEach(ProjectListView.DateFilter.allCases, id: \.self) { option in
+            ForEach(DateFilter.allCases, id: \.self) { option in
                 Button(action: { dateFilter = option }) {
                     if dateFilter == option {
                         Label(option.title, systemImage: "checkmark")

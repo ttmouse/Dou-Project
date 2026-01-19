@@ -668,20 +668,20 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         let tagsSnapshot = allTags
         let hiddenTagsSnapshot = hiddenTags
         let projectsSnapshot = Array(projects.values)
-        
+
         ioQueue.async { [weak self] in
             guard let self = self else { return }
-            
+
             self.storage.saveTags(tagsSnapshot)
             self.storage.saveHiddenTags(hiddenTagsSnapshot)
-            self.storage.saveProjects(projectsSnapshot)
+            self.projectOperations.saveAllToCache()
             self.directoryWatcher.saveWatchedDirectories()
-            
+
             TagSystemSync.syncTagsToSystem(tagsSnapshot)
             for project in projectsSnapshot {
                 project.saveTagsToSystem()
             }
-            
+
             DispatchQueue.main.async {
                 self.needsSave = false
                 print("✅ 所有数据已成功后台同步至磁盘")
