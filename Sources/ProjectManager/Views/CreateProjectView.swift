@@ -69,7 +69,6 @@ struct CreateProjectView: View {
             TextField("输入项目名称", text: $projectName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .frame(height: 28)
-                .trackTextFieldFocus()
         }
     }
     

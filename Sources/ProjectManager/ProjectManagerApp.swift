@@ -5,7 +5,6 @@ import SwiftUI
 struct ProjectManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var tagManager = TagManager()
-    @StateObject private var focusStateManager = FocusStateManager()
 
     var body: some Scene {
         WindowGroup {
@@ -13,18 +12,9 @@ struct ProjectManagerApp: App {
                 .frame(minWidth: 800, minHeight: 600)
                 .background(AppTheme.background)
                 .preferredColorScheme(.dark)
-                .environmentObject(focusStateManager)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .toolbar) {
-                Button("全选") {
-                    NotificationCenter.default.post(name: NSNotification.Name("selectAll"), object: nil)
-                }
-                .keyboardShortcut("a")
-                .disabled(focusStateManager.isTextFieldFocused)
-            }
-            
             CommandMenu("项目") {
                 Button("重新生成所有项目标签") {
                     print("📢 发送 reloadAllProjects 通知")

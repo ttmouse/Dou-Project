@@ -3,7 +3,6 @@ import SwiftUI
 struct SearchBar: View {
     @Binding var text: String
     @FocusState private var isFocused: Bool
-    @EnvironmentObject private var focusStateManager: FocusStateManager
 
     // 添加一个方法来清除焦点
     func clearFocus() {
@@ -21,9 +20,6 @@ struct SearchBar: View {
                 .foregroundColor(AppTheme.searchBarText)
                 .tint(AppTheme.searchBarCursor)
                 .focused($isFocused)
-                .onChange(of: isFocused) { focused in
-                    focusStateManager.setTextFieldFocused(focused)
-                }
 
             if !text.isEmpty {
                 Button(action: { text = "" }) {

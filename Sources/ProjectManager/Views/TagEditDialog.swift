@@ -35,7 +35,6 @@ struct TagEditDialog: View {
             TextField("标签名称", text: $tagName)
                 .textFieldStyle(CustomTextFieldStyle())
                 .frame(width: 200)
-                .trackTextFieldFocus()
 
             ColorPicker("标签颜色", selection: $selectedColor)
                 .frame(width: 200)

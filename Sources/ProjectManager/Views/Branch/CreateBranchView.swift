@@ -73,7 +73,6 @@ struct CreateBranchView: View {
             
             TextField("例如：feature-login 或 bugfix-ui", text: $branchName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .trackTextFieldFocus()
                 .onChange(of: branchName) { newValue in
                     validateBranchName(newValue)
                 }
@@ -91,7 +90,6 @@ struct CreateBranchView: View {
             
             TextField("描述这个分支的用途", text: $description)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .trackTextFieldFocus()
         }
     }
     
