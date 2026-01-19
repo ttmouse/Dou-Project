@@ -41,7 +41,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     // MARK: - 组件
 
-    let storage: TagStorage
+    /// 统一数据存储（新架构）
+    let unifiedStorage: AppStateStorage
+    
+    let storage: TagStorage  // 保留用于兼容
     let colorManager: TagColorManager
     let sortManager: ProjectSortManager
     private let projectIndex: ProjectIndex
@@ -93,7 +96,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     init() {
         print("TagManager 初始化...")
 
-        // 初始化基础组件
+        // 初始化统一存储（新架构）
+        unifiedStorage = AppStateStorage()
+        
+        // 初始化基础组件（保留用于兼容）
         storage = TagStorage()
         colorManager = TagColorManager(storage: storage)
         sortManager = ProjectSortManager()
@@ -149,39 +155,32 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     private func loadAllData() {
         print("开始加载所有数据...")
         
-        // 1. 加载标签
-        allTags = storage.loadTags()
-        print("已加载标签: \(allTags.count) 个")
+        // 1. 从统一存储加载标签和目录（新架构，自动处理迁移）
+        let appStateFile = unifiedStorage.load()
         
-        // 1.5. 加载隐藏标签状态
-        hiddenTags = storage.loadHiddenTags()
-        print("已加载隐藏标签: \(hiddenTags)")
-
-        // 2. 从 colorManager 恢复丢失的标签（一次性修复）
-        // colorManager 中保存了所有曾经使用过的标签的颜色记录
-        // 如果某些标签在 tags.json 中丢失，从这里恢复并立即保存
-        let colorManagerTags = colorManager.getAllTags()
-        let missingTags = colorManagerTags.subtracting(allTags)
-        if !missingTags.isEmpty {
-            print("⚠️ 检测到标签数据不一致，正在修复...")
-            print("   从颜色记录中恢复了 \(missingTags.count) 个丢失的标签")
-            allTags.formUnion(missingTags)
-            // 立即保存到 tags.json，这样下次启动就不需要再恢复了
-            storage.saveTags(allTags)
-            print("✅ 标签数据已修复并保存")
+        // 2. 加载标签数据
+        allTags = Set(appStateFile.tags.map { $0.name })
+        hiddenTags = Set(appStateFile.tags.filter { $0.hidden }.map { $0.name })
+        print("已加载标签: \(allTags.count) 个, 隐藏: \(hiddenTags.count) 个")
+        
+        // 3. 同步颜色到 colorManager（兼容现有代码）
+        for tagData in appStateFile.tags {
+            colorManager.setColor(tagData.color.toColor(), for: tagData.name)
         }
+        
+        // 4. 加载监视目录
+        watchedDirectories = Set(appStateFile.directories)
+        print("已加载目录: \(watchedDirectories.count) 个")
 
-        // 3. 加载项目缓存并同步到新状态系统
+        // 5. 加载项目缓存并同步到状态系统
         if let cachedProjects = loadProjectsFromCache() {
             print("从缓存加载了 \(cachedProjects.count) 个项目")
             
-            // 同步到旧系统（过渡期间保持兼容）
             for project in cachedProjects {
                 projects[project.id] = project
             }
             sortManager.updateSortedProjects(cachedProjects)
             
-            // 同步到新的纯数据状态系统
             let projectDataDict = cachedProjects.toProjectDataArray()
                 .reduce(into: [UUID: ProjectData]()) { dict, projectData in
                     dict[projectData.id] = projectData
@@ -189,20 +188,14 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             
             appState = AppStateLogic.updateState(appState, projects: projectDataDict)
             
-            // 将项目标签添加到全部标签集合中（确保项目使用的标签都存在）
+            // 将项目标签添加到全部标签集合中
             for project in cachedProjects {
                 allTags.formUnion(project.tags)
             }
             
-            // 保存到缓存，确保数据一致性
             projectOperations.saveAllToCache()
         }
-
-        // 4. 加载监视目录
-        directoryWatcher.loadWatchedDirectories()
         
-        // 5. 完全取消启动时的自动加载 - Linus式快速启动
-        // 不执行任何后台更新，让用户手动控制
         print("启动加载完成，等待用户手动操作...")
         
         // 6. 重建索引
@@ -673,19 +666,35 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     }
 
     private func performSave() {
-        // 捕获当前状态快照，用于后台保存
+        // 捕获当前状态快照
         let tagsSnapshot = allTags
         let hiddenTagsSnapshot = hiddenTags
+        let directoriesSnapshot = watchedDirectories
         let projectsSnapshot = Array(projects.values)
         
         ioQueue.async { [weak self] in
             guard let self = self else { return }
             
-            self.storage.saveTags(tagsSnapshot)
-            self.storage.saveHiddenTags(hiddenTagsSnapshot)
-            self.storage.saveProjects(projectsSnapshot)
-            self.directoryWatcher.saveWatchedDirectories()
+            // 1. 构建统一的标签数据
+            var tagDataArray: [AppStateStorage.TagData] = []
+            for tag in tagsSnapshot {
+                let color = self.colorManager.getColor(for: tag) ?? Color.gray
+                let hidden = hiddenTagsSnapshot.contains(tag)
+                tagDataArray.append(AppStateStorage.TagData(name: tag, color: color, hidden: hidden))
+            }
             
+            // 2. 保存到统一存储
+            let appStateFile = AppStateStorage.AppStateFile(
+                version: 2,
+                tags: tagDataArray,
+                directories: Array(directoriesSnapshot)
+            )
+            self.unifiedStorage.save(appStateFile)
+            
+            // 3. 保存项目数据（暂时保留独立文件）
+            self.storage.saveProjects(projectsSnapshot)
+            
+            // 4. 同步到系统标签
             TagSystemSync.syncTagsToSystem(tagsSnapshot)
             for project in projectsSnapshot {
                 project.saveTagsToSystem()
