@@ -2,8 +2,15 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// 用于视图显示的轻量级标签数据
+struct TagDisplayData: Equatable, Identifiable {
+    var id: String { name }
+    let name: String
+    let color: Color
+}
+
 /// 项目卡片组件，用于在网格视图中显示项目信息
-struct ProjectCard: View {
+struct ProjectCard: View, Equatable {
     // MARK: - 属性
     
     let project: Project
@@ -11,7 +18,10 @@ struct ProjectCard: View {
     // 移除直接传递的 selectedProjects 集合，改用闭包获取，避免每次选择变化都触发所有卡片重绘
     let getSelectedProjects: () -> Set<UUID>
     
-    @ObservedObject var tagManager: TagManager
+    // Decoupled from TagManager: only holds a reference for actions, doesn't observe changes
+    let tagManager: TagManager
+    let displayTags: [TagDisplayData]
+    
     @ObservedObject var editorManager: EditorManager
     @State private var isEditingTags = false
     @State private var isRenamingProject = false
@@ -113,23 +123,22 @@ struct ProjectCard: View {
     /// 标签视图，显示项目相关标签
     private var tagsView: some View {
         Group {
-            if !project.tags.isEmpty {
+            if !displayTags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
-                        ForEach(Array(project.tags).sorted(), id: \.self) { tag in
+                        ForEach(displayTags) { tagData in
                             TagView(
-                                tag: tag,
-                                color: tagManager.getColor(for: tag),
+                                tag: tagData.name,
+                                color: tagData.color,
                                 fontSize: 13,
                                 onDelete: {
-                                    tagManager.removeTagFromProject(projectId: project.id, tag: tag)
+                                    tagManager.removeTagFromProject(projectId: project.id, tag: tagData.name)
                                 },
                                 onClick: {
-                                    print("🏷️ ProjectCard onClick: \(tag)")
-                                    onTagSelected(tag)
+                                    print("🏷️ ProjectCard onClick: \(tagData.name)")
+                                    onTagSelected(tagData.name)
                                 }
                             )
-                            .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
                         }
                     }
                 }
@@ -176,8 +185,8 @@ struct ProjectCard: View {
             if editorManager.editors.isEmpty {
                 Divider()
                 Text("无配置的编辑器")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
+                .foregroundColor(.secondary)
+                .font(.caption)
             }
         }
         
@@ -255,6 +264,17 @@ struct ProjectCard: View {
 
     // MARK: - 主视图
     
+    // MARK: - Equatable
+    
+    static func == (lhs: ProjectCard, rhs: ProjectCard) -> Bool {
+        return lhs.project == rhs.project &&
+               lhs.isSelected == rhs.isSelected &&
+               lhs.displayTags == rhs.displayTags && // Compare explicit data
+               lhs.isEditingTags == rhs.isEditingTags &&
+               lhs.isRenamingProject == rhs.isRenamingProject &&
+               lhs.showPortConflictAlert == rhs.showPortConflictAlert
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 标题部分 - 固定于顶部位置
@@ -271,7 +291,7 @@ struct ProjectCard: View {
                 .padding(.bottom, 8)
             
             // 标签部分（如果有）
-            if !project.tags.isEmpty {
+            if !displayTags.isEmpty {
                 tagsView
                     .padding(.bottom, 4)
                     .allowsHitTesting(true)  // 确保标签区域可以接收点击
@@ -385,6 +405,11 @@ struct ProjectCard: View {
         } message: {
             Text("端口 \(conflictPort) 正在被使用。您想如何处理？")
         }
+        // 使用 drawingGroup 优化复杂视图渲染，特别是阴影
+        // 注意：drawingGroup 会将视图渲染为位图，对于包含大量文本的视图可能需要测试清晰度
+        // 在这里主要是为了优化阴影和圆角的重绘性能
+        // .drawingGroup() 
+        // 暂时注释掉，drawingGroup 在某些情况下会导致文字模糊，待进一步测试
     }
 }
 
@@ -415,6 +440,10 @@ struct ProjectCard_Previews: PreviewProvider {
                 let container = TagManager()
                 return TagManager()
             }(),
+            displayTags: [
+                TagDisplayData(name: "Swift", color: .orange),
+                TagDisplayData(name: "iOS", color: .blue)
+            ],
             editorManager: EditorManager(),
             onTagSelected: { _ in },
             onSelect: { _ in },
