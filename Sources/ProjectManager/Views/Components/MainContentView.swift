@@ -118,8 +118,7 @@ struct ProjectGridView: View {
                     ProjectCard(
                         project: project,
                         isSelected: selectedProjects.contains(project.id),
-                        selectedCount: selectedProjects.count,
-                        selectedProjects: selectedProjects,
+                        getSelectedProjects: { selectedProjects },
                         tagManager: tagManager,
                         editorManager: editorManager,
                         onTagSelected: { tag in
@@ -134,18 +133,25 @@ struct ProjectGridView: View {
                 }
             }
             .padding(AppTheme.cardGridPadding)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // 确保在点击空白区域时，移除现有焦点
-                NSApp.keyWindow?.makeFirstResponder(nil)
-                // 清除搜索框焦点
-                searchBarRef?.clearFocus()
-                selectedProjects.removeAll()
-            }
         }
         .overlay(alignment: .trailing) {
             ScrollIndicatorView()
         }
+        .background(
+            // 优化：将点击手势放到背景上，确保不仅是Grid区域，整个ScrollView区域都能响应
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // 确保在点击空白区域时，移除现有焦点
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    // 清除搜索框焦点
+                    searchBarRef?.clearFocus()
+                    // 取消选择
+                    if !selectedProjects.isEmpty {
+                        selectedProjects.removeAll()
+                    }
+                }
+        )
     }
     
     

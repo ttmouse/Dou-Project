@@ -8,15 +8,16 @@ struct ProjectCard: View {
     
     let project: Project
     let isSelected: Bool
-    let selectedCount: Int  // 添加选中数量
-    let selectedProjects: Set<UUID>  // 添加选中的项目集合
+    // 移除直接传递的 selectedProjects 集合，改用闭包获取，避免每次选择变化都触发所有卡片重绘
+    let getSelectedProjects: () -> Set<UUID>
+    
     @ObservedObject var tagManager: TagManager
-    @ObservedObject var editorManager: EditorManager  // 添加对编辑器管理器的观察
+    @ObservedObject var editorManager: EditorManager
     @State private var isEditingTags = false
     @State private var isRenamingProject = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
-    let onShowDetail: () -> Void  // 添加显示详情回调
+    let onShowDetail: () -> Void
 
     @State private var showPortConflictAlert = false
     @State private var conflictPort = 0
@@ -37,7 +38,7 @@ struct ProjectCard: View {
             if project.startupCommand != nil {
                 Button(action: handleQuickStart) {
                     Image(systemName: "play.fill")
-                        .foregroundColor(.green)
+                    .foregroundColor(.green)
                 }
                 .buttonStyle(.plain)
                 .help("快速启动 (端口: \(project.customPort.map(String.init) ?? "默认"))")
@@ -144,8 +145,6 @@ struct ProjectCard: View {
         // 打开方式菜单
         Menu("打开方式") {
             let sortedEditors = editorManager.editors.sorted { $0.displayOrder < $1.displayOrder }
-            // let _ = print("🎯 构建右键菜单，编辑器数量: \(sortedEditors.count)")
-            // let _ = print("📋 编辑器列表: \(sortedEditors.map { "\($0.name)(\($0.isEnabled ? "✓" : "✗"))" })")
             
             ForEach(sortedEditors, id: \.id) { editor in
                 Button(action: {
@@ -325,12 +324,17 @@ struct ProjectCard: View {
                 onSelect(false)
             }
             
+            // 获取最新选中状态
+            let selectedProjects = getSelectedProjects()
+            let selectedCount = selectedProjects.count
+            
             // 创建包含所有选中项目的数据
             let selectedIds = selectedCount > 1 ? selectedProjects : [project.id]
             let data = try? JSONEncoder().encode(selectedIds)
             return NSItemProvider(item: data as NSData?, typeIdentifier: UTType.data.identifier)
         } preview: {
             // 拖拽预览
+            let selectedCount = getSelectedProjects().count
             HStack(spacing: 4) {
                 Image(systemName: "folder.fill")
                     .foregroundColor(AppTheme.folderIcon)
@@ -406,8 +410,7 @@ struct ProjectCard_Previews: PreviewProvider {
                 tags: ["Swift", "iOS"]
             ),
             isSelected: false,
-            selectedCount: 1,
-            selectedProjects: Set(),
+            getSelectedProjects: { [] },
             tagManager: {
                 let container = TagManager()
                 return TagManager()
