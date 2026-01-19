@@ -157,14 +157,18 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         hiddenTags = storage.loadHiddenTags()
         print("已加载隐藏标签: \(hiddenTags)")
 
-        // 2. 从 colorManager 恢复丢失的标签
+        // 2. 从 colorManager 恢复丢失的标签（一次性修复）
         // colorManager 中保存了所有曾经使用过的标签的颜色记录
-        // 如果某些标签在 tags.json 中丢失，从这里恢复
+        // 如果某些标签在 tags.json 中丢失，从这里恢复并立即保存
         let colorManagerTags = colorManager.getAllTags()
         let missingTags = colorManagerTags.subtracting(allTags)
         if !missingTags.isEmpty {
-            print("⚠️ 从颜色记录中恢复了 \(missingTags.count) 个丢失的标签: \(missingTags)")
+            print("⚠️ 检测到标签数据不一致，正在修复...")
+            print("   从颜色记录中恢复了 \(missingTags.count) 个丢失的标签")
             allTags.formUnion(missingTags)
+            // 立即保存到 tags.json，这样下次启动就不需要再恢复了
+            storage.saveTags(allTags)
+            print("✅ 标签数据已修复并保存")
         }
 
         // 3. 加载项目缓存并同步到新状态系统
