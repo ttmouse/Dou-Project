@@ -10,6 +10,7 @@
   "sources": [
     "docs/performance-report.md",
     "Sources/ProjectManager/Models/HeatmapDataStore.swift",
+    "Sources/ProjectManager/Models/GitDailyCollector.swift",
     "Sources/ProjectManager/Views/Components/SidebarView.swift"
   ],
   "relations": [
@@ -38,4 +39,8 @@
 
 ## 未知
 
-未实际测量热力图性能；`HeatmapDataStore` 的缓存命中率与 DateFormatter 单例是否已落实，未核验。
+未实际测量热力图性能；`HeatmapDataStore` 的缓存命中率未核验。
+
+## 复核记录
+
+2026-09-20 02:31：`GitDailyCollector.swift:12` 已出现 `static let dateKeyFormatter: DateFormatter` 并在 `:116` 复用，即性能报告 P0-2 提到的「DateFormatter 单例」已在未提交代码中落实。`heatmap_cache.json` 已增至 83KB，修改时间 02:29，缓存确实在活跃写入。**但报告里「无缓存」那句与代码的矛盾仍未裁决**：单例落实不等于报告当时判断正确，只能说明报告的待办项已被执行。

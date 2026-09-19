@@ -25,7 +25,7 @@
 
 - **纯函数业务逻辑**集中在 `Models/BusinessLogic.swift`（1416 行），以 enum 命名空间组织：`ProjectLogic / HeatmapLogic / TagLogic / FilterLogic / ProjectOperations / BranchLogic / AppStateLogic / DashboardLogic / DirectoryLogic`。
 - **服务与存储**也在 `Models/`：`AppStateStorage`、`ProjectIndex`、`TagColorManager`、`BusinessTagRuleStorage`、`BusinessTagger`、`GitDailyCollector`、`TagSystemSync(+Optimized)`、`BatchTagLoader`、`ProjectLoaderOptimized`、`ProjectNotesManager`，以及 `TagStorage`（已标 deprecated 但仍在用）。
-- **中枢协调器**是 `Models/TagManager.swift`（1679 行，`class TagManager: ObservableObject`），持有 `AppStateStorage / TagStorage / ProjectIndex / TagColorManager / ProjectSortManager`。
+- **中枢协调器**是 `Models/TagManager.swift`（`class TagManager: ObservableObject`），持有 `AppStateStorage / TagStorage / ProjectIndex / TagColorManager / ProjectSortManager`。该文件正在被持续精简：2026-09-20 01:14 为 1679 行，02:31 已降至 1391 行，因此引用它时用符号名而非行号。
 - **组件化 manager** 在 `Models/TagManagerComponents.swift`：`ProjectSortManager`、`ProjectOperationManager`、`DirectoryWatcher`。
 - **ViewModel 只有一个**：`ViewModels/DashboardViewModel.swift`。
 - **View**：`Views/MainTabView.swift` 只有「项目 / 仪表盘」两个主 tab；分支管理不在主导航，从项目详情进入。
@@ -36,7 +36,7 @@
 |---|---|---|
 | `HeatmapDataStore.shared` | `Models/HeatmapDataStore.swift:8` | 活跃，`SidebarView.swift:91`、`SidebarHeatmapView.swift:5` 在用 |
 | `TagCache.shared` | `Models/TagCache.swift:10` | 活跃，被批量加载组件复用 |
-| `TagManager.shared` | `Models/TagManager.swift:18` | `static weak var`，已标 deprecated（注释称「单例癌症，即将死亡」），但仍在初始化时赋值 |
+| `TagManager.shared` | `Models/TagManager.swift`（01:14 在 `:18`，02:31 在 `:39`） | `static weak var`，已标 deprecated（注释称「单例癌症，即将死亡」），但仍在初始化时赋值 |
 
 ## 与历史计划的关系
 
@@ -45,3 +45,7 @@
 ## 未知
 
 未评估拆分 `TagManager` 的成本与风险；上述历史计划中是否仍有部分应当补做，未裁决。
+
+## 复核记录
+
+- 2026-09-20 02:31：三个单例仍然存在，结论未变；`TagManager.swift` 行数与上述单例行号已更新（该文件当时正被并发修改，属未提交状态）。

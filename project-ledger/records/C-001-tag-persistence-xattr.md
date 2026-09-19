@@ -26,7 +26,8 @@
 
 - `TagSystemSync.swift:124` 用 `(url as NSURL).setResourceValue(_:forKey: .tagNamesKey)` 写入标签名，`:154` 用 `.labelColorKey` 写颜色。
 - 批量读取走 `TagSystemSyncOptimized.loadTagsFromFile`（`BatchTagLoader.swift:82`）。
-- 保存链路：`TagManager.swift:707` 的保存流程调用 `TagSystemSync.syncTagsToSystem(tagsSnapshot)`。
+- 保存链路：`TagManager` 的保存流程调用 `TagSystemSync.syncTagsToSystem(tagsSnapshot)`。行号会随 `TagManager.swift` 重构漂移（01:14 在 `:707`，02:31 已在 `:730`），按符号名检索，不要按行号定位。
+- 读回标签：`TagManager` 的刷新路径用 `TagSystemSync.loadTagsFromFile` 读系统标签。
 - `Project.swift:361-365` 的标签扩展也在同一机制上读写。
 
 ## 必须遵守（改动前对照）
