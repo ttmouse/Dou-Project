@@ -1,0 +1,86 @@
+# swift build --build-tests 原始输出
+# 日期: 2026-09-20 01:14-01:18 CST
+# HEAD: 553b1c7 (main)
+# 环境: macOS 27.0 / Target: arm64-apple-macosx27.0.0
+# 主 target 状态: 已于同一命令中增量构建成功（Debug）
+# 命令: swift build --build-tests
+# 退出码: 1
+
+Building for debugging...
+[2 / 13] ProjectManagerTests-product
+error: SwiftCompile normal arm64 failed with a nonzero exit code. Command line:     cd /Users/douba/Projects
+    
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/FileMonitoringTests.swift:13:21: [1;31merror: [1;39mcannot find type 'SimpleTagManager' in scope[0;0m
+ [0;36m11 |[0;0m     var tempDirectory: URL!
+ [0;36m12 |[0;0m     var mockStorage: MockTagStorage!
+ [0;36m13 |[0;0m     var tagManager: [4;39mSimpleTagManager[0;0m!
+    [0;36m|[0;0m                     `- [1;31merror: [1;39mcannot find type 'SimpleTagManager' in scope[0;0m
+ [0;36m14 |[0;0m     
+ [0;36m15 |[0;0m     override func setUp() {
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift:52:41: [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m50 |[0;0m     private let mockFileSystem = MockFileSystem()
+ [0;36m51 |[0;0m     private var mockTags: Set<String> = []
+ [0;36m52 |[0;0m     private var mockTagColors: [String: [4;39mTagColorInfo[0;0m] = [:]
+    [0;36m|[0;0m                                         `- [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m53 |[0;0m     
+ [0;36m54 |[0;0m     override var appSupportURL: URL {
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift:54:18: [1;31merror: [1;39moverriding non-open property outside of its defining module[0;0m
+ [0;36m52 |[0;0m     private var mockTagColors: [String: TagColorInfo] = [:]
+ [0;36m53 |[0;0m     
+ [0;36m54 |[0;0m     override var appSupportURL: URL {
+    [0;36m|[0;0m                  `- [1;31merror: [1;39moverriding non-open property outside of its defining module[0;0m
+ [0;36m55 |[0;0m         return URL(fileURLWithPath: "/mock/app/support")
+ [0;36m56 |[0;0m     }
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift:54:18: [1;31merror: [1;39mcannot override immutable 'let' property 'appSupportURL' with the getter of a 'var'[0;0m
+ [0;36m52 |[0;0m     private var mockTagColors: [String: TagColorInfo] = [:]
+ [0;36m53 |[0;0m     
+ [0;36m54 |[0;0m     override var appSupportURL: URL {
+    [0;36m|[0;0m                  `- [1;31merror: [1;39mcannot override immutable 'let' property 'appSupportURL' with the getter of a 'var'[0;0m
+ [0;36m55 |[0;0m         return URL(fileURLWithPath: "/mock/app/support")
+ [0;36m56 |[0;0m     }
+
+ProjectManager.TagStorage.appSupportURL:2:14: [1;39mnote: [1;39mattempt to override property here[0;0m
+[0;36m1 |[0;0m class TagStorage {
+[0;36m2 |[0;0m internal let appSupportURL: URL}
+  [0;36m|[0;0m              `- [1;39mnote: [1;39mattempt to override property here[0;0m
+[0;36m3 |[0;0m 
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift:72:52: [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m70 |[0;0m     }
+ [0;36m71 |[0;0m     
+ [0;36m72 |[0;0m     override func saveTagColors(_ colors: [String: [4;39mTagColorInfo[0;0m]) {
+    [0;36m|[0;0m                                                    `- [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m73 |[0;0m         mockTagColors = colors
+ [0;36m74 |[0;0m         let data = try! JSONEncoder().encode(colors)
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift:78:47: [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m76 |[0;0m     }
+ [0;36m77 |[0;0m     
+ [0;36m78 |[0;0m     override func loadTagColors() -> [String: [4;39mTagColorInfo[0;0m] {
+    [0;36m|[0;0m                                               `- [1;31merror: [1;39mcannot find type 'TagColorInfo' in scope[0;0m
+ [0;36m79 |[0;0m         guard let data = mockFileSystem.readFile(from: "tag_colors.json") else {
+ [0;36m80 |[0;0m             return mockTagColors
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/ProjectSystemTests.swift:12:25: [1;31merror: [1;39mcannot find type 'SimpleProjectManager' in scope[0;0m
+ [0;36m10 |[0;0m class ProjectSystemTests: XCTestCase {
+ [0;36m11 |[0;0m     var mockStorage: MockTagStorage!
+ [0;36m12 |[0;0m     var projectManager: [4;39mSimpleProjectManager[0;0m!
+    [0;36m|[0;0m                         `- [1;31merror: [1;39mcannot find type 'SimpleProjectManager' in scope[0;0m
+ [0;36m13 |[0;0m     var tempDirectory: URL!
+ [0;36m14 |[0;0m     
+
+/Users/douba/Projects/project-list/Tests/ProjectManagerTests/TagSystemTests.swift:12:21: [1;31merror: [1;39mcannot find type 'SimpleTagManager' in scope[0;0m
+ [0;36m10 |[0;0m class TagSystemTests: XCTestCase {
+ [0;36m11 |[0;0m     var mockStorage: MockTagStorage!
+ [0;36m12 |[0;0m     var tagManager: [4;39mSimpleTagManager[0;0m!
+    [0;36m|[0;0m                     `- [1;31merror: [1;39mcannot find type 'SimpleTagManager' in scope[0;0m
+ [0;36m13 |[0;0m     
+ [0;36m14 |[0;0m     override func setUp() {
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -emit-module -experimental-skip-non-inlinable-function-bodies-without-types /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/DerivedSources/test_entry_point.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/BusinessTaggerTests.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/DataSerializationTests.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/DirectoryLogicTests.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/FileMonitoringTests.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/MockSystem.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/ProjectSystemTests.swift /Users/douba/Projects/project-list/Tests/ProjectManagerTests/TagSystemTests.swift -target arm64-apple-macos14.0 -module-can-import-version Testing 2084 0 -module-can-import-version XCTest 25228 0 -disable-cross-import-overlay-search -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/AppKit.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreGraphics.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreImage.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreTransferable.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/Foundation.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib\#\#TestingMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -I /Users/douba/Projects/project-list/.build/out/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/douba/Projects/project-list/.build/out/Products/Debug/PackageFrameworks -F /Users/douba/Projects/project-list/.build/out/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -module-cache-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/SwiftExplicitPrecompiledModules -color-diagnostics -Xcc -fcolor-diagnostics -enable-testing -enable-private-imports -g -debug-info-format\=dwarf -dwarf-version\=4 -swift-version 5 -Onone -D SWIFT_PACKAGE -D DEBUG -D Xcode -serialize-debugging-options -enable-experimental-feature DebugDescriptionMacro -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/douba/Projects/project-list/.build/out/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/douba/Projects -enable-anonymous-context-mangled-names -file-compilation-dir /Users/douba/Projects -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/douba/Projects/project-list/.build/out/SDKStatCaches.noindex/macosx27.0-26A425-a0facfad118c1a7a18f0aad9463f65497231f6df4def33e022ae2eb8f782df1a.sdkstatcache -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -Xcc -I/Users/douba/Projects/project-list/.build/out/Products/Debug/include -Xcc -I/Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/DerivedSources/arm64 -Xcc -I/Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name ProjectManagerTests -const-gather-protocols-file /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests_const_extract_protocols.json -disable-clang-spi -clang-target arm64-apple-macos27.0 -target-sdk-version 27.0 -target-sdk-name macosx27.0 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -emit-module-doc-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests.swiftdoc -emit-module-source-info-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests.swiftsourceinfo -serialize-diagnostics-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests-primary-emit-module.dia -emit-dependencies-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests-primary-emit-module.d -parse-as-library -o /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests.swiftmodule -emit-abi-descriptor-path /Users/douba/Projects/project-list/.build/out/Intermediates.noindex/ProjectManager.build/Debug/ProjectManagerTests-p.build/Objects-normal/arm64/ProjectManagerTests.abi.json
+error: Build failed
+
+EXIT_CODE=1
