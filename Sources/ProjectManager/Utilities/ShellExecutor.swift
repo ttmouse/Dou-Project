@@ -43,41 +43,7 @@ class ShellExecutor {
         }
     }
     
-    /// 执行shell命令（非Git命令）
-    /// - Parameters:
-    ///   - command: 完整的shell命令
-    ///   - workingDir: 工作目录路径
-    /// - Returns: 执行结果(输出内容, 是否成功)
-    static func executeShellCommand(_ command: String, workingDir: String) -> (output: String, success: Bool) {
-        let process = Process()
-        let pipe = Pipe()
-        let errorPipe = Pipe()
-        
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", command]
-        process.currentDirectoryURL = URL(fileURLWithPath: workingDir)
-        process.standardOutput = pipe
-        process.standardError = errorPipe
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            
-            let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            
-            let output = String(data: outputData, encoding: .utf8) ?? ""
-            let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-            
-            let success = process.terminationStatus == 0
-            let combinedOutput = success ? output : "\(output)\n\(errorOutput)".trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            return (output: combinedOutput, success: success)
-        } catch {
-            return (output: "执行命令失败: \(error.localizedDescription)", success: false)
-        }
-    }
-    
+
     // MARK: - Git Worktree Operations
     
     /// 创建Git worktree分支 - 兼容trees.sh脚本
