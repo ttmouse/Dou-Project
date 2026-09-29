@@ -5,8 +5,39 @@ import Foundation
 /// 实现TRD v1.0中的多天Git活跃度统计功能
 /// 使用紧凑字符串格式存储每日提交统计
 struct GitDailyCollector {
-    
+
+    /// yyyy-MM-dd 格式化器（静态复用）
+    /// 背景：DateFormatter 创建成本高，旧实现每次查询某天提交数都新建一个，
+    /// 热力图一天 × 全量项目的循环下会造成 6 位数开销。
+    static let dateKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let cacheLock = NSLock()
+    private static var gitHeadCache: [String: String] = loadGitHeadCache()
+
+    /// 测试/隔离用：把 HEAD 缓存指向别处
+    /// 背景：此文件此前写死在 `~/Library/Application Support/com.projectmanager`，
+    /// 不经过 `TagStorage`，所以任何跑 git 采集的测试都会写到真实用户目录。
+    /// 注意：缓存内容在类型首次访问时加载，测试需在首次使用前设置。
+    static var gitHeadCacheURLOverride: URL?
+
+    private static var gitHeadCacheURL: URL {
+        if let override = gitHeadCacheURLOverride {
+            return override
+        }
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("com.projectmanager", isDirectory: true)
+        return appSupport.appendingPathComponent("git_heads.json")
+    }
+
     /// 批量收集项目的Git历史数据
+    /// 仅用于显式的全量采集入口；普通刷新应使用 updateProjectsWithGitDaily。
+
     /// - Parameters:
     ///   - projects: 项目列表
     ///   - days: 保留参数以保持接口兼容性（实际获取完整历史记录）
@@ -34,18 +65,60 @@ struct GitDailyCollector {
         guard FileManager.default.fileExists(atPath: gitPath) else {
             return nil
         }
-        
-        // 获取完整Git历史记录，不限制时间范围
-        let command = """
-        cd '\(project.path)' && \
-        git log --pretty=format:'%cd' --date=short | \
-        sort | uniq -c | \
-        awk '{print $2":"$1}' | \
-        tr '\\n' ',' | \
-        sed 's/,$//'
-        """
-        
-        return executeShellCommand(command)
+
+        // 获取完整Git历史记录，不限制时间范围。
+        // 直接调用 git + currentDirectoryURL，不走 bash 拼接：
+        // 路径含单引号时 `cd '...'` 会被注入任意 shell（2026-09-29 修复）。
+        guard let logOutput = runGit(arguments: ["log", "--pretty=format:%cd", "--date=short"],
+                                     cwd: project.path) else {
+            return nil
+        }
+        return aggregateCommitsPerDay(logOutput)
+    }
+
+    /// 直接运行 git 子命令，cwd 与参数分离，避免 shell 解释
+    private static func runGit(arguments: [String], cwd: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        process.arguments = arguments
+
+        let output = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = output
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
+               !errorOutput.isEmpty {
+                print("⚠️ GitDailyCollector: git stderr - \(errorOutput)")
+            }
+
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let out = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return out?.isEmpty == false ? out : nil
+        } catch {
+            print("❌ GitDailyCollector: 运行 git 失败 - \(error)")
+            return nil
+        }
+    }
+
+    /// 把 `git log --date=short` 的逐行日期聚合成 "date:count" 逗号串（Swift 端等价于原 sort|uniq -c|awk|tr|sed 管道）
+    static func aggregateCommitsPerDay(_ logOutput: String?) -> String? {
+        guard let logOutput, !logOutput.isEmpty else { return nil }
+
+        var counts: [String: Int] = [:]
+        for line in logOutput.split(separator: "\n") {
+            let date = line.trimmingCharacters(in: .whitespaces)
+            guard !date.isEmpty else { continue }
+            counts[date, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return nil }
+        return formatGitDaily(counts)
     }
     
     /// 解析git_daily字符串为日期-提交数映射
@@ -62,6 +135,7 @@ struct GitDailyCollector {
         for entry in entries {
             let parts = entry.components(separatedBy: ":")
             if parts.count == 2,
+               !parts[0].isEmpty,   // 拒绝 ":3" 这类无日期片段，避免产生永远查不到的空键
                let commitCount = Int(parts[1]) {
                 result[parts[0]] = commitCount
             }
@@ -90,11 +164,8 @@ struct GitDailyCollector {
         guard let gitDaily = gitDaily, !gitDaily.isEmpty else {
             return 0
         }
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: date)
-        
+
+        let dateString = dateKeyFormatter.string(from: date)
         let dailyData = parseGitDaily(gitDaily)
         let commitCount = dailyData[dateString] ?? 0
         
@@ -135,8 +206,49 @@ struct GitDailyCollector {
     ///   - days: 保留参数以保持接口兼容性（实际获取完整历史记录）
     /// - Returns: 更新了git_daily的项目列表
     static func updateProjectsWithGitDaily(_ projects: [Project], days: Int = 365) -> [Project] {
-        let gitDailyData = collectGitDaily(for: projects, days: days)
-        
+        guard !projects.isEmpty else { return projects }
+
+        var projectsNeedingRefresh: [Project] = []
+        var refreshedHeads: [String: String] = [:]
+
+        cacheLock.lock()
+        let cachedHeads = gitHeadCache
+        cacheLock.unlock()
+
+        for project in projects {
+            let gitPath = URL(fileURLWithPath: project.path)
+                .appendingPathComponent(".git").path
+
+            guard FileManager.default.fileExists(atPath: gitPath) else {
+                continue
+            }
+
+            let currentHead = currentGitHead(for: project.path)
+            if let currentHead {
+                refreshedHeads[project.path] = currentHead
+            }
+
+            // 首次遇到项目、没有历史数据，或 HEAD 变化时才重算 git_daily。
+            if project.git_daily == nil || cachedHeads[project.path] != currentHead {
+                projectsNeedingRefresh.append(project)
+            }
+        }
+
+        let gitDailyData = collectGitDaily(for: projectsNeedingRefresh, days: days)
+
+        cacheLock.lock()
+        for project in projectsNeedingRefresh {
+            guard let head = refreshedHeads[project.path],
+                  gitDailyData[project.id] != nil else { continue }
+            gitHeadCache[project.path] = head
+        }
+        if !projectsNeedingRefresh.isEmpty {
+            saveGitHeadCache(gitHeadCache)
+        }
+        cacheLock.unlock()
+
+        print("📊 Git 增量采集: 检查 \(projects.count) 个项目，刷新 \(projectsNeedingRefresh.count) 个")
+
         return projects.map { project in
             if let gitDaily = gitDailyData[project.id] {
                 return Project(
@@ -145,6 +257,7 @@ struct GitDailyCollector {
                     path: project.path,
                     tags: project.tags,
                     mtime: project.mtime,
+                    activityAt: project.activityAt,
                     size: project.size,
                     checksum: project.checksum,
                     git_commits: project.git_commits,
@@ -160,38 +273,44 @@ struct GitDailyCollector {
     }
     
     // MARK: - Private Helper Methods
-    
-    /// 执行shell命令并返回输出
-    private static func executeShellCommand(_ command: String) -> String? {
-        print("🐚 GitDailyCollector: 执行命令 - \(command)")
-        
+
+    private static func loadGitHeadCache() -> [String: String] {
+        do {
+            let data = try Data(contentsOf: gitHeadCacheURL)
+            return try JSONDecoder().decode([String: String].self, from: data)
+        } catch {
+            return [:]
+        }
+    }
+
+    private static func saveGitHeadCache(_ cache: [String: String]) {
+        do {
+            let folder = gitHeadCacheURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(cache)
+            try data.write(to: gitHeadCacheURL, options: .atomic)
+        } catch {
+            print("⚠️ Git HEAD 缓存保存失败: \(error)")
+        }
+    }
+
+    private static func currentGitHead(for path: String) -> String? {
         let process = Process()
-        process.launchPath = "/bin/bash"
-        process.arguments = ["-c", command]
-        
-        let pipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = errorPipe
-        
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.currentDirectoryURL = URL(fileURLWithPath: path)
+        process.arguments = ["rev-parse", "HEAD"]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
         do {
             try process.run()
             process.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            
-            if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
-                print("⚠️ GitDailyCollector: 命令stderr - \(errorOutput)")
-            }
-            
-            let output = String(data: data, encoding: .utf8)?
+            guard process.terminationStatus == 0 else { return nil }
+            return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            print("📊 GitDailyCollector: 命令输出 - \(output ?? "nil")")
-            return output?.isEmpty == false ? output : nil
         } catch {
-            print("❌ GitDailyCollector: 执行命令失败 - \(error)")
             return nil
         }
     }

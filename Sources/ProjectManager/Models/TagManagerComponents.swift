@@ -43,18 +43,7 @@ class ProjectSortManager: SortManagerDelegate {
     }
 
     private func sortProjects() {
-        sortedProjects.sort { (project1: Project, project2: Project) in
-            let result: Bool
-            switch sortCriteria {
-            case .name:
-                result = project1.name.localizedCaseInsensitiveCompare(project2.name) == .orderedAscending
-            case .lastModified:
-                result = project1.lastModified < project2.lastModified
-            case .gitCommits:
-                result = (project1.gitInfo?.commitCount ?? 0) < (project2.gitInfo?.commitCount ?? 0)
-            }
-            return isAscending ? result : !result
-        }
+        sortedProjects.sort(by: comesBefore)
     }
 
     private func binarySearchInsertionIndex(for project: Project) -> Int {
@@ -64,16 +53,7 @@ class ProjectSortManager: SortManagerDelegate {
         while left < right {
             let mid = (left + right) / 2
             
-            let shouldInsertBefore: Bool
-            switch sortCriteria {
-            case .name:
-                let comparison = project.name.localizedCaseInsensitiveCompare(sortedProjects[mid].name)
-                shouldInsertBefore = isAscending ? comparison == .orderedAscending : comparison == .orderedDescending
-            case .lastModified:
-                shouldInsertBefore = isAscending ? project.lastModified < sortedProjects[mid].lastModified : project.lastModified > sortedProjects[mid].lastModified
-            case .gitCommits:
-                shouldInsertBefore = isAscending ? (project.gitInfo?.commitCount ?? 0) < (sortedProjects[mid].gitInfo?.commitCount ?? 0) : (project.gitInfo?.commitCount ?? 0) > (sortedProjects[mid].gitInfo?.commitCount ?? 0)
-            }
+            let shouldInsertBefore = comesBefore(project, sortedProjects[mid])
             
             if shouldInsertBefore {
                 right = mid
@@ -83,6 +63,36 @@ class ProjectSortManager: SortManagerDelegate {
         }
         
         return left
+    }
+
+    private func comesBefore(_ lhs: Project, _ rhs: Project) -> Bool {
+        let primaryComparison: ComparisonResult
+        switch sortCriteria {
+        case .name:
+            primaryComparison = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+        case .lastModified:
+            primaryComparison = compare(lhs.activityAt, rhs.activityAt)
+        case .gitCommits:
+            primaryComparison = compare(lhs.git_commits, rhs.git_commits)
+        }
+
+        if primaryComparison == .orderedSame {
+            let nameComparison = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+            if nameComparison != .orderedSame {
+                return nameComparison == .orderedAscending
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+
+        return isAscending
+            ? primaryComparison == .orderedAscending
+            : primaryComparison == .orderedDescending
+    }
+
+    private func compare<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        if lhs < rhs { return .orderedAscending }
+        if lhs > rhs { return .orderedDescending }
+        return .orderedSame
     }
 }
 
@@ -99,19 +109,30 @@ protocol ProjectOperationDelegate: AnyObject {
 protocol DirectoryWatcherDelegate: AnyObject {
     var watchedDirectories: Set<String> { get set }
     var projects: [UUID: Project] { get set }
-    
+
     func notifyProjectsChanged()
+    func scanDidStart(directory: String)
+    func scanDidFinish(directory: String, discovered: Int)
+    func scanDidFail(directory: String, message: String)
 }
 
 protocol SortManagerDelegate: AnyObject {
     func updateSortedProjects(_ projects: [Project])
     func insertProject(_ project: Project)
     func updateProject(_ project: Project)
+    func removeProject(_ project: Project)
 }
 
 // MARK: - 项目操作管理器 - 无循环依赖版本
 
 class ProjectOperationManager {
+
+    /// git 采集专用串行队列：git 进程本身是主要开销，串行避免多路刷新互相抢进程
+    private let gitQueue = DispatchQueue(label: "com.projectmanager.gitdaily", qos: .utility)
+    /// projects.json 落盘走低优先级串行队列，主线程只做快照
+    let ioQueue = DispatchQueue(label: "com.projectmanager.cache-writes", qos: .utility)
+    private let savePendingLock = NSLock()
+    private var saveDebounceTimer: Timer?
     weak var delegate: ProjectOperationDelegate?
     weak var sortDelegate: SortManagerDelegate?
     private let storage: TagStorage
@@ -124,14 +145,18 @@ class ProjectOperationManager {
     
     func registerProject(_ project: Project, batchMode: Bool = false) {
         guard let delegate = delegate else { return }
+        guard ProjectDiscoveryPolicy.isEligibleProjectPath(project.path) else {
+            Log.debug("忽略点号项目目录: \(project.path)")
+            return
+        }
         
         // 检查项目是否已存在
         if Project.isProjectExists(path: project.path, in: delegate.projects) {
-            print("项目已存在，跳过注册: \(project.name)")
+            Log.debug("项目已存在，跳过注册: \(project.name)")
             return
         }
 
-        print("注册项目: \(project.name), 标签: \(project.tags)")
+        Log.debug("注册项目: \(project.name), 标签: \(project.tags)")
         delegate.projects[project.id] = project
 
         // 处理新标签
@@ -161,30 +186,31 @@ class ProjectOperationManager {
         }
     }
     
-    func registerProjects(_ projects: [Project]) {
+    func registerProjects(_ projects: [Project], updateGitDaily: Bool = true) {
         guard let delegate = delegate else { return }
 
         print("🔄 开始注册 \(projects.count) 个项目")
         print("📋 当前项目数: \(delegate.projects.count)")
 
-        // 批量更新项目的git_daily数据
-        let projectsWithGitDaily = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 365)
-        print("✅ 已更新git_daily数据: \(projectsWithGitDaily.count) 个")
-
         var allNewTags = Set<String>()
         var registeredCount = 0
-        var skippedCount = 0
+        var newlyRegistered: [Project] = []
 
         // 批量注册，不触发单独的保存和系统同步
-        for project in projectsWithGitDaily {
-            // 检查项目是否已存在
-            if Project.isProjectExists(path: project.path, in: delegate.projects) {
-                print("   ⏭️ 跳过已存在: \(project.name)")
-                skippedCount += 1
+        // 注意：这里只做内存合并 —— git 采集已移到后台（见 refreshGitDailyInBackground）
+        for project in projects {
+            guard ProjectDiscoveryPolicy.isEligibleProjectPath(project.path) else {
+                Log.debug("   ⏭️ 忽略点号项目目录: \(project.path)")
                 continue
             }
 
-            print("   ✅ 注册新项目: \(project.name) (ID: \(project.id))")
+            // 检查项目是否已存在
+            if Project.isProjectExists(path: project.path, in: delegate.projects) {
+                Log.debug("   ⏭️ 跳过已存在: \(project.name)")
+                continue
+            }
+
+            Log.debug("   ✅ 注册新项目: \(project.name) (ID: \(project.id))")
             delegate.projects[project.id] = project
 
             // 收集新标签
@@ -195,6 +221,7 @@ class ProjectOperationManager {
             // 使用委托更新排序
             sortDelegate?.insertProject(project)
             registeredCount += 1
+            newlyRegistered.append(project)
         }
         
         // 统一处理系统标签同步
@@ -216,14 +243,71 @@ class ProjectOperationManager {
         // 通知变更
         delegate.notifyProjectsChanged()
         
+        // git_daily 交给后台：只为本次真正入库的项目补数据，
+        // 已在库中的项目（skipped）本方法不会更新它们，因此不做无用采集。
+        if updateGitDaily && !newlyRegistered.isEmpty {
+            refreshGitDailyInBackground(for: newlyRegistered)
+        }
+
         print("批量注册完成：成功注册 \(registeredCount) 个项目，发现新标签 \(allNewTags.count) 个")
     }
+
+    /// 后台补齐 git_daily，完成后回主线程逐项目更新
+    ///
+    /// 症状（本方法要解决的问题）：git 采集原先在 registerProjects 里同步执行，
+    /// 而多数调用方在主线程（`DispatchQueue.main.async`、通知回调、工具栏命令），
+    /// 193 个仓库的 `git log`/`rev-parse` 会把 UI 阻塞数秒。
+    /// 现在：注册立即返回（项目马上可见），git 数据随后补齐。
+    private func refreshGitDailyInBackground(for projects: [Project]) {
+        gitQueue.async { [weak self] in
+            let updated = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 365)
+
+            DispatchQueue.main.async {
+                guard let self = self, let delegate = self.delegate else { return }
+
+                var changedCount = 0
+                for project in updated {
+                    // 项目可能在采集期间被删除，或已被更新的数据覆盖
+                    guard let current = delegate.projects[project.id] else { continue }
+                    guard let newGitDaily = project.git_daily, current.git_daily != newGitDaily else { continue }
+
+                    // 只回写 git_daily：采集期间用户可能改过标签/端口，
+                    // 整对象覆盖会把采集时的旧快照写回去
+                    let merged = current.copyWith(gitDaily: newGitDaily)
+                    delegate.projects[project.id] = merged
+                    self.sortDelegate?.updateProject(merged)
+                    changedCount += 1
+                }
+
+                guard changedCount > 0 else { return }
+                delegate.invalidateTagUsageCache()
+                self.saveToCache()
+                delegate.notifyProjectsChanged()
+                print("✅ 后台补齐 git_daily：\(changedCount) 个项目")
+            }
+        }
+    }
     
+    /// 更新不需要重新扫描或执行 Git 查询的项目活动时间。
+    func updateProjects(_ projects: [Project]) {
+        guard let delegate = delegate, !projects.isEmpty else { return }
+
+        for project in projects {
+            guard delegate.projects[project.id] != nil else { continue }
+            delegate.projects[project.id] = project
+            sortDelegate?.updateProject(project)
+        }
+
+        delegate.notifyProjectsChanged()
+        saveToCache()
+    }
+
     func removeProject(_ id: UUID) {
         guard let delegate = delegate,
               let project = delegate.projects[id] else { return }
         
         delegate.projects.removeValue(forKey: id)
+        sortDelegate?.removeProject(project)
         delegate.invalidateTagUsageCache()
         delegate.notifyProjectsChanged()
         
@@ -233,16 +317,35 @@ class ProjectOperationManager {
     func saveAllToCache() {
         saveToCache()
     }
-    
+
     private func saveToCache() {
         guard let delegate = delegate else { return }
-        
+
+        // 主线程只做轻量快照，编码与写盘全部挪到串行 I/O 队列；
+        // 合并去抖：活动高峰（如 FSEvents 每 0.8s 一批）不再逐拍落盘，
+        // 待写定时器未触发就先重置，磁盘写频率从「每批次一次」降为「静默 2s 后一次」。
+        let projectsArray = Array(delegate.projects.values)
         let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
+
+        savePendingLock.lock()
+        saveDebounceTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.savePendingLock.lock()
+            self?.saveDebounceTimer = nil
+            self?.savePendingLock.unlock()
+            self?.ioQueue.async { [weak self] in
+                self?.writeProjectsSnapshot(projectsArray, to: cacheURL)
+            }
+        }
+        saveDebounceTimer = timer
+        savePendingLock.unlock()
+    }
+
+    private func writeProjectsSnapshot(_ projectsArray: [Project], to cacheURL: URL) {
         do {
             let encoder = JSONEncoder()
-            let projectsArray = Array(delegate.projects.values)
             let data = try encoder.encode(projectsArray)
-            try data.write(to: cacheURL)
+            try data.write(to: cacheURL, options: .atomic)
             print("项目数据已保存到缓存")
         } catch {
             print("保存项目缓存失败: \(error)")
@@ -259,12 +362,50 @@ class DirectoryWatcher {
     private let storage: TagStorage
     private let projectIndex: ProjectIndex
     private let queue = DispatchQueue(label: "com.example.DirectoryWatcherQueue", attributes: [])
-    
+    private lazy var eventMonitor = FileSystemEventMonitor { [weak self] changedPaths in
+        self?.updateActivity(for: changedPaths)
+        self?.incrementallyReloadProjects(showStatus: false)
+    }
+    private var reloadInProgress = false
+    private var reloadPending = false
+
     init(delegate: DirectoryWatcherDelegate?, operationManager: ProjectOperationManager?, storage: TagStorage) {
         self.delegate = delegate
         self.operationManager = operationManager
         self.storage = storage
         self.projectIndex = ProjectIndex(storage: storage)
+    }
+
+    /// 用 FSEvents 的变更路径增量更新活动时间，不递归扫描项目内容。
+    private func updateActivity(for changedPaths: Set<String>) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let delegate = self.delegate else { return }
+
+            let changedProjects = delegate.projects.values.filter { project in
+                changedPaths.contains { changedPath in
+                    changedPath == project.path || changedPath.hasPrefix(project.path + "/")
+                }
+            }
+            guard !changedProjects.isEmpty else { return }
+
+            let activityAt = Date()
+            var updates: [Project] = []
+            for var project in changedProjects where activityAt > project.activityAt {
+                project.activityAt = activityAt
+                updates.append(project)
+            }
+
+            guard !updates.isEmpty else { return }
+            self.operationManager?.updateProjects(updates)
+        }
+    }
+
+    func startMonitoring(paths: Set<String>) {
+        eventMonitor.start(paths: paths)
+    }
+
+    func stopMonitoring() {
+        eventMonitor.stop()
     }
     
     // 扫描目录并收集项目
@@ -338,17 +479,27 @@ class DirectoryWatcher {
     
     func addWatchedDirectory(_ path: String) {
         guard let delegate = delegate else { return }
-        
+
         if !delegate.watchedDirectories.contains(path) {
             delegate.watchedDirectories.insert(path)
             saveWatchedDirectories()
-            
+            eventMonitor.start(paths: delegate.watchedDirectories)
+            delegate.scanDidStart(directory: path)
+
             // 加载新目录的项目
             queue.async {
+                guard FileManager.default.fileExists(atPath: path) else {
+                    DispatchQueue.main.async {
+                        delegate.scanDidFail(directory: path, message: "目录不存在或无法访问")
+                    }
+                    return
+                }
+
                 let newProjects = self.scanAndCollectProjects(path, force: true)
-                
+
                 DispatchQueue.main.async {
                     self.operationManager?.registerProjects(newProjects)
+                    delegate.scanDidFinish(directory: path, discovered: newProjects.count)
                     print("已添加目录并加载 \(newProjects.count) 个新项目")
                 }
             }
@@ -361,6 +512,7 @@ class DirectoryWatcher {
         if delegate.watchedDirectories.contains(path) {
             delegate.watchedDirectories.remove(path)
             saveWatchedDirectories()
+            eventMonitor.start(paths: delegate.watchedDirectories)
             removeProjectsInDirectory(path)
         }
     }
@@ -377,7 +529,11 @@ class DirectoryWatcher {
     
     func clearCacheAndReloadProjects() {
         guard let delegate = delegate else { return }
-        
+
+        DispatchQueue.main.async {
+            delegate.scanDidStart(directory: "全部监视目录")
+        }
+
         queue.async {
             print("开始清除缓存并重新加载...")
             
@@ -396,7 +552,7 @@ class DirectoryWatcher {
             if existingDirectories.isEmpty {
                 print("没有可用的监视目录")
                 DispatchQueue.main.async {
-                    delegate.notifyProjectsChanged()
+                    delegate.scanDidFail(directory: "全部监视目录", message: "没有可用的监视目录")
                 }
                 return
             }
@@ -413,33 +569,34 @@ class DirectoryWatcher {
             
             print("缓存清理和重新加载完成，共找到 \(allProjects.count) 个项目")
             
-            // 一次性更新UI
-            DispatchQueue.main.async {
-                // 清空现有项目
-                delegate.projects.removeAll()
-                
-                // 为每个项目从系统恢复标签
-                var projectsWithTags: [Project] = []
-                for var project in allProjects {
-                    let systemTags = TagSystemSync.loadTagsFromFile(at: project.path)
-                    if !systemTags.isEmpty {
-                        // 使用新的标签创建项目副本
-                        let projectWithTags = Project(
-                            id: project.id,
-                            name: project.name,
-                            path: project.path,
-                            lastModified: project.lastModified,
-                            tags: systemTags
-                        )
-                        projectsWithTags.append(projectWithTags)
-                        print("恢复项目 '\(project.name)' 的标签: \(systemTags)")
-                    } else {
-                        projectsWithTags.append(project)
-                    }
+            // 在后台恢复标签并采集 Git 数据，避免主线程长时间无响应。
+            var projectsWithTags: [Project] = []
+            for project in allProjects {
+                let systemTags = TagSystemSync.loadTagsFromFile(at: project.path)
+                if systemTags.isEmpty {
+                    projectsWithTags.append(project)
+                } else {
+                    // copyWith 保留已有 Git/文件系统数据，避免重新执行 Git 查询。
+                    projectsWithTags.append(project.copyWith(tags: systemTags))
+                    Log.debug("恢复项目 '\(project.name)' 的标签: \(systemTags)")
                 }
-                
-                // 批量注册所有项目（已恢复标签）
-                self.operationManager?.registerProjects(projectsWithTags)
+            }
+            let projectsWithGitDaily = GitDailyCollector.updateProjectsWithGitDaily(
+                projectsWithTags,
+                days: 365
+            )
+
+            // 一次性更新 UI，跳过重复的 Git 采集。
+            DispatchQueue.main.async {
+                delegate.projects.removeAll()
+                self.operationManager?.registerProjects(
+                    projectsWithGitDaily,
+                    updateGitDaily: false
+                )
+                delegate.scanDidFinish(
+                    directory: "全部监视目录",
+                    discovered: projectsWithGitDaily.count
+                )
             }
         }
     }
@@ -499,7 +656,7 @@ class DirectoryWatcher {
         do {
             let encoder = JSONEncoder()
             let data = try encoder.encode(Array(delegate.watchedDirectories))
-            try data.write(to: directoriesURL)
+            try data.write(to: directoriesURL, options: .atomic)
             print("保存监视目录到文件: \(Array(delegate.watchedDirectories))")
         } catch {
             print("保存监视目录失败: \(error)")
@@ -507,13 +664,44 @@ class DirectoryWatcher {
     }
     
     func incrementallyReloadProjects() {
+        incrementallyReloadProjects(showStatus: true)
+    }
+
+    private func incrementallyReloadProjects(showStatus: Bool) {
         guard let delegate = delegate else { return }
-        
+
         queue.async {
+            if self.reloadInProgress {
+                self.reloadPending = true
+                return
+            }
+            self.reloadInProgress = true
+            defer {
+                self.reloadInProgress = false
+                if self.reloadPending {
+                    self.reloadPending = false
+                    self.incrementallyReloadProjects(showStatus: false)
+                }
+            }
+
+            if showStatus {
+                DispatchQueue.main.async {
+                    delegate.scanDidStart(directory: "全部监视目录")
+                }
+            }
+
             print("开始后台增量更新项目...")
-            
+
             // 获取所有监视目录
             let directories = Array(delegate.watchedDirectories)
+            if directories.isEmpty {
+                if showStatus {
+                    DispatchQueue.main.async {
+                        delegate.scanDidFail(directory: "全部监视目录", message: "没有可用的监视目录")
+                    }
+                }
+                return
+            }
             
             // 保存当前项目的快照（用于比较变化）
             let existingProjects = delegate.projects
@@ -530,6 +718,11 @@ class DirectoryWatcher {
             // 检查是否有变化
             if newPaths == existingPaths && existingProjects.count == allProjects.count {
                 print("项目数据没有变化，保持现有显示")
+                if showStatus {
+                    DispatchQueue.main.async {
+                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
+                    }
+                }
                 return
             }
             
@@ -574,6 +767,9 @@ class DirectoryWatcher {
                     if addedPaths.count > 0 || removedPaths.count > 0 {
                         print("项目增量更新完成: +\(addedPaths.count) -\(removedPaths.count)")
                     }
+                    if showStatus {
+                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
+                    }
                 }
             } else {
                 print("没有项目添加或删除，检查是否有项目内容更新...")
@@ -594,6 +790,13 @@ class DirectoryWatcher {
                         // 批量更新项目
                         self.operationManager?.registerProjects(updatedProjects)
                         print("项目内容更新完成：已更新 \(updatedProjects.count) 个项目内容")
+                        if showStatus {
+                            delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
+                        }
+                    }
+                } else if showStatus {
+                    DispatchQueue.main.async {
+                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
                     }
                 }
             }
