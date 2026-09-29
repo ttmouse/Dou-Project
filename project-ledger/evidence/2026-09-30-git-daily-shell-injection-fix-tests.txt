@@ -11,3 +11,4 @@
 	 Executed 73 tests, with 1 test skipped and 0 failures (0 unexpected) in 4.925 (4.937) seconds
 	 Executed 73 tests, with 1 test skipped and 0 failures (0 unexpected) in 4.925 (4.937) seconds
 73 tests 1 skipped 0 failures（写入 evidence）
+2026-09-30 补 3 条 aggregateCommitsPerDay 单例测试（shell 注入修复后聚合等价旧管道），全量 76 tests 1 skipped 0 failures

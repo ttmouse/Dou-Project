@@ -54,6 +54,33 @@ final class GitDailyCollectorTests: XCTestCase {
         XCTAssertEqual(GitDailyCollector.parseGitDaily(GitDailyCollector.formatGitDaily(original)), original)
     }
 
+    // MARK: - aggregateCommitsPerDay（shell 注入修复后的 Swift 端聚合）
+
+    func testAggregateCommitsPerDayMatchesOldPipeline() {
+        // 旧管道 sort|uniq -c|awk|tr|sed 的等价输出：日期升序、同日合并计数
+        let log = "2025-08-25\n2025-08-24\n2025-08-25\n2025-08-25"
+        XCTAssertEqual(
+            GitDailyCollector.aggregateCommitsPerDay(log),
+            "2025-08-24:1,2025-08-25:3"
+        )
+    }
+
+    func testAggregateCommitsPerDayHandlesEmptyAndBlank() {
+        XCTAssertNil(GitDailyCollector.aggregateCommitsPerDay(nil))
+        XCTAssertNil(GitDailyCollector.aggregateCommitsPerDay(""))
+        XCTAssertNil(GitDailyCollector.aggregateCommitsPerDay("\n\n  "))
+    }
+
+    func testAggregateCommitsPerDayParsesRoundTrip() {
+        // 产物要能被 parseGitDaily 正常读回（热力图消费链不断）
+        let log = "2024-01-01\n2025-08-25\n2025-08-25"
+        let formatted = GitDailyCollector.aggregateCommitsPerDay(log)
+        XCTAssertEqual(
+            GitDailyCollector.parseGitDaily(formatted),
+            ["2024-01-01": 1, "2025-08-25": 2]
+        )
+    }
+
     // MARK: - getCommitCount
 
     func testGetCommitCountForKnownDate() {
