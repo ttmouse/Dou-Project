@@ -116,6 +116,101 @@ struct ProjectData: Identifiable, Equatable, Codable {
         self.checked = checked
     }
     
+    // MARK: - 按字段复制
+
+    /// 以下方法只替换调用方点名的字段，其余字段原样保留。
+    ///
+    /// 为什么不用 `init(lastModified:tags:notes:gitInfo:fileSystemInfo:)`：
+    /// 那个旧嵌套初始化器不认 `git_daily` / `startupCommand` / `customPort`，
+    /// 并把 `created` 改写成 `fileSystemInfo.lastCheckTime`。用它复制一次，
+    /// 这些字段就被静默清空，而 `TagManager` 随后会把它写回 projects.json。
+
+    /// 只替换标签集合
+    func replacingTags(_ newTags: Set<String>) -> ProjectData {
+        return ProjectData(
+            id: id, name: name, path: path,
+            tags: newTags, notes: notes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
+    /// 只替换备注快照
+    func replacingNotes(_ newNotes: String?) -> ProjectData {
+        return ProjectData(
+            id: id, name: name, path: path,
+            tags: tags, notes: newNotes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
+    /// 只替换文件系统快照
+    func replacingFileSystem(_ info: FileSystemInfoData) -> ProjectData {
+        return ProjectData(
+            id: id, name: name, path: path,
+            tags: tags, notes: notes,
+            mtime: info.modificationDate, size: Int64(info.size), checksum: info.checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: info.lastCheckTime
+        )
+    }
+
+    /// 只替换 Git 信息
+    func replacingGit(_ info: GitInfoData?) -> ProjectData {
+        return ProjectData(
+            id: id, name: name, path: path,
+            tags: tags, notes: notes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: info?.commitCount ?? 0,
+            git_last_commit: info?.lastCommitDate ?? Date.distantPast,
+            git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
+    /// 只替换名称（目录名变化后刷新用）
+    func replacingName(_ newName: String) -> ProjectData {
+        return ProjectData(
+            id: id, name: newName, path: path,
+            tags: tags, notes: notes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
+    /// 只替换名称与路径（重命名/移动后使用）
+    func replacingIdentity(name newName: String, path newPath: String) -> ProjectData {
+        return ProjectData(
+            id: id, name: newName, path: newPath,
+            tags: tags, notes: notes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
+    /// 只替换 ID（合并时沿用既有 ID）
+    func replacingID(_ newID: UUID) -> ProjectData {
+        return ProjectData(
+            id: newID, name: name, path: path,
+            tags: tags, notes: notes,
+            mtime: mtime, size: size, checksum: checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit, git_daily: git_daily,
+            startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: checked
+        )
+    }
+
     /// 向后兼容的初始化器 - 用于BusinessLogic层
     @available(*, deprecated, message: "使用扁平结构的新初始化器")
     init(

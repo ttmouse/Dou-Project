@@ -418,32 +418,14 @@ enum TagLogic {
     static func addTagToProject(_ project: ProjectData, tag: String) -> ProjectData {
         var updatedTags = project.tags
         updatedTags.insert(tag)
-        return ProjectData(
-            id: project.id,
-            name: project.name,
-            path: project.path,
-            lastModified: project.lastModified,
-            tags: updatedTags,
-            notes: project.notes,
-            gitInfo: project.gitInfo,
-            fileSystemInfo: project.fileSystemInfo
-        )
+        return project.replacingTags(updatedTags)
     }
-    
+
     /// 从项目中移除标签
     static func removeTagFromProject(_ project: ProjectData, tag: String) -> ProjectData {
         var updatedTags = project.tags
         updatedTags.remove(tag)
-        return ProjectData(
-            id: project.id,
-            name: project.name,
-            path: project.path,
-            lastModified: project.lastModified,
-            tags: updatedTags,
-            notes: project.notes,
-            gitInfo: project.gitInfo,
-            fileSystemInfo: project.fileSystemInfo
-        )
+        return project.replacingTags(updatedTags)
     }
 }
 
@@ -519,16 +501,7 @@ enum ProjectOperations {
     
     /// 更新项目标签
     static func updateProject(_ project: ProjectData, with tags: Set<String>) -> ProjectData {
-        return ProjectData(
-            id: project.id,
-            name: project.name,
-            path: project.path,
-            lastModified: project.lastModified,
-            tags: tags,
-            notes: project.notes,
-            gitInfo: project.gitInfo,
-            fileSystemInfo: project.fileSystemInfo
-        )
+        return project.replacingTags(tags)
     }
     
     /// 批量更新标签 - 给多个项目添加同一个标签
@@ -578,16 +551,7 @@ enum ProjectOperations {
     
     /// 合并两个项目数据（以第二个为准，但保留ID）
     static func mergeProject(_ existing: ProjectData, with updated: ProjectData) -> ProjectData {
-        return ProjectData(
-            id: existing.id, // 保持原有ID
-            name: updated.name,
-            path: updated.path,
-            lastModified: updated.lastModified,
-            tags: updated.tags,
-            notes: updated.notes,
-            gitInfo: updated.gitInfo,
-            fileSystemInfo: updated.fileSystemInfo
-        )
+        return updated.replacingID(existing.id)
     }
     
     /// 刷新单个项目数据（重新扫描文件系统和Git信息）
@@ -610,44 +574,29 @@ enum ProjectOperations {
            let modificationDate = attributes[.modificationDate] as? Date {
             let size = UInt64(attributes[.size] as? NSNumber ?? 0)
             let checksum = "\(modificationDate.timeIntervalSince1970)_\(size)"
-            updatedProject = ProjectData(
-                id: project.id,
-                name: URL(fileURLWithPath: project.path).lastPathComponent, // 更新可能变化的目录名
-                path: project.path,
-                lastModified: modificationDate,
-                tags: project.tags, // 标签将由外部同步
-                notes: project.notes,
-                gitInfo: project.gitInfo, // Git信息将被重新获取
-                fileSystemInfo: ProjectData.FileSystemInfoData(
+            // 只换文件系统快照：目录名可能变过，其余字段（含 git_daily、
+            // startupCommand、customPort、created）必须原样保留。
+            updatedProject = project.replacingFileSystem(
+                ProjectData.FileSystemInfoData(
                     modificationDate: modificationDate,
                     size: size,
                     checksum: checksum,
                     lastCheckTime: Date()
                 )
-            )
+            ).replacingName(URL(fileURLWithPath: project.path).lastPathComponent)
         }
-        
+
         // 重新获取Git信息
         updatedProject = updateGitInfo(updatedProject)
-        
+
         return updatedProject
     }
-    
+
     /// 更新项目的Git信息
     /// - Parameter project: 项目数据
     /// - Returns: 更新Git信息后的项目数据
     private static func updateGitInfo(_ project: ProjectData) -> ProjectData {
-        let gitInfoData = loadGitInfoData(from: project.path)
-        return ProjectData(
-            id: project.id,
-            name: project.name,
-            path: project.path,
-            lastModified: project.lastModified,
-            tags: project.tags,
-            notes: project.notes,
-            gitInfo: gitInfoData,
-            fileSystemInfo: project.fileSystemInfo
-        )
+        return project.replacingGit(loadGitInfoData(from: project.path))
     }
     
     /// 从指定路径加载Git信息数据
@@ -733,23 +682,21 @@ enum ProjectOperations {
             return .failure(.systemError(error))
         }
         
-        // 4. 更新项目数据
-        let updatedProject = ProjectData(
-            id: project.id, // 保持原ID
-            name: newName,
-            path: newPath,
-            lastModified: Date(),
-            tags: project.tags,
-            notes: project.notes,
-            gitInfo: project.gitInfo,
-            fileSystemInfo: ProjectData.FileSystemInfoData(
-                modificationDate: Date(),
-                size: project.fileSystemInfo.size,
-                checksum: "\(Date().timeIntervalSince1970)_\(project.fileSystemInfo.size)",
-                lastCheckTime: Date()
+        // 4. 更新项目数据：只换名称/路径与文件系统快照。
+        // git_daily、startupCommand、customPort、created 与 git 提交历史都原样保留，
+        // 否则重命名一次就会把配置和热力图数据一起清掉。
+        let now = Date()
+        let updatedProject = project
+            .replacingIdentity(name: newName, path: newPath)
+            .replacingFileSystem(
+                ProjectData.FileSystemInfoData(
+                    modificationDate: now,
+                    size: project.fileSystemInfo.size,
+                    checksum: "\(now.timeIntervalSince1970)_\(project.fileSystemInfo.size)",
+                    lastCheckTime: now
+                )
             )
-        )
-        
+
         return .success(updatedProject)
     }
     
