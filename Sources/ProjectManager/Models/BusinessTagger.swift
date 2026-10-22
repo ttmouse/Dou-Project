@@ -169,7 +169,12 @@ enum BusinessTagger {
     // MARK: - 公共 API
 
     /// 为指定项目路径生成业务标签
-    static func generateBusinessTags(for projectPath: String, projectName: String? = nil, existingTags: Set<String> = []) -> Set<String> {
+    static func generateBusinessTags(
+        for projectPath: String,
+        projectName: String? = nil,
+        existingTags: Set<String> = [],
+        rules: [BusinessTagRule] = activeRules
+    ) -> Set<String> {
         let documentContent = scanProjectDocuments(at: projectPath)
         
         // 将项目名称也加入到待分析内容中，提升匹配能力
@@ -182,7 +187,7 @@ enum BusinessTagger {
 
         var businessTags: Set<String> = []
 
-        for rule in activeRules {
+        for rule in rules {
             if rule.matches(content: analysisContent) {
                 let matchedKeywords = rule.matchedKeywords(content: analysisContent)
                 print("   ✅ 匹配规则 [\(rule.name)]: 关键词 \(matchedKeywords)")
@@ -199,8 +204,20 @@ enum BusinessTagger {
     }
 
     /// 为指定的 Project 对象应用业务标签
-    static func applyBusinessTags(to project: Project, overwrite: Bool = false) -> Project {
-        let newTags = generateBusinessTags(for: project.path, projectName: project.name, existingTags: project.tags)
+    /// 应用业务标签
+    /// - Parameter rules: 参与匹配的规则集。默认用当前启用规则（读用户配置）；
+    ///   测试或批量重扫可显式传入，避免依赖用户磁盘上的配置。
+    static func applyBusinessTags(
+        to project: Project,
+        overwrite: Bool = false,
+        rules: [BusinessTagRule] = activeRules
+    ) -> Project {
+        let newTags = generateBusinessTags(
+            for: project.path,
+            projectName: project.name,
+            existingTags: project.tags,
+            rules: rules
+        )
 
         if overwrite {
             return Project(
@@ -209,6 +226,7 @@ enum BusinessTagger {
                 path: project.path,
                 tags: newTags,
                 mtime: project.mtime,
+                activityAt: project.activityAt,
                 size: project.size,
                 checksum: project.checksum,
                 git_commits: project.git_commits,
@@ -227,6 +245,7 @@ enum BusinessTagger {
                 path: project.path,
                 tags: mergedTags,
                 mtime: project.mtime,
+                activityAt: project.activityAt,
                 size: project.size,
                 checksum: project.checksum,
                 git_commits: project.git_commits,
@@ -241,9 +260,13 @@ enum BusinessTagger {
     }
 
     /// 调试信息：返回指定路径匹配的规则名称
-    static func debugRules(for projectPath: String, projectName: String? = nil) -> [String] {
+    static func debugRules(
+        for projectPath: String,
+        projectName: String? = nil,
+        rules: [BusinessTagRule] = activeRules
+    ) -> [String] {
         let documentContent = scanProjectDocuments(at: projectPath)
         let analysisContent = (projectName ?? "") + "\n\n" + documentContent
-        return activeRules.filter { $0.matches(content: analysisContent) }.map { $0.name }
+        return rules.filter { $0.matches(content: analysisContent) }.map { $0.name }
     }
 }

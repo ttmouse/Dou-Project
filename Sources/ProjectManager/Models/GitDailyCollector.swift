@@ -84,20 +84,19 @@ struct GitDailyCollector {
         process.arguments = arguments
 
         let output = Pipe()
-        let errorPipe = Pipe()
         process.standardOutput = output
-        process.standardError = errorPipe
+        // 不消费的 stderr 不能接 Pipe，否则错误输出也可能塞满管道。
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
-            process.waitUntilExit()
-
-            if let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
-               !errorOutput.isEmpty {
-                print("⚠️ GitDailyCollector: git stderr - \(errorOutput)")
-            }
-
+            // 必须边运行边排空 stdout；大仓库的历史远超管道容量。
             let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                Log.error("Git 历史采集失败，退出码 \(process.terminationStatus)：\(cwd)")
+                return nil
+            }
             let out = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return out?.isEmpty == false ? out : nil
@@ -295,24 +294,7 @@ struct GitDailyCollector {
     }
 
     private static func currentGitHead(for path: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.currentDirectoryURL = URL(fileURLWithPath: path)
-        process.arguments = ["rev-parse", "HEAD"]
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            return nil
-        }
+        runGit(arguments: ["rev-parse", "HEAD"], cwd: path)
     }
 }
 
@@ -333,20 +315,7 @@ extension Project {
     /// 更新git_daily数据
     func withUpdatedGitDaily(days: Int = 365) -> Project {
         if let gitDaily = GitDailyCollector.collectSingleProjectGitDaily(project: self, days: days) {
-            return Project(
-                id: id,
-                name: name,
-                path: path,
-                tags: tags,
-                mtime: mtime,
-                size: size,
-                checksum: checksum,
-                git_commits: git_commits,
-                git_last_commit: git_last_commit,
-                git_daily: gitDaily,
-                created: created,
-                checked: checked
-            )
+            return copyWith(gitDaily: gitDaily)
         }
         return self
     }

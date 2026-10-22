@@ -42,6 +42,49 @@ class ProjectSortManager: SortManagerDelegate {
         return sortedProjects
     }
 
+    /// Git 每日历史不改变任何排序键，直接替换原位置即可。
+    func updateProjectMetadata(_ projects: [Project]) {
+        let updates = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        for index in sortedProjects.indices {
+            if let updated = updates[sortedProjects[index].id] {
+                sortedProjects[index] = updated
+            }
+        }
+    }
+
+    /// 批次更新排序键（活动时间等）：先按 id 建一次索引，避免每项都线性查找，
+    /// 全部替换完只做一次整体重排。
+    func updateProjectsMetadata(_ projects: [Project]) {
+        guard !projects.isEmpty, !sortedProjects.isEmpty else { return }
+        let updates = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        for index in sortedProjects.indices {
+            if let updated = updates[sortedProjects[index].id] {
+                sortedProjects[index] = updated
+            }
+        }
+        sortProjects()
+    }
+
+    /// 批次移除：一次过滤代替多次 remove(at:)，避免数组反复搬移。
+    func removeProjects(_ projects: [Project]) {
+        guard !projects.isEmpty, !sortedProjects.isEmpty else { return }
+        let removedIDs = Set(projects.map(\.id))
+        sortedProjects.removeAll { removedIDs.contains($0.id) }
+    }
+
+    /// 批次插入：一次性并入后统一重排，避免逐项二分插入的数组搬移。
+    func insertProjects(_ projects: [Project]) {
+        guard !projects.isEmpty else { return }
+        var knownIDs = Set(sortedProjects.map(\.id))
+        var added: [Project] = []
+        for project in projects where knownIDs.insert(project.id).inserted {
+            added.append(project)
+        }
+        guard !added.isEmpty else { return }
+        sortedProjects.append(contentsOf: added)
+        sortProjects()
+    }
+
     private func sortProjects() {
         sortedProjects.sort(by: comesBefore)
     }
@@ -98,12 +141,108 @@ class ProjectSortManager: SortManagerDelegate {
 
 // MARK: - 协议定义 - 打破循环依赖
 
+/// 一批项目状态变更。整批只发布一次，相同内容不发布。
+struct ProjectBatchChange {
+    var updates: [UUID: Project] = [:]
+    var removals: Set<UUID> = []
+    /// 批次是否动到标签。活动时间、Git 历史这类只动元数据的批次可跳过标签索引重建。
+    var affectsTags: Bool = true
+}
+
 protocol ProjectOperationDelegate: AnyObject {
     var projects: [UUID: Project] { get set }
     var allTags: Set<String> { get set }
 
     func invalidateTagUsageCache()
     func notifyProjectsChanged()
+    func applyGitDailyUpdates(_ updates: [UUID: Project])
+    @discardableResult
+    func applyProjectBatch(_ change: ProjectBatchChange) -> Int
+}
+
+extension ProjectOperationDelegate {
+    func applyGitDailyUpdates(_ updates: [UUID: Project]) {
+        var snapshot = projects
+        for (id, project) in updates { snapshot[id] = project }
+        projects = snapshot
+        notifyProjectsChanged()
+    }
+
+    /// 批次快照发布：整批只写一次 `projects`，内容与当前状态相同则完全不发布。
+    /// 返回值是实际变化的条数（0 表示没有发布），调用方据此决定是否落盘。
+    @discardableResult
+    func applyProjectBatch(_ change: ProjectBatchChange) -> Int {
+        var snapshot = projects
+        let changed = ProjectBatchMerge.apply(into: &snapshot, change: change)
+        guard changed > 0 else { return 0 }
+        projects = snapshot
+        notifyProjectsChanged()
+        return changed
+    }
+}
+
+/// 批次合并的纯函数部分：只改传入的快照，不碰发布通道。
+///
+/// 单独抽出来是为了让「逐项发布」和「整批发布」的差异可被测试直接测量，
+/// 也避免接入方各自复制一份合并规则（漏掉「不复活已删项目」这类边界）。
+enum ProjectBatchMerge {
+    /// - Returns: 实际变化的条数；0 表示快照与批次内容一致，不需要发布。
+    static func apply(into snapshot: inout [UUID: Project], change: ProjectBatchChange) -> Int {
+        var changed = 0
+
+        // 同一批次里既更新又删除的项目按删除处理：先算变化一次，再统一移除，
+        // 否则会先写回再删掉，白白多一次发布和一次数组复制。
+        for (id, project) in change.updates
+        where !change.removals.contains(id) && snapshot[id] != project {
+            snapshot[id] = project
+            changed += 1
+        }
+
+        // 删除只作用于当前仍存在的项目；批次里附带的新建不会被这里复活。
+        for id in change.removals where snapshot.removeValue(forKey: id) != nil {
+            changed += 1
+        }
+
+        return changed
+    }
+}
+
+/// 标签倒排索引的纯函数维护。
+///
+/// 从 `TagManager` 抽出来，是为了让「一批项目改了标签」的索引变更能在不构造
+/// TagManager（会读写真实用户目录）的前提下被测试覆盖。
+enum ProjectTagIndexLogic {
+    /// 把一批变更增量合并进索引，只动标签真正变化的项目。
+    /// - Parameters:
+    ///   - index: 标签 → 项目 ID 集合的倒排索引，原地修改。
+    ///   - previous: 变更前的项目（用于取旧标签），缺省视为没有旧标签。
+    static func apply(
+        to index: inout [String: Set<UUID>],
+        change: ProjectBatchChange,
+        previous: [UUID: Project]
+    ) {
+        for id in change.removals {
+            remove(id, tags: previous[id]?.tags ?? [], from: &index)
+        }
+
+        for (id, project) in change.updates {
+            let oldTags = previous[id]?.tags ?? []
+            guard oldTags != project.tags else { continue }
+            remove(id, tags: oldTags, from: &index)
+            for tag in project.tags {
+                index[tag, default: []].insert(id)
+            }
+        }
+    }
+
+    private static func remove(_ id: UUID, tags: Set<String>, from index: inout [String: Set<UUID>]) {
+        for tag in tags {
+            index[tag]?.remove(id)
+            if index[tag]?.isEmpty == true {
+                index.removeValue(forKey: tag)
+            }
+        }
+    }
 }
 
 protocol DirectoryWatcherDelegate: AnyObject {
@@ -121,6 +260,28 @@ protocol SortManagerDelegate: AnyObject {
     func insertProject(_ project: Project)
     func updateProject(_ project: Project)
     func removeProject(_ project: Project)
+    func updateProjectMetadata(_ projects: [Project])
+    func updateProjectsMetadata(_ projects: [Project])
+    func insertProjects(_ projects: [Project])
+    func removeProjects(_ projects: [Project])
+}
+
+extension SortManagerDelegate {
+    func updateProjectMetadata(_ projects: [Project]) {
+        for project in projects { updateProject(project) }
+    }
+
+    func updateProjectsMetadata(_ projects: [Project]) {
+        for project in projects { updateProject(project) }
+    }
+
+    func insertProjects(_ projects: [Project]) {
+        for project in projects { insertProject(project) }
+    }
+
+    func removeProjects(_ projects: [Project]) {
+        for project in projects { removeProject(project) }
+    }
 }
 
 // MARK: - 项目操作管理器 - 无循环依赖版本
@@ -189,15 +350,13 @@ class ProjectOperationManager {
     func registerProjects(_ projects: [Project], updateGitDaily: Bool = true) {
         guard let delegate = delegate else { return }
 
-        print("🔄 开始注册 \(projects.count) 个项目")
-        print("📋 当前项目数: \(delegate.projects.count)")
+        Log.info("开始注册 \(projects.count) 个项目（当前 \(delegate.projects.count)）")
 
         var allNewTags = Set<String>()
-        var registeredCount = 0
         var newlyRegistered: [Project] = []
 
-        // 批量注册，不触发单独的保存和系统同步
-        // 注意：这里只做内存合并 —— git 采集已移到后台（见 refreshGitDailyInBackground）
+        // 只做内存合并，不逐项发布：整批写回放在最后一次性完成。
+        // 注意：git 采集已移到后台（见 refreshGitDailyInBackground）
         for project in projects {
             guard ProjectDiscoveryPolicy.isEligibleProjectPath(project.path) else {
                 Log.debug("   ⏭️ 忽略点号项目目录: \(project.path)")
@@ -211,20 +370,32 @@ class ProjectOperationManager {
             }
 
             Log.debug("   ✅ 注册新项目: \(project.name) (ID: \(project.id))")
-            delegate.projects[project.id] = project
-
-            // 收集新标签
-            let newTags = project.tags.subtracting(delegate.allTags)
-            allNewTags.formUnion(newTags)
-            delegate.allTags.formUnion(newTags)
-
-            // 使用委托更新排序
-            sortDelegate?.insertProject(project)
-            registeredCount += 1
             newlyRegistered.append(project)
         }
-        
-        // 统一处理系统标签同步
+
+        guard !newlyRegistered.isEmpty else {
+            Log.info("批量注册完成：没有新项目")
+            return
+        }
+
+        let changed = delegate.applyProjectBatch(
+            ProjectBatchChange(updates: Dictionary(uniqueKeysWithValues: newlyRegistered.map { ($0.id, $0) }))
+        )
+        guard changed > 0 else {
+            Log.info("批量注册完成：没有新项目")
+            return
+        }
+
+        sortDelegate?.insertProjects(newlyRegistered)
+        // 新标签以发布后的项目集合为准，避免同一批次内重复计算。
+        for project in newlyRegistered {
+            allNewTags.formUnion(project.tags)
+        }
+        allNewTags.subtract(delegate.allTags)
+        delegate.allTags.formUnion(allNewTags)
+        delegate.invalidateTagUsageCache()
+
+        // 统一处理系统标签同步（整批一次）
         if !allNewTags.isEmpty {
             let systemTags = TagSystemSync.loadSystemTags()
             var updatedTags = systemTags
@@ -233,23 +404,58 @@ class ProjectOperationManager {
                 TagSystemSync.syncTagsToSystem(updatedTags)
             }
         }
-        
-        // 使标签统计缓存失效
-        delegate.invalidateTagUsageCache()
-        
+
         // 统一保存一次
         saveToCache()
-        
-        // 通知变更
-        delegate.notifyProjectsChanged()
-        
+
         // git_daily 交给后台：只为本次真正入库的项目补数据，
         // 已在库中的项目（skipped）本方法不会更新它们，因此不做无用采集。
-        if updateGitDaily && !newlyRegistered.isEmpty {
+        if updateGitDaily {
             refreshGitDailyInBackground(for: newlyRegistered)
         }
 
-        print("批量注册完成：成功注册 \(registeredCount) 个项目，发现新标签 \(allNewTags.count) 个")
+        Log.info("批量注册完成：成功注册 \(newlyRegistered.count) 个项目，发现新标签 \(allNewTags.count) 个")
+    }
+
+    /// 文件事件风暴的批量落点：整批只发布一次 `projects`，内容无变化则完全不发布。
+    ///
+    /// 症状（本方法要解决的问题）：`registerProject`/`updateProjects`/`removeProject`
+    /// 各自逐项写 `projects`，每个 `@Published` 字典写入都会复制一次并同步通知观察者；
+    /// FSEvents 一批事件命中多个项目时，列表因此收到成倍通知、重复重建索引与筛选。
+    /// 现在先合并成批次，再一次性写回快照。
+    ///
+    /// - Returns: 实际变化并发布的条数；0 表示批次内容与当前状态一致。
+    @discardableResult
+    func applyProjectBatch(updates: [Project], removals: Set<UUID> = []) -> Int {
+        guard let delegate = delegate else { return 0 }
+
+        // 以当前字典为准：只更新仍存在的项目，不复活批次排队期间被删掉的项目。
+        var changedUpdates: [UUID: Project] = [:]
+        for project in updates {
+            guard let current = delegate.projects[project.id], current != project else { continue }
+            changedUpdates[project.id] = project
+        }
+        // 排序缓存要先拿到旧值，发布之后字典里就没有了。
+        let removedProjects = removals.compactMap { delegate.projects[$0] }
+        let existingRemovals = Set(removedProjects.map(\.id))
+        guard !changedUpdates.isEmpty || !existingRemovals.isEmpty else { return 0 }
+
+        let published = delegate.applyProjectBatch(
+            ProjectBatchChange(updates: changedUpdates, removals: existingRemovals)
+        )
+        guard published > 0 else { return 0 }
+
+        // 排序缓存与发布在同一轮内完成：订阅方收到发布后立刻读排序列表，
+        // 读到的是同一批数据（顺序与 Git 回填路径一致）。
+        if !changedUpdates.isEmpty {
+            sortDelegate?.updateProjectsMetadata(Array(changedUpdates.values))
+        }
+        if !removedProjects.isEmpty {
+            sortDelegate?.removeProjects(removedProjects)
+        }
+        delegate.invalidateTagUsageCache()
+        saveToCache()
+        return published
     }
 
     /// 后台补齐 git_daily，完成后回主线程逐项目更新
@@ -258,59 +464,79 @@ class ProjectOperationManager {
     /// 而多数调用方在主线程（`DispatchQueue.main.async`、通知回调、工具栏命令），
     /// 193 个仓库的 `git log`/`rev-parse` 会把 UI 阻塞数秒。
     /// 现在：注册立即返回（项目马上可见），git 数据随后补齐。
-    private func refreshGitDailyInBackground(for projects: [Project]) {
+    func refreshGitDailyInBackground(for projects: [Project], days: Int = 365) {
         gitQueue.async { [weak self] in
-            let updated = GitDailyCollector.updateProjectsWithGitDaily(projects, days: 365)
+            let updated = GitDailyCollector.updateProjectsWithGitDaily(projects, days: days)
+            let changes = Dictionary(uniqueKeysWithValues: updated.compactMap { project in
+                project.git_daily.map { (project.id, $0) }
+            })
 
             DispatchQueue.main.async {
-                guard let self = self, let delegate = self.delegate else { return }
-
-                var changedCount = 0
-                for project in updated {
-                    // 项目可能在采集期间被删除，或已被更新的数据覆盖
-                    guard let current = delegate.projects[project.id] else { continue }
-                    guard let newGitDaily = project.git_daily, current.git_daily != newGitDaily else { continue }
-
-                    // 只回写 git_daily：采集期间用户可能改过标签/端口，
-                    // 整对象覆盖会把采集时的旧快照写回去
-                    let merged = current.copyWith(gitDaily: newGitDaily)
-                    delegate.projects[project.id] = merged
-                    self.sortDelegate?.updateProject(merged)
-                    changedCount += 1
-                }
-
-                guard changedCount > 0 else { return }
-                delegate.invalidateTagUsageCache()
-                self.saveToCache()
-                delegate.notifyProjectsChanged()
-                print("✅ 后台补齐 git_daily：\(changedCount) 个项目")
+                self?.applyGitDaily(changes)
             }
         }
     }
-    
-    /// 更新不需要重新扫描或执行 Git 查询的项目活动时间。
-    func updateProjects(_ projects: [Project]) {
-        guard let delegate = delegate, !projects.isEmpty else { return }
 
-        for project in projects {
-            guard delegate.projects[project.id] != nil else { continue }
-            delegate.projects[project.id] = project
-            sortDelegate?.updateProject(project)
+    /// 合并时重新读取当前项目，只替换历史字段，不复活已删除的项目。
+    func applyGitDaily(_ values: [UUID: String]) {
+        guard let delegate = delegate else { return }
+        var changes: [UUID: Project] = [:]
+        for (id, gitDaily) in values {
+            guard let current = delegate.projects[id], current.git_daily != gitDaily else { continue }
+            changes[id] = current.copyWith(gitDaily: gitDaily)
         }
-
-        delegate.notifyProjectsChanged()
+        guard !changes.isEmpty else { return }
+        sortDelegate?.updateProjectMetadata(Array(changes.values))
+        delegate.applyGitDailyUpdates(changes)
         saveToCache()
+        Log.debug("后台补齐 git_daily：\(changes.count) 个项目")
+    }
+    
+    /// 批量更新项目属性（标签/端口等整条快照路径）。
+    ///
+    /// 文件事件风暴会一次送来几十上百个项目：逐项写 `projects` 会让每个
+    /// `@Published` 字典都复制一次并同步通知观察者，列表随后又整体重算一遍。
+    /// 这里先在字典外合并、过滤掉相同值，再整批发布一次。
+    func updateProjects(_ updates: [Project]) {
+        _ = applyProjectBatch(updates: updates)
+    }
+
+    /// 文件事件专用：整批只提升 `activityAt`，整批发布一次。
+    ///
+    /// 与 `updateProjects` 的差别是合并时重新读取当前项目，只改活动时间一个字段；
+    /// 事件排队期间用户改过的标签、端口、启动命令都保留，
+    /// 期间被删除的项目也不会被这批旧快照复活。
+    @discardableResult
+    func applyActivityBatch(_ projectIDs: Set<UUID>, at activityAt: Date) -> Int {
+        guard let delegate = delegate, !projectIDs.isEmpty else { return 0 }
+
+        var changes: [UUID: Project] = [:]
+        for id in projectIDs {
+            guard let current = delegate.projects[id], activityAt > current.activityAt else { continue }
+            changes[id] = current.copyWith(activityAt: activityAt)
+        }
+        guard !changes.isEmpty else { return 0 }
+
+        let changed = delegate.applyProjectBatch(
+            ProjectBatchChange(updates: changes, removals: [], affectsTags: false)
+        )
+        guard changed > 0 else { return 0 }
+
+        // 活动时间就是排序键，排序缓存必须跟着换位置（不能只原位替换）。
+        sortDelegate?.updateProjectsMetadata(Array(changes.values))
+        // 活动时间不影响标签归属，跳过标签索引重建。
+        saveToCache()
+        return changed
     }
 
     func removeProject(_ id: UUID) {
         guard let delegate = delegate,
               let project = delegate.projects[id] else { return }
-        
-        delegate.projects.removeValue(forKey: id)
+
         sortDelegate?.removeProject(project)
+        delegate.applyProjectBatch(ProjectBatchChange(removals: [id]))
         delegate.invalidateTagUsageCache()
-        delegate.notifyProjectsChanged()
-        
+
         saveToCache()
     }
     
@@ -377,26 +603,22 @@ class DirectoryWatcher {
     }
 
     /// 用 FSEvents 的变更路径增量更新活动时间，不递归扫描项目内容。
+    ///
+    /// 一批事件可能命中几十个项目。旧实现为每个命中的项目复制一次快照、逐项写
+    /// `projects` 让 `@Published` 每次都通知观察者；现在只传命中的项目 ID，
+    /// 由 `applyActivityBatch` 重新读取当前值后整批发布一次。
     private func updateActivity(for changedPaths: Set<String>) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let delegate = self.delegate else { return }
 
-            let changedProjects = delegate.projects.values.filter { project in
+            let changedIDs = Set(delegate.projects.values.compactMap { project -> UUID? in
                 changedPaths.contains { changedPath in
                     changedPath == project.path || changedPath.hasPrefix(project.path + "/")
-                }
-            }
-            guard !changedProjects.isEmpty else { return }
+                } ? project.id : nil
+            })
+            guard !changedIDs.isEmpty else { return }
 
-            let activityAt = Date()
-            var updates: [Project] = []
-            for var project in changedProjects where activityAt > project.activityAt {
-                project.activityAt = activityAt
-                updates.append(project)
-            }
-
-            guard !updates.isEmpty else { return }
-            self.operationManager?.updateProjects(updates)
+            self.operationManager?.applyActivityBatch(changedIDs, at: Date())
         }
     }
 
@@ -519,12 +741,13 @@ class DirectoryWatcher {
     
     private func removeProjectsInDirectory(_ path: String) {
         guard let delegate = delegate else { return }
-        
-        // 删除该目录下的所有项目
-        let projectsToRemove = delegate.projects.values.filter { $0.path.hasPrefix(path) }
-        for project in projectsToRemove {
-            operationManager?.removeProject(project.id)
-        }
+
+        // 删除该目录下的所有项目：整批一次发布，不逐项移除再逐项通知。
+        let idsToRemove = Set(delegate.projects.values
+            .filter { $0.path.hasPrefix(path) }
+            .map(\.id))
+        guard !idsToRemove.isEmpty else { return }
+        _ = operationManager?.applyProjectBatch(updates: [], removals: idsToRemove)
     }
     
     func clearCacheAndReloadProjects() {
@@ -736,13 +959,14 @@ class DirectoryWatcher {
                 print("新增项目: \(addedPaths.count) 个, 移除项目: \(removedPaths.count) 个")
                 
                 DispatchQueue.main.async {
-                    // 1. 删除已移除的项目
-                    for path in removedPaths {
-                        if let project = existingProjects.values.first(where: { $0.path == path }) {
-                            self.operationManager?.removeProject(project.id)
-                        }
+                    // 1. 删除已移除的项目：整批一次发布，不逐项通知。
+                    let removedIDs = Set(existingProjects.values
+                        .filter { removedPaths.contains($0.path) }
+                        .map(\.id))
+                    if !removedIDs.isEmpty {
+                        self.operationManager?.applyProjectBatch(updates: [], removals: removedIDs)
                     }
-                    
+
                     // 2. 收集需要注册/更新的项目
                     var projectsToRegister: [Project] = []
                     for project in allProjects {

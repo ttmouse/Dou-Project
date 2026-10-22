@@ -2,6 +2,8 @@ import SwiftUI
 
 /// 统一的热力图配置
 struct HeatmapConfig {
+    static let maxDays = 365
+
     let days: Int                    // 显示天数
     let showTooltip: Bool           // 是否显示悬浮提示
     let showHeader: Bool            // 是否显示头部标签（月份等）
@@ -9,6 +11,24 @@ struct HeatmapConfig {
     let showWeekdayLabels: Bool     // 是否显示星期标签
     let compactMode: Bool           // 紧凑模式（侧边栏用）
     let useAdaptiveSpacing: Bool    // 是否使用自适应间距
+
+    init(
+        days: Int,
+        showTooltip: Bool,
+        showHeader: Bool,
+        showLegend: Bool,
+        showWeekdayLabels: Bool,
+        compactMode: Bool,
+        useAdaptiveSpacing: Bool
+    ) {
+        self.days = min(max(days, 1), Self.maxDays)
+        self.showTooltip = showTooltip
+        self.showHeader = showHeader
+        self.showLegend = showLegend
+        self.showWeekdayLabels = showWeekdayLabels
+        self.compactMode = compactMode
+        self.useAdaptiveSpacing = useAdaptiveSpacing
+    }
     
     // 预设配置
     static let sidebar = HeatmapConfig(
@@ -44,6 +64,8 @@ struct UnifiedHeatmapView: View {
     @State private var isGenerating = false
     @State private var hoveredCell: HeatmapLogic.HeatmapData?
     @State private var showTooltip = false
+    /// 数据生成代次：用于丢弃已过期的并行计算结果
+    @State private var generationToken = 0
     
     init(
         projects: [ProjectData], 
@@ -361,15 +383,27 @@ struct UnifiedHeatmapView: View {
     
     // MARK: - 数据生成
     
+    /// 生成热力图数据
+    /// 症状（本次修复）：看板首帧卡 5 秒 —— 本视图被推断为 @MainActor（View 协议的隔离），
+    /// 普通 `Task {}` 会继承主 actor 并在主线程同步跑完整轮重计算。
+    /// 改用 Task.detached 真正下放后台，并用 token 丢弃过期结果（并行后可能后发先至）。
     private func generateHeatmapData() {
         guard !projects.isEmpty else { return }
-        
+
+        // 快照输入，避免后台线程读取视图属性
+        let snapshot = projects
+        let days = min(config.days, HeatmapConfig.maxDays)
+
+        generationToken &+= 1
+        let token = generationToken
+
         isGenerating = true
-        
-        Task {
-            let data = HeatmapLogic.generateHeatmapData(from: projects, days: config.days)
-            
+
+        Task.detached(priority: .userInitiated) {
+            let data = HeatmapLogic.generateHeatmapData(from: snapshot, days: days)
+
             await MainActor.run {
+                guard token == self.generationToken else { return }  // 已有更新的请求，丢弃本次结果
                 self.heatmapData = data
                 self.isGenerating = false
             }

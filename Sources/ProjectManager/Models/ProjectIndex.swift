@@ -110,6 +110,9 @@ class ProjectIndex {
                     .isDirectoryKey, .contentModificationDateKey,
                 ])
                 guard let isDirectory = resourceValues.isDirectory, isDirectory else { continue }
+                guard ProjectDiscoveryPolicy.isEligibleChildDirectory(named: url.lastPathComponent) else {
+                    continue
+                }
                 
                 let itemPath = url.path
                 childPaths.append(itemPath)
@@ -191,14 +194,14 @@ class ProjectIndex {
         
         // 对每个监视目录进行扫描
         for watchedDir in watchedDirectories {
-            print("处理监视目录: \(watchedDir)")
+            Log.debug("处理监视目录: \(watchedDir)")
             
             // 检查监视目录本身是否是项目
             if let entry = indexEntries[watchedDir], entry.isProject, !processedPaths.contains(watchedDir) {
                 if let project = Project.createProject(at: watchedDir, existingProjects: existingProjects) {
                     projects.append(project)
                     processedPaths.insert(watchedDir)
-                    print("添加项目: \(watchedDir)")
+                    Log.debug("添加项目: \(watchedDir)")
                 }
             }
             
@@ -206,13 +209,16 @@ class ProjectIndex {
             if let children = indexEntries[watchedDir]?.children {
                 for childPath in children {
                     if !processedPaths.contains(childPath),
+                       ProjectDiscoveryPolicy.isEligibleChildDirectory(
+                           named: URL(fileURLWithPath: childPath).lastPathComponent
+                       ),
                        let entry = indexEntries[childPath],
                        entry.isProject
                     {
                         if let project = Project.createProject(at: childPath, existingProjects: existingProjects) {
                             projects.append(project)
                             processedPaths.insert(childPath)
-                            print("添加子项目: \(childPath)")
+                            Log.debug("添加子项目: \(childPath)")
                         }
                     }
                 }

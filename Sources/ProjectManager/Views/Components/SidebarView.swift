@@ -16,6 +16,7 @@ struct SidebarView: View {
     @State private var heatmapSelectedProjects: [ProjectData] = []
     @State private var showProjectPopover = false
     @State private var selectedDateString = ""
+    @State private var isHeatmapLoaded = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -74,13 +75,11 @@ struct SidebarView: View {
                 isPresented: $showProjectPopover
             )
         }
-        .onAppear {
-            // 启动时触发热力图数据更新
-            triggerHeatmapRefresh()
-        }
         .onChange(of: tagManager.projects.count) { _ in
-            // 项目数量变化时更新热力图缓存
-            triggerHeatmapRefresh()
+            // 只有用户已经打开过热力图时才刷新缓存。
+            if isHeatmapLoaded {
+                triggerHeatmapRefresh()
+            }
         }
     }
     
@@ -123,20 +122,35 @@ struct SidebarView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
             
-            SidebarHeatmapView(
-                onDateSelected: { projects in
-                    heatmapSelectedProjects = projects
-                    selectedDateString = formatSelectedDate(from: projects)
-                    showProjectPopover = true
-                },
-                onDateFilter: { projectIds in
-                    heatmapFilteredProjectIds = projectIds
-                    selectedTags.removeAll()
-                    selectedDirectory = nil
-                    NSApp.keyWindow?.makeFirstResponder(nil)
-                    searchBarRef?.clearFocus()
+            if isHeatmapLoaded {
+                SidebarHeatmapView(
+                    onDateSelected: { projects in
+                        heatmapSelectedProjects = projects
+                        selectedDateString = formatSelectedDate(from: projects)
+                        showProjectPopover = true
+                    },
+                    onDateFilter: { projectIds in
+                        heatmapFilteredProjectIds = projectIds
+                        selectedTags.removeAll()
+                        selectedDirectory = nil
+                        NSApp.keyWindow?.makeFirstResponder(nil)
+                        searchBarRef?.clearFocus()
+                    }
+                )
+            } else {
+                Button {
+                    isHeatmapLoaded = true
+                    triggerHeatmapRefresh()
+                } label: {
+                    Label("加载开发活动热力图", systemImage: "chart.bar.xaxis")
+                        .font(AppTheme.captionFont)
+                        .foregroundColor(AppTheme.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
                 }
-            )
+                .buttonStyle(.plain)
+                .help("按需加载最近 90 天的 Git 活动")
+            }
         }
     }
     
@@ -270,6 +284,7 @@ struct DirectoryManageButton: View {
                 }) {
                     Label("智能刷新", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .disabled(tagManager.scanState.isScanning)
                 
                 Button(action: {
                     tagManager.clearCacheAndReloadProjects()  // 保留传统全量刷新作为备用
@@ -277,6 +292,7 @@ struct DirectoryManageButton: View {
                     Label("完全重新加载", systemImage: "arrow.counterclockwise")
                         .foregroundColor(.orange)
                 }
+                .disabled(tagManager.scanState.isScanning)
             } label: {
                 Label("刷新与重载", systemImage: "arrow.clockwise")
             }
@@ -381,14 +397,19 @@ struct TagListView: View {
     }
     
     private var tagListContent: some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        // 标签使用统计只算一次：原先排序比较器里每次比较都重算整份统计，
+        // 一次排序会重复计算 O(tags × log(tags)) 次，标签多时明显拖慢侧边栏重绘。
+        let statistics = tagManager.getAllTagStatistics()
+        let sortedTags = TagLogic.sortTagsByUsage(Array(tagManager.allTags), usage: statistics)
+
+        return ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
                 // 添加"全部"特殊标签
                 TagRow(
                     tag: "全部",
                     isSelected: selectedTags.isEmpty,
                     count: tagManager.projects.count,
-                    action: { 
+                    action: {
                         onTagSelected("全部")  // 使用统一的回调
                     },
                     onDrop: nil,
@@ -401,7 +422,7 @@ struct TagListView: View {
                     tag: "没有标签",
                     isSelected: selectedTags.contains("没有标签"),
                     count: tagManager.projects.values.filter { $0.tags.isEmpty }.count,
-                    action: { 
+                    action: {
                         onTagSelected("没有标签")  // 使用统一的回调
                     },
                     onDrop: nil,
@@ -409,17 +430,11 @@ struct TagListView: View {
                     tagManager: tagManager
                 )
 
-                ForEach(
-                    Array(tagManager.allTags).sorted { tag1, tag2 in
-                        let count1 = tagManager.getUsageCount(for: tag1)
-                        let count2 = tagManager.getUsageCount(for: tag2)
-                        return count1 > count2
-                    }, id: \.self
-                ) { tag in
+                ForEach(sortedTags, id: \.self) { tag in
                     TagRow(
                         tag: tag,
                         isSelected: selectedTags.contains(tag),
-                        count: tagManager.getUsageCount(for: tag),
+                        count: statistics[tag] ?? 0,
                         action: { onTagSelected(tag) },  // 使用统一的回调
                         onDrop: { _ in handleDrop(tag: tag) },
                         onRename: {

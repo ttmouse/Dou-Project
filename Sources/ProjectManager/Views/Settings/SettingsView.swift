@@ -197,7 +197,7 @@ struct EditorRowView: View {
                     editorManager.updateEditor(updatedEditor)
                 }
             ))
-            .toggleStyle(SwitchToggleStyle(tint: AppTheme.accent))
+            .toggleStyle(DarkModeToggleStyle(tint: AppTheme.accent))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -431,7 +431,7 @@ struct BusinessRuleRowView: View {
                     get: { rule.isEnabled },
                     set: { _ in onToggle() }
                 ))
-                .toggleStyle(SwitchToggleStyle(tint: AppTheme.accent))
+                .toggleStyle(DarkModeToggleStyle(tint: AppTheme.accent))
                 
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
@@ -538,7 +538,7 @@ struct BusinessRuleEditView: View {
                 
                 // 启用状态
                 Toggle("启用此规则", isOn: $isEnabled)
-                    .toggleStyle(SwitchToggleStyle(tint: AppTheme.accent))
+                    .toggleStyle(DarkModeToggleStyle(tint: AppTheme.accent))
                 
                 Spacer()
                 
@@ -592,6 +592,32 @@ struct BusinessRuleEditView: View {
         )
         
         onSave(newRule)
+    }
+}
+
+// MARK: - 自定义开关样式
+
+struct DarkModeToggleStyle: ToggleStyle {
+    var tint: Color = AppTheme.accent
+    
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            
+            RoundedRectangle(cornerRadius: 16)
+                .fill(configuration.isOn ? tint : Color.white.opacity(0.25))
+                .frame(width: 44, height: 26)
+                .overlay(
+                    Circle()
+                        .fill(Color.white)
+                        .padding(2)
+                        .offset(x: configuration.isOn ? 9 : -9)
+                )
+                .animation(.easeInOut(duration: 0.15), value: configuration.isOn)
+                .onTapGesture {
+                    configuration.isOn.toggle()
+                }
+        }
     }
 }
 

@@ -120,3 +120,8 @@ tasks/
 .gitignore
 .claude/
 .treesprojects-linus-format.json
+
+# 验证产物与临时目录（构建输出、截图、录屏、旧包备份；不进版本库）
+artifacts/
+.pm-tag-package-*/
+.dsh/

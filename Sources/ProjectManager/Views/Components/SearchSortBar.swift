@@ -1,16 +1,18 @@
 import SwiftUI
 
 struct SearchSortBar: View {
-    @Binding var searchText: String
+    let searchInput: ProjectSearchInput
     @Binding var sortOption: SortOption
     @Binding var dateFilter: DateFilter
     @Binding var searchBarRef: SearchBar?
     @Binding var showDetailPanel: Bool
+    @Binding var projectViewMode: ProjectViewMode
     let tagManager: TagManager
     @State private var isShowingDashboard = false
-    
-    private var projectDataArray: [ProjectData] {
-        return Array(tagManager.projects.values).map { project in
+    @State private var dashboardProjects: [ProjectData] = []
+
+    private func makeDashboardProjects() -> [ProjectData] {
+        Array(tagManager.projects.values).map { project in
             ProjectData(
                 id: project.id,
                 name: project.name,
@@ -25,9 +27,9 @@ struct SearchSortBar: View {
                 },
                 fileSystemInfo: ProjectData.FileSystemInfoData(
                     modificationDate: project.fileSystemInfo.modificationDate,
-                    size: project.fileSystemInfo.size,
-                    checksum: project.fileSystemInfo.checksum,
-                    lastCheckTime: project.fileSystemInfo.lastCheckTime
+                    size: UInt64(project.size),
+                    checksum: project.checksum,
+                    lastCheckTime: project.checked
                 )
             )
         }
@@ -39,6 +41,7 @@ struct SearchSortBar: View {
             HStack(spacing: 8) {
                 // 仪表盘按钮
                 Button(action: {
+                    dashboardProjects = makeDashboardProjects()
                     isShowingDashboard = true
                 }) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
@@ -48,32 +51,43 @@ struct SearchSortBar: View {
                 .buttonStyle(.plain)
                 .help("项目仪表盘")
                 
-                // 详情面板切换按钮
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showDetailPanel.toggle()
+                Picker("视图", selection: $projectViewMode) {
+                    ForEach(ProjectViewMode.allCases, id: \.self) { mode in
+                        Image(systemName: mode.icon)
+                            .tag(mode)
                     }
-                }) {
-                    Image(systemName: "sidebar.trailing")
-                        .foregroundColor(showDetailPanel ? AppTheme.accent : AppTheme.titleBarIcon)
-                        .font(.system(size: 18))
                 }
-                .buttonStyle(.plain)
-                .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 72, height: 24)
+                .help(projectViewMode.title)
             }
-            
-            // 搜索框
-            SearchBar(text: $searchText)
+
+            // 搜索框占据中间剩余空间，避免右侧控件溢出
+            SearchBar(input: searchInput)
                 .modifier(ViewReferenceSetter(reference: $searchBarRef))
-            
+                .frame(maxWidth: .infinity)
+
             // 右侧筛选和排序
             DateFilterMenu(dateFilter: $dateFilter)
-            
             SortButtons(sortOption: $sortOption)
+
+            // 详情面板从右侧展开，开关固定在工具栏最右侧以保持空间映射。
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showDetailPanel.toggle()
+                }
+            }) {
+                Image(systemName: "sidebar.trailing")
+                    .foregroundColor(showDetailPanel ? AppTheme.accent : AppTheme.titleBarIcon)
+                    .font(.system(size: 18))
+            }
+            .buttonStyle(.plain)
+            .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
         }
         .sheet(isPresented: $isShowingDashboard) {
             DashboardView(
-                projects: projectDataArray,
+                projects: dashboardProjects,
                 onClose: {
                     isShowingDashboard = false
                 }
@@ -100,29 +114,34 @@ struct SortButtons: View {
         HStack(spacing: 8) {
             // 时间排序按钮
             Button(action: {
-                switch sortOption {
-                case .timeDesc: sortOption = .timeAsc
-                case .timeAsc: sortOption = .timeDesc
-                case .commitCount: sortOption = .timeDesc
-                }
+                sortOption = sortOption.toggled(for: .activity)
             }) {
-                Image(systemName: sortOption == .timeAsc ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                    .foregroundColor(sortOption == .commitCount ? AppTheme.titleBarIcon : AppTheme.accent)
+                Image(systemName: sortOption.column == .activity && sortOption.isAscending
+                    ? "arrow.up.circle.fill"
+                    : "arrow.down.circle.fill")
+                    .foregroundColor(sortOption.column == .activity ? AppTheme.accent : AppTheme.titleBarIcon)
                     .font(.system(size: 20))
             }
             .buttonStyle(.plain)
-            .help(sortOption == .timeAsc ? "最早的在前" : "最新的在前")
+            .help(sortOption.column == .activity && sortOption.isAscending ? "最早的在前" : "最新的在前")
 
             // 提交次数排序按钮
             Button(action: {
-                sortOption = .commitCount
+                sortOption = sortOption.toggled(for: .commits)
             }) {
-                Image(systemName: "number.circle.fill")
-                    .foregroundColor(sortOption == .commitCount ? AppTheme.accent : AppTheme.titleBarIcon)
-                    .font(.system(size: 20))
+                HStack(spacing: 2) {
+                    Image(systemName: "number.circle.fill")
+                        .font(.system(size: 20))
+
+                    if sortOption.column == .commits {
+                        Image(systemName: sortOption.isAscending ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                }
+                .foregroundColor(sortOption.column == .commits ? AppTheme.accent : AppTheme.titleBarIcon)
             }
             .buttonStyle(.plain)
-            .help("按提交次数排序")
+            .help(sortOption.column == .commits && sortOption.isAscending ? "提交少的在前" : "提交多的在前")
         }
     }
 }
@@ -131,11 +150,12 @@ struct SortButtons: View {
 struct SearchSortBar_Previews: PreviewProvider {
     static var previews: some View {
         SearchSortBar(
-            searchText: .constant(""),
-            sortOption: .constant(.timeDesc),
+            searchInput: ProjectSearchInput(),
+            sortOption: .constant(.timeDescending),
             dateFilter: .constant(.all),
             searchBarRef: .constant(nil),
             showDetailPanel: .constant(false),
+            projectViewMode: .constant(.grid),
             tagManager: TagManager()
         )
     }
@@ -158,21 +178,24 @@ struct DateFilterMenu: View {
                 }
             }
         } label: {
-            Label(dateFilter.shortLabel, systemImage: "calendar")
-                .labelStyle(.titleAndIcon)
+            HStack(spacing: 3) {
+                Image(systemName: "calendar")
+                Text(dateFilter.compactLabel)
+            }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(AppTheme.titleBarIcon)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AppTheme.searchBarBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(AppTheme.searchBarBorder, lineWidth: 1)
-                )
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
                 .fixedSize()
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        // Borderless menus otherwise absorb the toolbar's remaining width, which also
+        // makes the opened menu nearly as wide as the window.
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityLabel("日期筛选")
+        .accessibilityValue(dateFilter.title)
         .help("按日期筛选项目")
     }
 }

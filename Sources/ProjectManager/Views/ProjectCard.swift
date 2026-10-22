@@ -23,14 +23,18 @@ struct ProjectCard: View, Equatable {
     let displayTags: [TagDisplayData]
     
     @ObservedObject var editorManager: EditorManager
-    @State private var isEditingTags = false
-    @State private var isRenamingProject = false
     let onTagSelected: (String) -> Void
     let onSelect: (Bool) -> Void
     let onShowDetail: () -> Void
 
-    @State private var showPortConflictAlert = false
-    @State private var conflictPort = 0
+    // 弹层一律上提到网格层。
+    //
+    // 背景：每张卡原先各挂两个 `.sheet` 和一个 `.alert`。200 张卡就是 600 份
+    // 平台弹层锚点与手势识别器，每次列表整体替换都要跟着重建一遍。
+    // 卡片只负责「请求」，由 ProjectGridView 用单份弹层承载。
+    let onRequestEditTags: (Project) -> Void
+    let onRequestRename: (Project) -> Void
+    let onPortConflict: (Project, Int) -> Void
     
     // MARK: - 子视图
     
@@ -55,7 +59,7 @@ struct ProjectCard: View, Equatable {
             }
 
             // 编辑标签按钮
-            Button(action: { isEditingTags = true }) {
+            Button(action: { onRequestEditTags(project) }) {
                 Image(systemName: "tag")
                     .foregroundColor(AppTheme.secondaryIcon)
             }
@@ -95,7 +99,7 @@ struct ProjectCard: View, Equatable {
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
                     .foregroundColor(AppTheme.secondaryIcon)
-                Text(ProjectCard.dateTimeFormatter.string(from: project.lastModified))
+                Text(ProjectCard.dateTimeFormatter.string(from: project.activityAt))
             }
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)
@@ -226,7 +230,7 @@ struct ProjectCard: View, Equatable {
         }
         
         Button(action: {
-            isRenamingProject = true
+            onRequestRename(project)
         }) {
             Label("重命名项目", systemImage: "pencil")
         }
@@ -257,8 +261,7 @@ struct ProjectCard: View, Equatable {
         case .failure(let error):
             print("启动失败: \(error)")
         case .portBusy(let port, _):
-            conflictPort = port
-            showPortConflictAlert = true
+            onPortConflict(project, port)
         }
     }
 
@@ -267,12 +270,10 @@ struct ProjectCard: View, Equatable {
     // MARK: - Equatable
     
     static func == (lhs: ProjectCard, rhs: ProjectCard) -> Bool {
+        // 不再比较本地弹层状态：卡片已经不持有它们。
         return lhs.project == rhs.project &&
                lhs.isSelected == rhs.isSelected &&
-               lhs.displayTags == rhs.displayTags && // Compare explicit data
-               lhs.isEditingTags == rhs.isEditingTags &&
-               lhs.isRenamingProject == rhs.isRenamingProject &&
-               lhs.showPortConflictAlert == rhs.showPortConflictAlert
+               lhs.displayTags == rhs.displayTags
     }
 
     var body: some View {
@@ -314,12 +315,20 @@ struct ProjectCard: View, Equatable {
                         ? AppTheme.cardSelectedBorderWidth : AppTheme.cardBorderWidth
                 )
         )
-        .shadow(
-            color: isSelected ? AppTheme.cardSelectedShadow : AppTheme.cardShadow,
-            radius: isSelected ? AppTheme.cardSelectedShadowRadius : 4,
-            x: 0,
-            y: 2
-        )
+        // 去掉了每卡的 `.shadow`。
+        //
+        // 背景：`cardShadow` 主题色本来就是 alpha 0（不可见），但 `.shadow(radius: 4)`
+        // 依然会让 Core Animation 为每张卡建立离屏模糊图层——200 张卡就是 200 个
+        // 离屏合成层，而视觉上什么也没变。选中态的强调用左侧色条表达（在下方 overlay 里）。
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(AppTheme.accent)
+                    .frame(width: 3)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 1)
+            }
+        }
         .onTapGesture {
             let flags = NSEvent.modifierFlags
             let isShiftPressed = flags.contains(.shift)
@@ -376,40 +385,8 @@ struct ProjectCard: View, Equatable {
         .contextMenu {
             contextMenuContent
         }
-        .sheet(isPresented: $isEditingTags) {
-            TagEditorView(project: project, tagManager: tagManager)
-        }
-        .sheet(isPresented: $isRenamingProject) {
-            ProjectRenameDialog(
-                project: project,
-                isPresented: $isRenamingProject,
-                tagManager: tagManager
-            ) { result in
-                // 处理重命名结果
-                switch result {
-                case .success():
-                    print("✅ 项目重命名成功")
-                case .failure(let error):
-                    print("❌ 项目重命名失败: \(error.localizedDescription)")
-                }
-            }
-        }
-        .alert("端口冲突", isPresented: $showPortConflictAlert) {
-            Button("终止占用进程并启动", role: .destructive) {
-                _ = ProjectRunner.killProcessAndRun(project)
-            }
-            Button("使用随机端口启动") {
-                _ = ProjectRunner.run(project, useRandomPort: true)
-            }
-            Button("取消", role: .cancel) { }
-        } message: {
-            Text("端口 \(conflictPort) 正在被使用。您想如何处理？")
-        }
-        // 使用 drawingGroup 优化复杂视图渲染，特别是阴影
-        // 注意：drawingGroup 会将视图渲染为位图，对于包含大量文本的视图可能需要测试清晰度
-        // 在这里主要是为了优化阴影和圆角的重绘性能
-        // .drawingGroup() 
-        // 暂时注释掉，drawingGroup 在某些情况下会导致文字模糊，待进一步测试
+        // 弹层已上提到 ProjectGridView：这里只上报意图。
+        // 卡片不再持有 @State 弹层开关，也就没有每卡的 sheet/alert 平台锦点。
     }
 }
 
@@ -447,7 +424,10 @@ struct ProjectCard_Previews: PreviewProvider {
             editorManager: EditorManager(),
             onTagSelected: { _ in },
             onSelect: { _ in },
-            onShowDetail: { }
+            onShowDetail: { },
+            onRequestEditTags: { _ in },
+            onRequestRename: { _ in },
+            onPortConflict: { _, _ in }
         )
         .padding()
     }

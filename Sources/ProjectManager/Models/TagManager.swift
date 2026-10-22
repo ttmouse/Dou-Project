@@ -3,6 +3,27 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
+enum ProjectScanState: Equatable {
+    case idle
+    case scanning(directory: String)
+    case completed(directory: String, discovered: Int)
+    case failed(directory: String, message: String)
+
+    var isScanning: Bool {
+        if case .scanning = self { return true }
+        return false
+    }
+
+    var directory: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .scanning(let directory), .completed(let directory, _), .failed(let directory, _):
+            return directory
+        }
+    }
+}
+
 class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDelegate {
     // MARK: - 类型定义
 
@@ -21,7 +42,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     @Published var allTags: Set<String> = []
     @Published var projects: [UUID: Project] = [:]
+    private(set) var isApplyingGitDaily = false
+    let gitDailyChanges = PassthroughSubject<[UUID: Project], Never>()
     @Published var watchedDirectories: Set<String> = []
+    @Published private(set) var scanState: ProjectScanState = .idle
+    private var scanStatusResetWorkItem: DispatchWorkItem?
     
     // 增量更新控制
     @Published var enableAutoIncrementalUpdate: Bool = false
@@ -171,6 +196,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // 4. 加载监视目录
         watchedDirectories = Set(appStateFile.directories)
         print("已加载目录: \(watchedDirectories.count) 个")
+        directoryWatcher.startMonitoring(paths: watchedDirectories)
 
         // 5. 加载项目缓存并同步到状态系统
         if let cachedProjects = loadProjectsFromCache() {
@@ -200,6 +226,15 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         
         // 6. 重建索引
         rebuildTagIndex()
+
+        // 7. 启动后自动增量扫描监视目录（延迟 1.5s，避免阻塞首屏）
+        // 背景：仅从缓存恢复项目时，缓存缺失的目录会显示 0 个项目，
+        // 必须手动刷新才出现。此处自动补齐磁盘上的新增/缺失项目。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self else { return }
+            print("🔄 启动自动增量扫描...")
+            self.directoryWatcher.incrementallyReloadProjects()
+        }
     }
     
     /// 重建倒排索引 (标签 -> 项目ID) - 仅在初始化时使用
@@ -248,7 +283,9 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         do {
             let data = try Data(contentsOf: cacheURL)
             let decoder = JSONDecoder()
-            let projects = try decoder.decode([Project].self, from: data)
+            let projects = try decoder.decode([Project].self, from: data).filter {
+                ProjectDiscoveryPolicy.isEligibleProjectPath($0.path)
+            }
             print("成功从缓存加载项目数据")
             return projects
         } catch {
@@ -274,12 +311,21 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         }
 
         // 从索引加载项目，使用现有的项目数据作为参考
-        let loadedProjects = projectIndex.loadProjects(existingProjects: existingProjects)
-        
-        // 批量注册新项目（Project初始化时已经处理了系统标签）
-        projectOperations.registerProjects(loadedProjects)
-        
-        print("完成重新加载，现有 \(projects.count) 个项目")
+        // 症状：loadProjects 会对每个项目跑 git（rev-list/log）并算 SHA256 校验，
+        // 而本方法由通知回调（Cmd+Shift+T）在主线程触发 → 几百个项目时界面冻住。
+        // 这里把扫描/加载放到 I/O 队列，回到主线程只做内存合并（registerProjects 已不采 git）。
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            let loadedProjects = self.projectIndex.loadProjects(existingProjects: existingProjects)
+
+            DispatchQueue.main.async {
+                // 批量注册新项目（Project初始化时已经处理了系统标签）
+                self.projectOperations.registerProjects(loadedProjects)
+
+                print("完成重新加载，现有 \(self.projects.count) 个项目")
+            }
+        }
     }
 
     // MARK: - 公共接口
@@ -368,7 +414,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                 }
                 
                 if (index + 1) % 10 == 0 || index == total - 1 {
-                    print("  自动打标进度: \(index + 1)/\(total)")
+                    Log.debug("  自动打标进度: \(index + 1)/\(total)")
                 }
             }
             
@@ -540,6 +586,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             path: project.path,
             tags: project.tags,
             mtime: project.mtime,
+            activityAt: project.activityAt,
             size: project.size,
             checksum: project.checksum,
             git_commits: project.git_commits,
@@ -822,118 +869,45 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         directoryWatcher.removeWatchedDirectory(path)
     }
 
+    // MARK: - 目录归属（参照 GitHub 仓库计数：互斥归属，计数即结果）
+
+    /// 互斥归属解析：每个项目归入**最深的匹配监视目录**，无匹配进未分类
+    /// 保证 Σ目录计数 + 未分类 == "全部"计数，侧边栏与列表筛选共用同一套逻辑
+    func directoryAssignment() -> DirectoryLogic.Assignment {
+        let paths = projects.values.map { $0.path }
+        return DirectoryLogic.assign(paths: paths, directories: Array(watchedDirectories))
+    }
+
+    /// 判断项目是否位于某监视目录下（组件边界匹配，不再是 hasPrefix 子串误匹配）
+    func isProject(_ project: Project, in directory: String) -> Bool {
+        DirectoryLogic.isSubpath(project.path, of: directory)
+    }
+
+    /// 某目录下的全部项目（与侧边栏徽章计数使用同一逻辑，保证计数 == 结果）
+    func projects(in directory: String) -> [Project] {
+        projects.values.filter { DirectoryLogic.isSubpath($0.path, of: directory) }
+    }
+
+    /// 未归属任何监视目录的项目（手动添加等）
+    func unassignedProjects() -> [Project] {
+        let unassignedPaths = directoryAssignment().unassigned
+        return projects.values.filter { unassignedPaths.contains(DirectoryLogic.standardizedPath($0.path)) }
+    }
+
+    /// 某目录下项目数（侧边栏徽章专用）
+    func projectCount(in directory: String) -> Int {
+        projects(in: directory).count
+    }
+
     // MARK: - Linus式简化刷新 - 新的智能刷新方法
     
-    /// 安全的智能项目刷新 - 修复版本，绝不清空现有数据
+    /// 安全的智能项目刷新：交给后台目录监视器执行，避免阻塞主线程。
     func refreshProjects() {
-        Task {
-            print("🔄 开始安全智能刷新...")
-            
-            // 🛡️ 安全检查：备份现有数据
-            let backupProjects = projects
-            let backupTags = allTags
-            print("🛡️ 已备份 \(backupProjects.count) 个项目和 \(backupTags.count) 个标签")
-            
-            let existingDirectories = Array(watchedDirectories).filter {
-                FileManager.default.fileExists(atPath: $0)
-            }
-            
-            if existingDirectories.isEmpty {
-                print("✅ 没有可用的监视目录")
-                return
-            }
-            
-            print("📁 安全扫描 \(existingDirectories.count) 个目录")
-            
-            // 强制重新扫描所有目录
-            for directory in existingDirectories {
-                projectIndex.scanDirectoryTwoLevels(directory, force: false)
-            }
-            
-            // 使用现有项目作为基础，进行增量更新
-            let newProjects = projectIndex.loadProjects(
-                existingProjects: backupProjects,
-                fromWatchedDirectories: Set(existingDirectories)
-            )
-            
-            // 在主线程安全更新数据
-            await MainActor.run {
-                let oldCount = projects.count
-                
-                // 🛡️ 安全更新：绝不清空，只做增量合并
-                var updatedProjects = backupProjects
-                var updatedTags = backupTags
-                var syncedProjectsCount = 0
-                
-                // 🔄 智能标签同步：为所有项目同步系统标签
-                print("🏷️ 开始智能同步系统标签...")
-                
-                // 安全地合并新项目并同步所有项目的系统标签
-                for newProject in newProjects {
-                    updatedProjects[newProject.id] = newProject
-                    updatedTags.formUnion(newProject.tags)
-                }
-                
-                // 为现有项目同步系统标签（增强功能）
-                for (projectId, existingProject) in updatedProjects {
-                    let currentSystemTags = TagSystemSync.loadTagsFromFile(at: existingProject.path)
-                    
-                    if !currentSystemTags.isEmpty {
-                        let originalTags = existingProject.tags
-                        let mergedTags = originalTags.union(currentSystemTags)
-                        
-                        if mergedTags.count > originalTags.count {
-                            // 发现新的系统标签，更新项目
-                            let updatedProject = Project(
-                                id: existingProject.id,
-                                name: existingProject.name,
-                                path: existingProject.path,
-                                lastModified: existingProject.lastModified,
-                                tags: mergedTags
-                            )
-                            updatedProjects[projectId] = updatedProject
-                            updatedTags.formUnion(currentSystemTags)
-                            syncedProjectsCount += 1
-                        }
-                    }
-                }
-                
-                if syncedProjectsCount > 0 {
-                    print("✅ 智能同步完成：\(syncedProjectsCount) 个项目同步了系统标签")
-                } else {
-                    print("✅ 智能同步完成：无新的系统标签需要同步")
-                }
-                
-                // 🛡️ 双重验证：确保没有数据丢失
-                if updatedProjects.count >= backupProjects.count && updatedTags.count >= backupTags.count {
-                    // 安全：数据没有减少，可以更新
-                    projects = updatedProjects
-                    allTags = updatedTags
-                    
-                    // 更新排序和保存
-                    sortManager.updateSortedProjects(Array(projects.values))
-                    projectOperations.saveAllToCache()
-                    
-                    let newCount = projects.count
-                    print("✅ 安全刷新成功：\(oldCount) → \(newCount) 个项目，标签从 \(backupTags.count) 到 \(updatedTags.count)")
-                } else {
-                    // 🚨 危险：检测到数据丢失，恢复备份
-                    print("🚨 检测到潜在数据丢失，恢复备份数据")
-                    print("   项目数量：\(backupProjects.count) → \(updatedProjects.count)")
-                    print("   标签数量：\(backupTags.count) → \(updatedTags.count)")
-                    
-                    // 恢复备份
-                    projects = backupProjects
-                    allTags = backupTags
-                    
-                    print("🛡️ 已恢复备份，数据安全")
-                }
-            }
-        }
+        print("🔄 开始安全智能刷新...")
+        directoryWatcher.incrementallyReloadProjects()
+
     }
-    
-    
-    
+
     /// 获取文件/目录修改时间
     private func getModificationDate(_ path: String) -> Date {
         do {
@@ -952,62 +926,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     /// 批量更新所有项目的git_daily数据
     func updateAllProjectsGitDaily() {
-        print("🔄 开始批量更新所有项目的git_daily数据...")
-        
-        // 临时修复：强制清除现有git_daily数据以确保重新收集
-        for (id, project) in projects {
-            if project.git_daily == nil {
-                let clearedProject = Project(
-                    id: project.id,
-                    name: project.name,
-                    path: project.path,
-                    tags: project.tags,
-                    mtime: project.mtime,
-                    size: project.size,
-                    checksum: project.checksum,
-                    git_commits: project.git_commits,
-                    git_last_commit: project.git_last_commit,
-                    git_daily: "", // 设置为空字符串而不是nil，强制更新
-                    created: project.created,
-                    checked: project.checked
-                )
-                projects[id] = clearedProject
-            }
-        }
-        
-        Task {
-            let projectsArray = Array(projects.values)
-            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectsArray, days: 365)
-            
-            await MainActor.run {
-                var updateCount = 0
-                for updatedProject in updatedProjects {
-                    if let existing = projects[updatedProject.id] {
-                        // 检查git_daily是否有变化（处理nil值情况）
-                        let existingGitDaily = existing.git_daily ?? ""
-                        let updatedGitDaily = updatedProject.git_daily ?? ""
-                        
-                        if existingGitDaily != updatedGitDaily {
-                            projects[updatedProject.id] = updatedProject
-                            updateCount += 1
-                            print("🔄 更新项目 \(updatedProject.name) 的git_daily: \(updatedGitDaily.prefix(50))...")
-                        }
-                    } else {
-                        // 新项目，直接添加
-                        projects[updatedProject.id] = updatedProject
-                        updateCount += 1
-                        print("➕ 添加新项目 \(updatedProject.name) 的git_daily数据")
-                    }
-                }
-                
-                if updateCount > 0 {
-                    projectOperations.saveAllToCache()
-                    print("✅ 成功更新了 \(updateCount) 个项目的git_daily数据")
-                } else {
-                    print("ℹ️ 所有项目的git_daily数据都已是最新")
-                }
-            }
-        }
+        updateAllProjectsGitDaily(days: 365)
     }
     
     /// 刷新单个项目
@@ -1142,6 +1061,37 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // 批量更新后重建索引确保一致性
         rebuildTagIndex()
     }
+
+    /// 批次快照发布：一次写入整批变更。
+    ///
+    /// `@Published var projects` 的每次赋值都会复制字典并同步通知观察者；文件事件
+    /// 一批命中多个项目时，逐项赋值会让列表按项目数重复收到通知、重复重建索引。
+    /// 这里只赋值一次，内容与当前状态相同的批次直接返回 0，完全不发布。
+    @discardableResult
+    func applyProjectBatch(_ change: ProjectBatchChange) -> Int {
+        var snapshot = projects
+        let changed = ProjectBatchMerge.apply(into: &snapshot, change: change)
+        guard changed > 0 else { return 0 }
+
+        // 仅活动时间等元数据变化不重建标签索引，避免整表扫描。
+        if change.affectsTags || !change.removals.isEmpty {
+            ProjectTagIndexLogic.apply(to: &tagToProjectMap, change: change, previous: projects)
+        }
+
+        // @Published 同步发送；这里只发一次。
+        projects = snapshot
+        return changed
+    }
+
+    func applyGitDailyUpdates(_ updates: [UUID: Project]) {
+        var snapshot = projects
+        for (id, project) in updates { snapshot[id] = project }
+        // @Published 同步发送；列表对这种仅历史字段变化使用独立的轻量更新。
+        isApplyingGitDaily = true
+        projects = snapshot
+        isApplyingGitDaily = false
+        gitDailyChanges.send(updates)
+    }
     
     // Linus式简化：不需要复杂的缓存失效逻辑，BusinessLogic会处理
     func invalidateTagUsageCache() {
@@ -1149,49 +1099,36 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     }
     
     // MARK: - DirectoryWatcherDelegate 实现
-    
-    // 所有必需的属性已经在类中定义了，不需要额外实现
+
+    func scanDidStart(directory: String) {
+        scanStatusResetWorkItem?.cancel()
+        scanState = .scanning(directory: directory)
+    }
+
+    func scanDidFinish(directory: String, discovered: Int) {
+        let completedState = ProjectScanState.completed(directory: directory, discovered: discovered)
+        scanState = completedState
+
+        let resetWorkItem = DispatchWorkItem { [weak self] in
+            guard let self = self, self.scanState == completedState else { return }
+            self.scanState = .idle
+        }
+        scanStatusResetWorkItem = resetWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: resetWorkItem)
+    }
+
+    func scanDidFail(directory: String, message: String) {
+        scanState = .failed(directory: directory, message: message)
+    }
     
     // MARK: - Git Daily 数据收集功能
     
     /// 更新所有项目的git_daily数据
     func updateAllProjectsGitDaily(days: Int = 90) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
+        // 先在主线程取快照，避免后台读取正在被 UI 修改的字典。
+        DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
-            print("📊 开始收集所有项目的Git历史数据...")
-            let projectList = Array(self.projects.values)
-            let updatedProjects = GitDailyCollector.updateProjectsWithGitDaily(projectList, days: days)
-            
-            DispatchQueue.main.async {
-                var updateCount = 0
-                for updatedProject in updatedProjects {
-                    if let existing = self.projects[updatedProject.id] {
-                        // 检查git_daily是否有变化（处理nil值情况）
-                        let existingGitDaily = existing.git_daily ?? ""
-                        let updatedGitDaily = updatedProject.git_daily ?? ""
-                        
-                        if existingGitDaily != updatedGitDaily {
-                            self.projects[updatedProject.id] = updatedProject
-                            updateCount += 1
-                            print("🔄 更新项目 \(updatedProject.name) 的git_daily: \(updatedGitDaily.prefix(50))...")
-                        }
-                    } else {
-                        // 新项目，直接添加
-                        self.projects[updatedProject.id] = updatedProject
-                        updateCount += 1
-                        print("➕ 添加新项目 \(updatedProject.name) 的git_daily数据")
-                    }
-                }
-                
-                if updateCount > 0 {
-                    print("✅ 成功更新 \(updateCount) 个项目的Git历史数据")
-                    self.saveAll(force: true)
-                    self.sortManager.updateSortedProjects(Array(self.projects.values))
-                } else {
-                    print("⚠️ 没有项目包含Git历史数据")
-                }
-            }
+            self.projectOperations.refreshGitDailyInBackground(for: Array(self.projects.values), days: days)
         }
     }
     
@@ -1232,18 +1169,18 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                   FileManager.default.fileExists(atPath: directoryPath) else {
                 print("❌ 目录不存在或未被监视: \(directoryPath)")
                 await MainActor.run {
-                    showRefreshErrorAlert(message: "目录不存在或未被监视：\n\(directoryPath)")
+                    scanDidFail(directory: directoryPath, message: "目录不存在或未被监视")
                 }
                 return
             }
-            
-            // 显示进度提示并启动进度动画
+
+            // 非阻断状态反馈：用户可以继续使用主界面
             await MainActor.run {
-                startProgressAnimation(directoryName: (directoryPath as NSString).lastPathComponent, initialStatus: "扫描中...")
+                scanDidStart(directory: directoryPath)
             }
             
             // 获取该目录下现有的所有项目
-            let existingProjectsInDir = projects.values.filter { $0.path.hasPrefix(directoryPath) }
+            let existingProjectsInDir = projects.values.filter { DirectoryLogic.isSubpath($0.path, of: directoryPath) }
             let existingProjectPaths = Set(existingProjectsInDir.map { $0.path })
             print("🛡️ 该目录现有 \(existingProjectPaths.count) 个项目")
             
@@ -1257,24 +1194,14 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             let newProjects = discoveredProjects.filter { newProjectPaths.contains($0.path) }
             
             await MainActor.run {
-                // 更新进度到60%：分析变化
-                setProgress(0.6, directoryName: (directoryPath as NSString).lastPathComponent, 
-                           status: "发现 \(newProjects.count) 个新项目，\(deletedProjectPaths.count) 个已删除")
-                
                 // 处理删除的项目
-                var deletedCount = 0
                 for deletedPath in deletedProjectPaths {
                     if let project = projects.values.first(where: { $0.path == deletedPath }) {
                         projects.removeValue(forKey: project.id)
                         sortManager.removeProject(project)
-                        deletedCount += 1
-                        print("🗑️ 删除不存在的项目: \(project.name)")
+                        Log.debug("🗑️ 删除不存在的项目: \(project.name)")
                     }
                 }
-                
-                // 更新进度到80%：处理变化
-                setProgress(0.8, directoryName: (directoryPath as NSString).lastPathComponent, 
-                           status: "正在更新项目列表...")
                 
                 // 添加新项目
                 var updatedProjects = projects
@@ -1284,7 +1211,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                     updatedProjects[newProject.id] = newProject
                     updatedTags.formUnion(newProject.tags)
                     sortManager.insertProject(newProject)
-                    print("➕ 添加新项目: \(newProject.name)")
+                    Log.debug("➕ 添加新项目: \(newProject.name)")
                 }
                 
                 // 更新数据
@@ -1297,19 +1224,8 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                 // 保存缓存
                 projectOperations.saveAllToCache()
                 
-                // 设置进度为100%
-                setProgress(1.0, directoryName: (directoryPath as NSString).lastPathComponent, status: "完成！")
-                
-                // 短暂延迟后显示最终结果
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.showRefreshSuccessAlert(
-                        directoryName: (directoryPath as NSString).lastPathComponent,
-                        addedCount: newProjects.count,
-                        syncedCount: deletedCount,
-                        totalCount: existingProjectPaths.count + newProjects.count - deletedCount
-                    )
-                }
-                
+                scanDidFinish(directory: directoryPath, discovered: discoveredProjects.count)
+
                 // 后台收集新项目的Git信息
                 if !newProjects.isEmpty {
                     Task {
@@ -1332,6 +1248,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                     let contents = try fileManager.contentsOfDirectory(atPath: directoryPath)
                     
                     for item in contents {
+                        guard ProjectDiscoveryPolicy.isEligibleChildDirectory(named: item) else {
+                            continue
+                        }
+
                         let itemPath = (directoryPath as NSString).appendingPathComponent(item)
                         var isDirectory: ObjCBool = false
                         
@@ -1374,6 +1294,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
                     let contents = try fileManager.contentsOfDirectory(atPath: directoryPath)
                     
                     for item in contents {
+                        guard ProjectDiscoveryPolicy.isEligibleChildDirectory(named: item) else {
+                            continue
+                        }
+
                         let itemPath = (directoryPath as NSString).appendingPathComponent(item)
                         var isDirectory: ObjCBool = false
                         
@@ -1407,234 +1331,11 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     
     /// 后台收集新项目的Git信息
     private func collectGitDataForNewProjects(_ newProjects: [Project]) async {
-        print("📊 开始后台收集 \(newProjects.count) 个新项目的Git信息...")
-        
-        // 只为新项目收集Git数据
-        let projectsWithGitData = GitDailyCollector.updateProjectsWithGitDaily(newProjects, days: 365)
-        
         await MainActor.run {
-            var updatedCount = 0
-            for updatedProject in projectsWithGitData {
-                if let _ = projects[updatedProject.id] {
-                    projects[updatedProject.id] = updatedProject
-                    sortManager.updateProject(updatedProject)
-                    updatedCount += 1
-                }
-            }
-            
-            if updatedCount > 0 {
-                projectOperations.saveAllToCache()
-                print("✅ 后台更新完成，为 \(updatedCount) 个新项目收集了Git信息")
-            }
+            projectOperations.refreshGitDailyInBackground(for: newProjects)
         }
     }
     
     // MARK: - 刷新提示功能
     
-    /// 当前显示的进度对话框引用
-    private var currentProgressAlert: NSAlert?
-    /// 自动关闭定时器
-    private var autoCloseTimer: Timer?
-    /// 进度更新定时器
-    private var progressUpdateTimer: Timer?
-    /// 当前进度值 (0.0 - 1.0)
-    private var currentProgress: Double = 0.0
-    /// 是否为进度状态（true）还是完成状态（false）
-    private var isProgressState = true
-    
-    /// 创建进度条显示
-    private func createProgressBar(_ progress: Double) -> String {
-        let totalBars = 10
-        let filledBars = Int(progress * Double(totalBars))
-        // 尝试使用等宽字符组合
-        let filledPart = String(repeating: "●", count: filledBars)
-        let emptyPart = String(repeating: "○", count: totalBars - filledBars)
-        let percentage = Int(progress * 100)
-        return "\(filledPart)\(emptyPart) \(percentage)%"
-    }
-    
-    /// 更新进度值并刷新显示
-    private func updateProgress(_ progress: Double, directoryName: String, status: String) {
-        currentProgress = progress
-        let progressBar = createProgressBar(progress)
-        let fullStatus = "\(status) \(progressBar)"
-        updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
-    }
-    
-    /// 启动进度动画
-    private func startProgressAnimation(directoryName: String, initialStatus: String) {
-        currentProgress = 0.0
-        updateProgress(0.1, directoryName: directoryName, status: initialStatus)
-        
-        // 启动定时器，每0.3秒更新一次进度
-        progressUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            // 缓慢增加进度到30%（扫描阶段）
-            if self.currentProgress < 0.3 {
-                self.currentProgress += 0.05
-                let progressBar = self.createProgressBar(self.currentProgress)
-                let fullStatus = "\(initialStatus) \(progressBar)"
-                self.updateRefreshAlert(directoryName: directoryName, status: fullStatus, isProgress: true)
-            }
-        }
-    }
-    
-    /// 设置进度到特定值
-    private func setProgress(_ progress: Double, directoryName: String, status: String) {
-        // 停止自动进度动画
-        progressUpdateTimer?.invalidate()
-        progressUpdateTimer = nil
-        
-        // 直接设置进度
-        updateProgress(progress, directoryName: directoryName, status: status)
-    }
-    
-    /// 停止进度更新
-    private func stopProgressUpdates() {
-        progressUpdateTimer?.invalidate()
-        progressUpdateTimer = nil
-    }
-    
-    /// 显示或更新刷新对话框
-    private func updateRefreshAlert(directoryName: String, status: String, isProgress: Bool = true) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            if let existingAlert = self.currentProgressAlert {
-                // 更新现有对话框
-                existingAlert.messageText = isProgress ? "刷新目录" : "刷新完成"
-                existingAlert.informativeText = status
-                
-                // 更新按钮
-                if !isProgress && self.isProgressState {
-                    // 从进度状态切换到完成状态，更改按钮文本
-                    existingAlert.buttons.first?.title = "确定"
-                    self.isProgressState = false
-                    
-                    // 启动3秒自动关闭定时器
-                    self.startAutoCloseTimer()
-                }
-            } else {
-                // 创建新对话框
-                self.createNewRefreshAlert(directoryName: directoryName, status: status, isProgress: isProgress)
-            }
-        }
-    }
-    
-    /// 创建新的刷新对话框
-    private func createNewRefreshAlert(directoryName: String, status: String, isProgress: Bool) {
-        let alert = NSAlert()
-        alert.messageText = isProgress ? "刷新目录" : "刷新完成"
-        alert.informativeText = status
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: isProgress ? "取消" : "确定")
-        
-        self.currentProgressAlert = alert
-        self.isProgressState = isProgress
-        
-        // 在主线程上显示
-        if let window = NSApp.mainWindow {
-            alert.beginSheetModal(for: window) { [weak self] response in
-                self?.handleAlertResponse(response, isProgress: isProgress)
-            }
-        } else {
-            let response = alert.runModal()
-            self.handleAlertResponse(response, isProgress: isProgress)
-        }
-        
-        // 如果是完成状态，启动自动关闭定时器
-        if !isProgress {
-            self.startAutoCloseTimer()
-        }
-    }
-    
-    /// 处理对话框响应
-    private func handleAlertResponse(_ response: NSApplication.ModalResponse, isProgress: Bool) {
-        if response == .alertFirstButtonReturn {
-            if isProgress {
-                print("🚫 用户取消了刷新操作")
-            } else {
-                print("✅ 用户确认了刷新结果")
-            }
-        }
-        self.cleanupAlert()
-    }
-    
-    /// 启动3秒自动关闭定时器
-    private func startAutoCloseTimer() {
-        // 清除现有定时器
-        autoCloseTimer?.invalidate()
-        
-        // 启动新的3秒定时器
-        autoCloseTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.dismissRefreshAlert()
-            }
-        }
-    }
-    
-    /// 关闭刷新对话框
-    private func dismissRefreshAlert() {
-        DispatchQueue.main.async { [weak self] in
-            if let alert = self?.currentProgressAlert {
-                alert.window.orderOut(nil)
-            }
-            self?.cleanupAlert()
-        }
-    }
-    
-    /// 清理对话框相关资源
-    private func cleanupAlert() {
-        autoCloseTimer?.invalidate()
-        autoCloseTimer = nil
-        progressUpdateTimer?.invalidate()
-        progressUpdateTimer = nil
-        currentProgressAlert = nil
-        isProgressState = true
-        currentProgress = 0.0
-    }
-    
-    /// 显示刷新进度（兼容旧接口）
-    private func showRefreshProgressAlert(directoryName: String, status: String) {
-        updateRefreshAlert(directoryName: directoryName, status: status, isProgress: true)
-    }
-    
-    /// 关闭进度对话框（兼容旧接口，现在改为更新状态）
-    private func dismissRefreshProgressAlert() {
-        // 不再关闭对话框，保留给最终结果使用
-        // 这个方法现在变成空实现，保持向后兼容
-    }
-    
-    /// 显示刷新成功提示（修改为更新现有对话框）
-    private func showRefreshSuccessAlert(directoryName: String, addedCount: Int, syncedCount: Int, totalCount: Int) {
-        var infoText = "当前项目：\(totalCount) 个"
-        
-        if addedCount > 0 {
-            infoText += "\n✅ 新增：\(addedCount) 个"
-        }
-        if syncedCount > 0 {
-            infoText += "\n🗑️ 已移除：\(syncedCount) 个"
-        }
-        if addedCount == 0 && syncedCount == 0 {
-            infoText += "\n📝 无变化"
-        }
-        
-        // 更新现有对话框为完成状态
-        updateRefreshAlert(directoryName: directoryName, status: infoText, isProgress: false)
-    }
-    
-    /// 显示刷新错误提示
-    private func showRefreshErrorAlert(message: String) {
-        let alert = NSAlert()
-        alert.messageText = "目录刷新失败"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "确定")
-        
-        // 在主线程上显示
-        DispatchQueue.main.async {
-            alert.runModal()
-        }
-    }
 }

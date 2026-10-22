@@ -35,8 +35,7 @@ enum ProjectLogic {
         }
         
         return projects.filter { project in
-            project.name.localizedCaseInsensitiveContains(searchText) ||
-            project.path.localizedCaseInsensitiveContains(searchText)
+            project.name.localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -115,100 +114,99 @@ enum HeatmapLogic {
         }
     }
     
+    /// yyyy-MM-dd 键格式化器
+    /// 背景：DateFormatter 创建成本高，此前每次查询某天提交数都新建一个，
+    /// 365 天 × 347 项目 ≈ 12.7 万次创建。此处提升为静态复用（只读，可跨线程）。
+    private static let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     /// 获取最近N天的热力图数据 - 支持真实的多天Git历史（扁平结构优化）
+    ///
+    /// 症状（本次修复）：数据看板首帧卡 5 秒 —— 旧实现按「天 × 项目」双重循环，
+    /// 每次 getCommitCount 都新建 DateFormatter 并重新解析整条 git_daily。
+    /// 现改为：每个项目只解析一次并建「日期 → 当日活跃项目」倒排索引，
+    /// 复杂度由 O(天数 × 项目数 × 解析) 降为 O(数据点 + 天数 × 当日活跃项目数)。
+    /// 输出与旧实现逐字段等价（日期、当日提交数、当日项目及其顺序）。
     static func generateHeatmapData(
         from projects: [ProjectData],
         days: Int = 30
     ) -> [HeatmapData] {
-        print("🔄 HeatmapLogic.generateHeatmapData: 开始生成，项目数=\(projects.count), 天数=\(days)")
-        
-        // 🔧 修复：动态确定日期范围，包含git_daily数据中的实际日期
+        let boundedDays = min(max(days, 1), 365)
         let calendar = Calendar.current
         let today = Date()
-        
-        // 收集所有项目git_daily数据中的日期
+
+        // 预解析 + 建索引：dateKey -> [(项目下标, 当日提交数)]
+        // 按项目下标升序追加，保证每日项目顺序与旧实现（遍历 projects）一致
+        var dailyIndex: [String: [(index: Int, count: Int)]] = [:]
         var allAvailableDates = Set<String>()
-        for project in projects {
-            if let gitDaily = project.git_daily, !gitDaily.isEmpty {
-                let dailyData = GitDailyCollector.parseGitDaily(gitDaily)
-                allAvailableDates.formUnion(dailyData.keys)
+
+        for (index, project) in projects.enumerated() {
+            guard let gitDaily = project.git_daily, !gitDaily.isEmpty else { continue }
+            let dailyData = GitDailyCollector.parseGitDaily(gitDaily)
+            allAvailableDates.formUnion(dailyData.keys)
+            for (dateKey, count) in dailyData where count > 0 {
+                dailyIndex[dateKey, default: []].append((index, count))
             }
         }
-        
-        print("📅 找到的所有可用日期数: \(allAvailableDates.count)")
-        if !allAvailableDates.isEmpty {
-            let sortedDates = allAvailableDates.sorted()
-            print("   最早日期: \(sortedDates.first ?? "none"), 最晚日期: \(sortedDates.last ?? "none")")
-        }
-        
-        // 计算实际的日期范围：从最早数据日期到今天，最多查询365天
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        
-        var actualDays = days
-        var startDate: Date = calendar.date(byAdding: .day, value: -days, to: today) ?? today
-        
+
+        // 动态确定日期范围，包含git_daily数据中的实际日期
+        var actualDays = boundedDays
+        var startDate: Date = calendar.date(byAdding: .day, value: -boundedDays, to: today) ?? today
+
         // 🎯 数据看板需要显示完整365天：强制使用固定天数
-        if days == 365 {
-            print("🎯 数据看板模式：强制生成365天完整数据")
+        if boundedDays == 365 {
             actualDays = 365
             startDate = calendar.date(byAdding: .day, value: -365, to: today) ?? today
         } else {
             // 侧边栏模式：使用数据驱动的优化范围
-            if !allAvailableDates.isEmpty {
-                let sortedDates = allAvailableDates.sorted()
-                if let earliestDateStr = sortedDates.first,
-                   let earliestDate = dateFormatter.date(from: earliestDateStr) {
-                    // 使用更早的日期作为起始点，但限制在指定天数内
-                    let maxLookback = calendar.date(byAdding: .day, value: -days, to: today) ?? today
-                    startDate = max(earliestDate, maxLookback)
-                    print("📅 侧边栏模式：调整起始日期为 \(dateFormatter.string(from: startDate))")
-                }
+            if let earliestDateStr = allAvailableDates.min(),
+               let earliestDate = dayKeyFormatter.date(from: earliestDateStr) {
+                // 使用更早的日期作为起始点，但限制在指定天数内
+                let maxLookback = calendar.date(byAdding: .day, value: -boundedDays, to: today) ?? today
+                startDate = max(earliestDate, maxLookback)
             }
-            
+
             // 计算实际天数
-            actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? days
+            actualDays = calendar.dateComponents([.day], from: startDate, to: today).day ?? boundedDays
         }
-        
-        print("📅 最终查询参数：天数=\(actualDays)，起始日期=\(dateFormatter.string(from: startDate))")
-        
+
         var heatmapData: [HeatmapData] = []
+        heatmapData.reserveCapacity(actualDays)
         var totalFoundCommits = 0
-        
+
         // 遍历实际日期范围
         for dayOffset in 0..<actualDays {
             guard let targetDate = calendar.date(byAdding: .day, value: dayOffset, to: startDate) else {
                 continue
             }
-            
+
             let startOfDay = calendar.startOfDay(for: targetDate)
-            
-            // 使用git_daily数据快速查询每个项目在这一天的提交数
+            let dateKey = dayKeyFormatter.string(from: startOfDay)
+
             var dailyCommitCount = 0
             var dailyProjects: [ProjectData] = []
-            
-            for project in projects {
-                let commitsOnDay = project.getCommitCount(for: startOfDay)
-                if commitsOnDay > 0 {
-                    dailyCommitCount += commitsOnDay
-                    dailyProjects.append(project)
-                    totalFoundCommits += commitsOnDay
-                }
+            for entry in dailyIndex[dateKey] ?? [] {
+                dailyCommitCount += entry.count
+                dailyProjects.append(projects[entry.index])
             }
-            
+            totalFoundCommits += dailyCommitCount
+
             heatmapData.append(HeatmapData(
                 date: startOfDay,
                 commitCount: dailyCommitCount,
                 projects: dailyProjects
             ))
         }
-        
-        let daysWithData = heatmapData.filter { $0.commitCount > 0 }.count
-        print("✅ HeatmapLogic.generateHeatmapData: 完成，生成\(heatmapData.count)个数据点，\(daysWithData)天有数据，总提交数=\(totalFoundCommits)")
-        
+
+        let daysWithData = heatmapData.reduce(0) { $0 + ($1.commitCount > 0 ? 1 : 0) }
+        Log.debug("热力图生成完成：\(heatmapData.count) 个数据点，\(daysWithData) 天有数据，总提交数=\(totalFoundCommits)")
+
         return heatmapData // 已经按时间顺序排列
     }
-    
+
     /// 获取项目在指定日期的提交数 - 临时禁用Git查询，解决卡顿问题
     private static func getCommitsForDate(project: ProjectData, date: Date) -> Int {
         // Linus式紧急修复：暂时禁用Git查询，防止界面卡死
@@ -350,6 +348,19 @@ enum TagLogic {
             }
         }
         return usage
+    }
+
+    /// 标签按使用次数降序排列（并列时按名称升序，保证结果稳定可复现）
+    ///
+    /// 统计只算一次。旧实现在排序比较器里每次比较都重算整份统计，
+    /// 一次排序会重复计算 O(tags × log(tags)) 次。
+    static func sortTagsByUsage(_ tags: [String], usage: [String: Int]) -> [String] {
+        tags.sorted { lhs, rhs in
+            let lhsCount = usage[lhs] ?? 0
+            let rhsCount = usage[rhs] ?? 0
+            if lhsCount != rhsCount { return lhsCount > rhsCount }
+            return lhs < rhs
+        }
     }
     
     /// 获取所有标签（包括隐式标签）
@@ -1169,13 +1180,13 @@ enum DashboardLogic {
         print("🔧 DashboardLogic: 有git_daily数据的项目: \(projectsWithGitDaily.count)/\(projects.count)")
         if !projectsWithGitDaily.isEmpty {
             projectsWithGitDaily.prefix(3).forEach { project in
-                print("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(100) ?? "nil")")
+                Log.debug("   📁 \(project.name): git_daily=\(project.git_daily?.prefix(100) ?? "nil")")
             }
         } else {
             // 如果没有git_daily数据，显示前3个项目的信息
             print("⚠️ DashboardLogic: 没有项目包含git_daily数据！前3个项目信息：")
             projects.prefix(3).forEach { project in
-                print("   📁 \(project.name): git_daily=\(project.git_daily ?? "nil"), path=\(project.path)")
+                Log.debug("   📁 \(project.name): git_daily=\(project.git_daily ?? "nil"), path=\(project.path)")
             }
         }
         
@@ -1285,5 +1296,98 @@ enum DashboardLogic {
     static func calculateActivityScore(_ project: ProjectData) -> Double {
         guard let gitInfo = project.gitInfo else { return 0 }
         return Double(gitInfo.commitCount) // 简单实现
+    }
+}
+
+// MARK: - 目录归属逻辑 (Linus式：互斥归属，参照 GitHub 仓库计数实践)
+// 核心原则：
+//   1. 每个项目精确归属到一个目录（最深匹配），绝不重复计数
+//   2. 路径匹配按组件边界（dir 与 dir/...），拒绝 hasPrefix 的子串误匹配
+//   3. 未归属任何监视目录的项目进入 unassigned 桶，保证 Σ目录 + 未分类 == 全部
+enum DirectoryLogic {
+
+    /// "未分类"目录的哨兵标识（用于侧边栏选中态与筛选）
+    static let unassignedKey = "__unclassified__"
+
+    /// 规范化路径：展开 ~、去除尾部斜杠（保留根路径 "/"）
+    static func standardizedPath(_ raw: String) -> String {
+        // expandingTildeInPath 只在路径以 "~" 开头时才展开，其余路径原样返回。
+        // 归属计算会对每条路径反复调用本函数，省掉这次无意义的 Foundation 往返。
+        var path = raw.hasPrefix("~") ? (raw as NSString).expandingTildeInPath : raw
+        while path.hasSuffix("/") && path != "/" {
+            path.removeLast()
+        }
+        return path
+    }
+
+    /// 判断项目路径是否位于目录之下（组件边界匹配，而非子串前缀）
+    /// - 例: isSubpath("/a/b/x", of: "/a/b") == true
+    /// - 例: isSubpath("/a/bfoo/x", of: "/a/b") == false （旧 hasPrefix 会误判为 true）
+    static func isSubpath(_ path: String, of directory: String) -> Bool {
+        let projectPath = standardizedPath(path)
+        let directoryPath = standardizedPath(directory)
+        if directoryPath == "/" {
+            return projectPath.hasPrefix("/")
+        }
+        if projectPath == directoryPath {
+            return true
+        }
+        return projectPath.hasPrefix(directoryPath + "/")
+    }
+
+    /// 目录归属结果
+    struct Assignment {
+        /// 目录路径 → 归属其下的项目路径集合（key 已规范化）
+        let byDirectory: [String: Set<String>]
+        /// 未归属任何监视目录的项目路径
+        let unassigned: Set<String>
+
+        /// 某目录下的项目数
+        func count(for directory: String) -> Int {
+            byDirectory[standardizedPath(directory)]?.count ?? 0
+        }
+    }
+
+    /// 互斥归属：每个项目归入**最深的匹配监视目录**；无匹配 → 未分类
+    /// 保证任意两个目录的项目集合不相交，且并集 + unassigned == 全部项目
+    static func assign(paths: [String], directories: [String]) -> Assignment {
+        // 标准化并去重目录。
+        // 按路径长度降序排列：先命中的目录一定是最深的匹配目录，
+        // 因此每个项目只需一次前缀判断就能确定归属，不必再收集全部候选再取最长。
+        let normalizedDirectories = Set(directories.map { standardizedPath($0) })
+            .sorted { lhs, rhs in
+                if lhs.count != rhs.count { return lhs.count > rhs.count }
+                // 同长度目录不可能互相包含，固定顺序保证结果可复现。
+                return lhs < rhs
+            }
+
+        var byDirectory: [String: Set<String>] = [:]
+        for directory in normalizedDirectories {
+            byDirectory[directory] = []
+        }
+        var unassigned: Set<String> = []
+
+        for rawPath in paths {
+            let path = standardizedPath(rawPath)
+            if let directory = normalizedDirectories.first(where: { contains(path, in: $0) }) {
+                byDirectory[directory, default: []].insert(path)
+            } else {
+                unassigned.insert(path)
+            }
+        }
+
+        return Assignment(byDirectory: byDirectory, unassigned: unassigned)
+    }
+
+    /// 组件边界匹配：路径是否位于目录之下。
+    /// 目录已由 assign 预先规范化，此处不再重复规范化。
+    private static func contains(_ standardizedPath: String, in standardizedDirectory: String) -> Bool {
+        if standardizedDirectory == "/" {
+            return standardizedPath.hasPrefix("/")
+        }
+        if standardizedPath == standardizedDirectory {
+            return true
+        }
+        return standardizedPath.hasPrefix(standardizedDirectory + "/")
     }
 }

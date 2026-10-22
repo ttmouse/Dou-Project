@@ -134,6 +134,10 @@ class ProjectLoaderOptimized {
         do {
             let contents = try FileManager.default.contentsOfDirectory(atPath: path)
             for item in contents {
+                guard ProjectDiscoveryPolicy.isEligibleChildDirectory(named: item) else {
+                    continue
+                }
+
                 let itemPath = (path as NSString).appendingPathComponent(item)
                 var isDirectory: ObjCBool = false
                 

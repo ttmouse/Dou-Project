@@ -36,8 +36,14 @@ struct TagEditDialog: View {
                 .textFieldStyle(CustomTextFieldStyle())
                 .frame(width: 200)
 
-            ColorPicker("标签颜色", selection: $selectedColor)
-                .frame(width: 200)
+            HStack {
+                Text("标签颜色")
+                    .foregroundColor(AppTheme.text)
+                Spacer()
+                ColorPicker("", selection: $selectedColor)
+                    .labelsHidden()
+            }
+            .frame(width: 200)
 
             if !errorMessage.isEmpty {
                 Text(errorMessage)

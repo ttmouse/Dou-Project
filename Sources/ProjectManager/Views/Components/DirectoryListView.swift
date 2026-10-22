@@ -14,7 +14,11 @@ struct DirectoryListView: View {
     @State private var createProjectPath: CreateProjectPath?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
+        // 归属解析只算一次，保证“全部 = Σ目录 + 未分类”自洽
+        let assignment = tagManager.directoryAssignment()
+        let unassignedCount = assignment.unassigned.count
+
+        return VStack(alignment: .leading, spacing: AppTheme.tagListSpacing) {
             // 标题栏
             HStack {
                 Text("目录")
@@ -116,6 +120,7 @@ struct DirectoryListView: View {
                     }) {
                         Label("智能刷新", systemImage: "arrow.triangle.2.circlepath")
                     }
+                    .disabled(tagManager.scanState.isScanning)
                     
                     Button(action: {
                         tagManager.clearCacheAndReloadProjects()  // 保留传统全量刷新作为备用
@@ -123,6 +128,7 @@ struct DirectoryListView: View {
                         Label("完全重新加载", systemImage: "arrow.counterclockwise")
                             .foregroundColor(.orange)
                     }
+                    .disabled(tagManager.scanState.isScanning)
                 } label: {
                     Image(systemName: "folder.badge.plus")
                         .foregroundColor(AppTheme.sidebarSecondaryText)
@@ -153,9 +159,9 @@ struct DirectoryListView: View {
                     DirectoryRow(
                         name: (path as NSString).lastPathComponent,
                         path: path,
-                        count: tagManager.projects.values.filter { $0.path.hasPrefix(path) }.count,
+                        count: assignment.count(for: path),
                         isSelected: selectedDirectory == path,
-                        action: { 
+                        action: {
                             selectedDirectory = path
                             onDirectorySelected?() // 调用回调
                         }
@@ -193,6 +199,19 @@ struct DirectoryListView: View {
                             Label("移除目录", systemImage: "trash")
                         }
                     }
+                }
+                // 未分类项目（不在任何监视目录下，如手动添加）—— 保证“全部 = Σ目录 + 未分类”
+                if unassignedCount > 0 {
+                    DirectoryRow(
+                        name: "未分类",
+                        path: DirectoryLogic.unassignedKey,
+                        count: unassignedCount,
+                        isSelected: selectedDirectory == DirectoryLogic.unassignedKey,
+                        action: {
+                            selectedDirectory = DirectoryLogic.unassignedKey
+                            onDirectorySelected?()
+                        }
+                    )
                 }
             }
             .padding(.vertical, AppTheme.tagListContentPaddingV)

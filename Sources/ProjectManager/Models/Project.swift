@@ -28,6 +28,7 @@ struct Project: Identifiable, Equatable, Codable {
                lhs.path == rhs.path &&
                lhs.tags == rhs.tags &&
                lhs.mtime == rhs.mtime &&
+               lhs.activityAt == rhs.activityAt &&
                lhs.size == rhs.size &&
                lhs.checksum == rhs.checksum &&
                lhs.git_commits == rhs.git_commits &&
@@ -41,6 +42,7 @@ struct Project: Identifiable, Equatable, Codable {
 
     // 文件系统信息 (扁平化)
     let mtime: Date              // 修改时间 (统一字段)
+    var activityAt: Date         // 最近文件系统活动时间（由事件驱动更新）
     let size: Int64              // 文件大小
     let checksum: String         // SHA256格式: "sha256:deadbeef..."
 
@@ -94,9 +96,10 @@ struct Project: Identifiable, Equatable, Codable {
         path: String,
         tags: Set<String> = [],
         mtime: Date? = nil,
+        activityAt: Date? = nil,
         size: Int64? = nil,
         checksum: String? = nil,
-        git_commits: Int = 0,
+        git_commits: Int? = nil,
         git_last_commit: Date? = nil,
         git_daily: String? = nil,
         startupCommand: String? = nil,
@@ -109,13 +112,17 @@ struct Project: Identifiable, Equatable, Codable {
         self.path = path
         self.tags = tags
 
-        let fsInfo = Self.loadFileSystemInfo(path: path)
-        let gitInfo = Self.loadGitInfo(path: path)
+        // 已有元数据的复制/转换必须只访问内存；nil 才表示需要发现磁盘状态。
+        let fsInfo = (mtime == nil || size == nil || checksum == nil)
+            ? Self.loadFileSystemInfo(path: path) : nil
+        let gitInfo = (git_commits == nil || git_last_commit == nil)
+            ? Self.loadGitInfo(path: path) : nil
 
-        self.mtime = mtime ?? fsInfo.modificationDate
-        self.size = size ?? Int64(fsInfo.size)
-        self.checksum = checksum ?? fsInfo.checksum
-        self.git_commits = git_commits > 0 ? git_commits : (gitInfo?.commitCount ?? 0)
+        self.mtime = mtime ?? fsInfo?.modificationDate ?? Date()
+        self.activityAt = activityAt ?? self.mtime
+        self.size = size ?? Int64(fsInfo?.size ?? 0)
+        self.checksum = checksum ?? fsInfo?.checksum ?? ""
+        self.git_commits = git_commits ?? gitInfo?.commitCount ?? 0
         self.git_last_commit = git_last_commit ?? (gitInfo?.lastCommitDate ?? Date.distantPast)
         self.git_daily = git_daily
         self.startupCommand = startupCommand
@@ -146,7 +153,7 @@ struct Project: Identifiable, Equatable, Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, name, path, tags
-        case mtime, size, checksum
+        case mtime, activityAt, size, checksum
         case git_commits, git_last_commit, git_daily
         case startupCommand, customPort
         case created, checked
@@ -165,6 +172,7 @@ struct Project: Identifiable, Equatable, Codable {
 
         if container.contains(.mtime) {
             mtime = try container.decode(Date.self, forKey: .mtime)
+            activityAt = try container.decodeIfPresent(Date.self, forKey: .activityAt) ?? mtime
             size = try container.decode(Int64.self, forKey: .size)
             checksum = try container.decode(String.self, forKey: .checksum)
             git_commits = try container.decode(Int.self, forKey: .git_commits)
@@ -180,6 +188,7 @@ struct Project: Identifiable, Equatable, Codable {
             let oldFileSystemInfo = try container.decode(FileSystemInfo.self, forKey: .fileSystemInfo)
 
             mtime = oldLastModified
+            activityAt = oldLastModified
             size = Int64(oldFileSystemInfo.size)
             checksum = oldFileSystemInfo.checksum
             git_commits = oldGitInfo?.commitCount ?? 0
@@ -201,6 +210,7 @@ struct Project: Identifiable, Equatable, Codable {
         try container.encode(path, forKey: .path)
         try container.encode(tags, forKey: .tags)
         try container.encode(mtime, forKey: .mtime)
+        try container.encode(activityAt, forKey: .activityAt)
         try container.encode(size, forKey: .size)
         try container.encode(checksum, forKey: .checksum)
         try container.encode(git_commits, forKey: .git_commits)
@@ -343,11 +353,59 @@ struct Project: Identifiable, Equatable, Codable {
             path: path,
             tags: newTags,
             mtime: mtime,
+            activityAt: activityAt,
             size: size,
             checksum: checksum,
             git_commits: git_commits,
             git_last_commit: git_last_commit,
             git_daily: git_daily,
+            startupCommand: startupCommand,
+            customPort: customPort,
+            created: created,
+            checked: checked
+        )
+    }
+
+    /// 只提升活动时间，其余字段保持当前值
+    /// 用途：文件事件批次合并 —— 文件事件只说明「这个目录刚动过」，
+    /// 事件排队期间用户可能改过标签/端口，整条快照回写会把这些修改覆盖掉。
+    func copyWith(activityAt newActivityAt: Date) -> Project {
+        guard newActivityAt != activityAt else { return self }
+        return Project(
+            id: id,
+            name: name,
+            path: path,
+            tags: tags,
+            mtime: mtime,
+            activityAt: newActivityAt,
+            size: size,
+            checksum: checksum,
+            git_commits: git_commits,
+            git_last_commit: git_last_commit,
+            git_daily: git_daily,
+            startupCommand: startupCommand,
+            customPort: customPort,
+            created: created,
+            checked: checked
+        )
+    }
+
+    /// 只替换 git_daily，其余字段保持当前值
+    /// 用途：后台采集 git 数据完成后回写 —— 采集期间用户可能改过标签/端口，
+    /// 直接写入采集时的旧快照会丢掉这些修改。
+    func copyWith(gitDaily newGitDaily: String?) -> Project {
+        return Project(
+            id: id,
+            name: name,
+            path: path,
+            tags: tags,
+            mtime: mtime,
+            activityAt: activityAt,
+            size: size,
+            checksum: checksum,
+            git_commits: git_commits,
+            git_last_commit: git_last_commit,
+            git_daily: newGitDaily,
             startupCommand: startupCommand,
             customPort: customPort,
             created: created,

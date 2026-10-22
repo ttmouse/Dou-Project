@@ -139,16 +139,12 @@ struct CreateProjectView: View {
         }
     }
     
-    // 预计算 top5 标签，避免重复计算
+    // 排序和推荐共用一次统计，避免每个标签都重新扫描项目。
     private var topFrequentTags: [String] {
-        let allTags = Array(tagManager.allTags)
-        return allTags
-            .map { tag in
-                (tag: tag, count: tagManager.getUsageCount(for: tag))
-            }
-            .sorted { $0.count > $1.count }
-            .prefix(5)
-            .map { $0.tag }
+        let statistics = tagManager.getAllTagStatistics()
+        return Array(TagLogic.sortTagsByUsage(
+            Array(tagManager.allTags), usage: statistics
+        ).prefix(5))
     }
     
     // 将标签按行分组，每行最多3个

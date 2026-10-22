@@ -13,7 +13,10 @@ final class ProjectRegistrationTests: XCTestCase {
     // MARK: - 测试替身
 
     private final class FakeStore: ProjectOperationDelegate {
-        var projects: [UUID: Project] = [:]
+        var projects: [UUID: Project] = [:] {
+            didSet { publicationCount += 1 }
+        }
+        private(set) var publicationCount = 0
         var allTags: Set<String> = []
         private(set) var invalidateCount = 0
         private(set) var notifyCount = 0
@@ -150,7 +153,9 @@ final class ProjectRegistrationTests: XCTestCase {
         manager.registerProjects([project])
 
         XCTAssertEqual(store.projects.count, 1)
-        XCTAssertEqual(store.notifyCount, notifyAfterFirst + 1, "重复注册只应触发一次变更通知（且不再补 git）")
+        // 2026-10-22 批次发布改造后，重复注册不再产生变化，因此也不发布：
+        // 旧实现无条件在末尾发一次通知，让列表整轮重建索引与筛选，属于本卡要消除的重复发布。
+        XCTAssertEqual(store.notifyCount, notifyAfterFirst, "内容无变化的重复注册不应再发布")
     }
 
     func testRemoveProjectAlsoRemovesItFromSortedList() {
@@ -173,6 +178,41 @@ final class ProjectRegistrationTests: XCTestCase {
     }
 
     // MARK: - 存储隔离
+
+    func testGitDailyBackfillPublishesOneBatchAndKeepsSortedPositions() {
+        let projects = ProjectFixtures.makeMany(3_000)
+        store.projects = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        let sorter = ProjectSortManager()
+        sorter.updateSortedProjects(projects)
+        manager.sortDelegate = sorter
+        let previousOrder = sorter.getSortedProjects().map(\.id)
+        let publicationCount = store.publicationCount
+        let values = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, "2026-10-21:2") })
+
+        let start = ProcessInfo.processInfo.systemUptime
+        manager.applyGitDaily(values)
+        let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1000
+        FileHandle.standardError.write(Data("PERF Git backfill 3000 projects: \(elapsed) ms\n".utf8))
+
+        XCTAssertEqual(store.publicationCount - publicationCount, 1, "整批回填只能发布一次项目状态")
+        XCTAssertEqual(sorter.getSortedProjects().map(\.id), previousOrder)
+        XCTAssertTrue(sorter.getSortedProjects().allSatisfy { $0.git_daily == "2026-10-21:2" })
+        XCTAssertEqual(store.invalidateCount, 0, "Git 历史不影响标签索引")
+
+        let afterFirst = store.publicationCount
+        manager.applyGitDaily(values)
+        XCTAssertEqual(store.publicationCount, afterFirst, "相同历史不应重复发布")
+    }
+
+    func testGitDailyBackfillPreservesLiveEditsAndDoesNotRestoreDeletedProjects() {
+        let current = ProjectFixtures.make(tags: ["edited"], startupCommand: "new command", customPort: 4567)
+        store.projects[current.id] = current
+        let deletedID = UUID()
+        manager.applyGitDaily([current.id: "2026-10-21:1", deletedID: "2026-10-21:9"])
+        XCTAssertEqual(store.projects[current.id], current.copyWith(gitDaily: "2026-10-21:1"))
+        XCTAssertNil(store.projects[deletedID])
+        XCTAssertEqual(store.projects.count, 1)
+    }
 
     func testWritesGoToInjectedStorageOnly() {
         let project = ProjectFixtures.make(name: "隔离项目", path: "/tmp/isolated")

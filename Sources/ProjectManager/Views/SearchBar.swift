@@ -1,7 +1,12 @@
 import SwiftUI
 
+/// 输入变化只通知搜索框；列表在匹配结果改变时再刷新。
+final class ProjectSearchInput: ObservableObject {
+    @Published var text: String = ""
+}
+
 struct SearchBar: View {
-    @Binding var text: String
+    @ObservedObject var input: ProjectSearchInput
     @FocusState private var isFocused: Bool
 
     // 添加一个方法来清除焦点
@@ -12,17 +17,17 @@ struct SearchBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(isFocused ? AppTheme.searchBarActiveIcon : AppTheme.titleBarIcon)
+                .foregroundColor(AppTheme.titleBarIcon)
 
-            TextField("搜索项目...", text: $text)
+            TextField("搜索项目...", text: $input.text)
                 .textFieldStyle(.plain)
                 .font(AppTheme.searchBarFont)
                 .foregroundColor(AppTheme.searchBarText)
                 .tint(AppTheme.searchBarCursor)
                 .focused($isFocused)
 
-            if !text.isEmpty {
-                Button(action: { text = "" }) {
+            if !input.text.isEmpty {
+                Button(action: { input.text = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(AppTheme.titleBarIcon)
                 }
@@ -30,14 +35,11 @@ struct SearchBar: View {
             }
         }
         .padding(8)
-        .background(isFocused ? AppTheme.searchBarActiveBackground : AppTheme.searchBarBackground)
+        .background(AppTheme.searchBarBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(
-                    isFocused ? AppTheme.searchBarActiveBorder : AppTheme.searchBarBorder,
-                    lineWidth: 1)
+                .strokeBorder(AppTheme.searchBarBorder, lineWidth: 1)
         )
-        .animation(.easeInOut(duration: 0.2), value: isFocused)
     }
 }
 
@@ -45,8 +47,7 @@ struct SearchBar: View {
     struct SearchBar_Previews: PreviewProvider {
         static var previews: some View {
             VStack(spacing: 20) {
-                SearchBar(text: .constant(""))
-                SearchBar(text: .constant("测试搜索"))
+                SearchBar(input: ProjectSearchInput())
             }
             .padding()
             .background(Color(.windowBackgroundColor))

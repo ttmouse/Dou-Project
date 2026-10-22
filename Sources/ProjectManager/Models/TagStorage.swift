@@ -18,6 +18,15 @@ class TagStorage {
             at: appSupportURL, withIntermediateDirectories: true)
     }
 
+    /// 测试/隔离用：把存储指向任意目录
+    /// 背景：`appSupportURL` 是 `let` 且类非 open，测试无法继承覆盖它，
+    /// 于是任何涉及存储的测试都会读写真实用户数据（曾经污染过 projects.json）。
+    init(appSupportURL: URL) {
+        self.appSupportURL = appSupportURL
+        try? FileManager.default.createDirectory(
+            at: appSupportURL, withIntermediateDirectories: true)
+    }
+
     private var tagsFileURL: URL {
         return appSupportURL.appendingPathComponent(tagsFileName)
     }
