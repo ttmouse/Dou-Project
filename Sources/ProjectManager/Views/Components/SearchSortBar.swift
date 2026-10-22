@@ -49,6 +49,7 @@ struct SearchSortBar: View {
                         .font(.system(size: 18))
                 }
                 .buttonStyle(.plain)
+                .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
                 .help("项目仪表盘")
                 
                 Picker("视图", selection: $projectViewMode) {
@@ -59,7 +60,7 @@ struct SearchSortBar: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 72, height: 24)
+                .frame(width: 72, height: AppTheme.searchBarControlHeight)
                 .help(projectViewMode.title)
             }
 
@@ -83,6 +84,7 @@ struct SearchSortBar: View {
                     .font(.system(size: 18))
             }
             .buttonStyle(.plain)
+            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
             .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
         }
         .sheet(isPresented: $isShowingDashboard) {
@@ -123,6 +125,7 @@ struct SortButtons: View {
                     .font(.system(size: 20))
             }
             .buttonStyle(.plain)
+            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
             .help(sortOption.column == .activity && sortOption.isAscending ? "最早的在前" : "最新的在前")
 
             // 提交次数排序按钮
@@ -141,6 +144,7 @@ struct SortButtons: View {
                 .foregroundColor(sortOption.column == .commits ? AppTheme.accent : AppTheme.titleBarIcon)
             }
             .buttonStyle(.plain)
+            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
             .help(sortOption.column == .commits && sortOption.isAscending ? "提交少的在前" : "提交多的在前")
         }
     }
@@ -185,7 +189,7 @@ struct DateFilterMenu: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(AppTheme.titleBarIcon)
                 .padding(.horizontal, 5)
-                .padding(.vertical, 3)
+                .frame(height: AppTheme.searchBarControlHeight)
                 .contentShape(Rectangle())
                 .fixedSize()
         }
@@ -194,6 +198,7 @@ struct DateFilterMenu: View {
         // Borderless menus otherwise absorb the toolbar's remaining width, which also
         // makes the opened menu nearly as wide as the window.
         .fixedSize(horizontal: true, vertical: false)
+        .frame(height: AppTheme.searchBarControlHeight)
         .accessibilityLabel("日期筛选")
         .accessibilityValue(dateFilter.title)
         .help("按日期筛选项目")

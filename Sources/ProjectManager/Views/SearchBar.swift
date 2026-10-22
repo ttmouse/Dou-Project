@@ -34,7 +34,8 @@ struct SearchBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(8)
+        .padding(.horizontal, 8)
+        .frame(height: AppTheme.searchBarControlHeight)
         .background(AppTheme.searchBarBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 6)

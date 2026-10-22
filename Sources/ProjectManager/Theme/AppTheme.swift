@@ -195,6 +195,8 @@ enum AppTheme {
     static let searchBarAreaBorder = Color(hex: "#171717")
     /// 搜索栏区域内边距
     static let searchBarAreaPadding: CGFloat = 8
+    /// 搜索工具栏内所有控件的统一高度
+    static let searchBarControlHeight: CGFloat = 32
     /// 搜索栏区域高度
     static let searchBarAreaHeight: CGFloat = 45
 
