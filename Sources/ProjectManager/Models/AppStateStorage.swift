@@ -70,6 +70,12 @@ class AppStateStorage {
         appSupportURL = paths[0].appendingPathComponent("com.projectmanager")
         try? FileManager.default.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
     }
+
+    /// 测试/隔离用：把状态存储指向任意目录，避免测试写到真实用户数据。
+    init(appSupportURL: URL) {
+        self.appSupportURL = appSupportURL
+        try? FileManager.default.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
+    }
     
     private var stateFileURL: URL {
         return appSupportURL.appendingPathComponent(stateFileName)
@@ -103,15 +109,20 @@ class AppStateStorage {
     
     /// 保存应用状态
     func save(_ state: AppStateFile) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(state)
-            try data.write(to: stateFileURL)
-            print("💾 app_state.json 已保存")
-        } catch {
-            print("❌ 保存 app_state.json 失败: \(error)")
+        saveReportingResult(state)
+    }
+
+    /// 保存应用状态，并把失败原因交给调用方。
+    ///
+    /// 目录被删（测试收尾、用户清理缓存）时返回 `.failure(.directoryUnavailable)`，
+    /// 不重建目录，也不把错误只留在控制台里。
+    @discardableResult
+    func saveReportingResult(_ state: AppStateFile) -> Result<Void, LocalPersistenceError> {
+        let result = LocalJSONFile.save(state, to: stateFileURL, formatting: .prettyPrinted)
+        if case .failure(let error) = result {
+            Log.error("保存 app_state.json 失败: \(error.localizedDescription)")
         }
+        return result
     }
     
     // MARK: - 私有方法

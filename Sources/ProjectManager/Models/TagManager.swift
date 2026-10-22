@@ -61,8 +61,12 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     /// 倒排索引：标签 -> 项目ID集合 (O(1) 检索受影响项目)
     private var tagToProjectMap: [String: Set<UUID>] = [:]
     
-    /// I/O 专用串行队列，确保磁盘操作不阻塞 UI
-    private let ioQueue = DispatchQueue(label: "com.projectmanager.tagmanager.io", qos: .background)
+    /// I/O 专用串行队列，确保磁盘操作不阻塞 UI。
+    /// 不用 `.background`：最低 QoS 在系统繁忙时会被无限推迟，保存就变成
+    /// 「调用了但没写盘」，与本卡要修掉的静默丢保存是同一类缺陷。
+    private let ioQueue = DispatchQueue(label: "com.projectmanager.tagmanager.io", qos: .utility)
+    /// 标记 ioQueue：flush 从 I/O 队列内部调用时不能再 sync，否则自锁。
+    private let ioQueueKey = DispatchSpecificKey<Void>()
 
     // MARK: - 组件
 
@@ -120,6 +124,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     init() {
         print("TagManager 初始化...")
+        ioQueue.setSpecific(key: ioQueueKey, value: ())
 
         // 初始化统一存储（新架构）
         unifiedStorage = AppStateStorage()
@@ -144,6 +149,29 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         loadAllData()
         
         // 确保所有标签都有颜色
+        initializeTagColors()
+    }
+
+    /// 测试/隔离用：把所有存储指到同一个临时目录。
+    ///
+    /// 生产组合根会读写真实用户目录、并开始监视用户目录，测试不该构造它。
+    /// 这条入口只换存储位置，仍然走同一套加载与保存链路，
+    /// 因此「临时目录被删之后保存怎么收场」可以在不碰真实数据的前提下验证。
+    init(storageDirectory: URL, startMonitoring: Bool = false) {
+        ioQueue.setSpecific(key: ioQueueKey, value: ())
+        unifiedStorage = AppStateStorage(appSupportURL: storageDirectory)
+        storage = TagStorage(appSupportURL: storageDirectory)
+        colorManager = TagColorManager(storage: storage)
+        sortManager = ProjectSortManager()
+        projectIndex = ProjectIndex(storage: storage)
+
+        colorManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        loadAllData(startMonitoring: startMonitoring)
         initializeTagColors()
     }
     
@@ -177,7 +205,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     // MARK: - 数据加载
 
-    private func loadAllData() {
+    private func loadAllData(startMonitoring: Bool = true) {
         print("开始加载所有数据...")
         
         // 1. 从统一存储加载标签和目录（新架构，自动处理迁移）
@@ -196,7 +224,9 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // 4. 加载监视目录
         watchedDirectories = Set(appStateFile.directories)
         print("已加载目录: \(watchedDirectories.count) 个")
-        directoryWatcher.startMonitoring(paths: watchedDirectories)
+        if startMonitoring {
+            directoryWatcher.startMonitoring(paths: watchedDirectories)
+        }
 
         // 5. 加载项目缓存并同步到状态系统
         if let cachedProjects = loadProjectsFromCache() {
@@ -230,6 +260,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         // 7. 启动后自动增量扫描监视目录（延迟 1.5s，避免阻塞首屏）
         // 背景：仅从缓存恢复项目时，缓存缺失的目录会显示 0 个项目，
         // 必须手动刷新才出现。此处自动补齐磁盘上的新增/缺失项目。
+        guard startMonitoring else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self = self else { return }
             print("🔄 启动自动增量扫描...")
@@ -693,64 +724,163 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     // MARK: - 数据保存
 
     private var needsSave = false
-    private var saveDebounceTimer: Timer?
+    private let saveDebouncer = DebouncedWorkScheduler(
+        label: "com.projectmanager.app-state-debounce"
+    )
+    /// 保存观测（失败原因 / 尝试次数）。写盘在 I/O 队列、发布在主队列，
+    /// 读写都过这把锁，避免计数器与失败记录出现撕裂读。
+    private let saveStateLock = NSLock()
+    private var storedLastSaveError: LocalPersistenceError?
+    private var storedSaveAttemptCount = 0
+
+    /// 最近一次「保存全部」的失败原因；成功后清空。
+    /// `performSave` 里各种失败原本只打到控制台，调用方无法判断数据是否真的落地。
+    var lastSaveError: LocalPersistenceError? {
+        saveStateLock.lock()
+        defer { saveStateLock.unlock() }
+        return storedLastSaveError
+    }
+
+    /// 已经开始的保存次数（含失败）。用于确认防抖任务真的被唤醒过，
+    /// 而不是只看「有没有调度出去」。
+    var saveAttemptCount: Int {
+        saveStateLock.lock()
+        defer { saveStateLock.unlock() }
+        return storedSaveAttemptCount
+    }
 
     func saveAll(force: Bool = false) {
         // 如果强制保存，立即执行
         if force {
+            saveDebouncer.cancel()
             performSave()
             return
         }
 
-        // 如果已经有定时器在运行，取消它
-        saveDebounceTimer?.invalidate()
-
-        // 设置新的定时器，延迟1秒执行保存
-        saveDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) {
-            [weak self] _ in
+        // 合并去抖：每次调用都重置待写窗口，静默 1 秒后只保存一次。
+        // 用不依赖 RunLoop 的调度器：该方法也可能从后台队列（扫描、Git 回填）调用，
+        // Timer 挂不到没有 RunLoop 的线程上，保存会被静默丢掉。
+        saveDebouncer.schedule(after: 1.0) { [weak self] in
             self?.performSave()
         }
     }
 
+    /// 丢弃尚未触发的防抖保存。应用退出/测试收尾时使用。
+    func cancelPendingSave() {
+        saveDebouncer.cancel()
+        projectOperations.cancelPendingSave()
+    }
+
+    /// 等已经排进 I/O 队列的写盘跑完（不再触发新的写入）。
+    /// 退出前和测试收尾用：先排空在途写盘再删目录，避免留下竞态噪声。
+    func drainPendingWrites() {
+        projectOperations.drainPendingWrites()
+        guard DispatchQueue.getSpecific(key: ioQueueKey) == nil else { return }
+        ioQueue.sync {}
+    }
+
+    /// 立即写出当前快照并返回结果（跳过防抖等待）。
+    /// 退出前需要「确定落盘」，测试也需要一个不依赖计时的确定性入口。
+    @discardableResult
+    func flushPendingSave() -> Result<Void, LocalPersistenceError> {
+        saveDebouncer.cancel()
+        let snapshot = makeSaveSnapshot()
+
+        let failure: LocalPersistenceError?
+        if DispatchQueue.getSpecific(key: ioQueueKey) != nil {
+            // 已经在 I/O 队列里：直接写，避免 ioQueue.sync 自锁。
+            failure = writeAll(snapshot)
+        } else {
+            var written: LocalPersistenceError?
+            ioQueue.sync { written = writeAll(snapshot) }
+            failure = written
+        }
+
+        recordSaveResult(failure)
+        return failure.map { .failure($0) } ?? .success(())
+    }
+
+    private struct SaveSnapshot {
+        let tags: Set<String>
+        let hiddenTags: Set<String>
+        let directories: Set<String>
+        let projects: [Project]
+    }
+
+    private func makeSaveSnapshot() -> SaveSnapshot {
+        SaveSnapshot(
+            tags: allTags,
+            hiddenTags: hiddenTags,
+            directories: watchedDirectories,
+            projects: Array(projects.values)
+        )
+    }
+
+    private func recordSaveResult(_ failure: LocalPersistenceError?) {
+        saveStateLock.lock()
+        storedSaveAttemptCount += 1
+        storedLastSaveError = failure
+        saveStateLock.unlock()
+        needsSave = false
+    }
+
     private func performSave() {
-        // 捕获当前状态快照
-        let tagsSnapshot = allTags
-        let hiddenTagsSnapshot = hiddenTags
-        let directoriesSnapshot = watchedDirectories
-        let projectsSnapshot = Array(projects.values)
+        let snapshot = makeSaveSnapshot()
 
         ioQueue.async { [weak self] in
             guard let self = self else { return }
-            
-            // 1. 构建统一的标签数据
-            var tagDataArray: [AppStateStorage.TagData] = []
-            for tag in tagsSnapshot {
-                let color = self.colorManager.getColor(for: tag) ?? Color.gray
-                let hidden = hiddenTagsSnapshot.contains(tag)
-                tagDataArray.append(AppStateStorage.TagData(name: tag, color: color, hidden: hidden))
-            }
-            
-            // 2. 保存到统一存储
-            let appStateFile = AppStateStorage.AppStateFile(
-                version: 2,
-                tags: tagDataArray,
-                directories: Array(directoriesSnapshot)
-            )
-            self.unifiedStorage.save(appStateFile)
-            
-            // 3. 保存项目数据（暂时保留独立文件）
-            self.storage.saveProjects(projectsSnapshot)
-            
-            // 4. 同步到系统标签
-            TagSystemSync.syncTagsToSystem(tagsSnapshot)
-            for project in projectsSnapshot {
-                project.saveTagsToSystem()
-            }
+            let failure = self.writeAll(snapshot)
+            // 观测结果在 I/O 队列上就地记录（有锁保护），这样 drain 之后
+            // 计数与失败原因一定已经落定，不必再等一次主队列回合。
+            self.recordSaveResult(failure)
 
             DispatchQueue.main.async {
                 self.needsSave = false
-                print("✅ 所有数据已成功后台同步至磁盘")
+                if let failure = failure {
+                    Log.error("保存全部数据时部分内容未落盘: \(failure.localizedDescription)")
+                } else {
+                    Log.debug("所有数据已成功后台同步至磁盘")
+                }
             }
+        }
+    }
+
+    /// 实际写盘。失败只返回原因，不抛出、不重建目录。
+    private func writeAll(_ snapshot: SaveSnapshot) -> LocalPersistenceError? {
+        // 1. 构建统一的标签数据
+        var tagDataArray: [AppStateStorage.TagData] = []
+        for tag in snapshot.tags {
+            let color = colorManager.getColor(for: tag) ?? Color.gray
+            let hidden = snapshot.hiddenTags.contains(tag)
+            tagDataArray.append(AppStateStorage.TagData(name: tag, color: color, hidden: hidden))
+        }
+
+        // 2. 保存到统一存储
+        let appStateFile = AppStateStorage.AppStateFile(
+            version: 2,
+            tags: tagDataArray,
+            directories: Array(snapshot.directories)
+        )
+        let stateResult = unifiedStorage.saveReportingResult(appStateFile)
+
+        // 3. 保存项目数据（暂时保留独立文件）
+        let projectsResult = storage.saveProjectsReportingResult(snapshot.projects)
+
+        // 4. 同步到系统标签
+        // 目标目录消失只影响缓存镜像：项目标签写的是各个项目自己的路径，
+        // 与缓存目录无关，因此这里照常执行，不当成整体失败。
+        TagSystemSync.syncTagsToSystem(snapshot.tags)
+        for project in snapshot.projects {
+            project.saveTagsToSystem()
+        }
+
+        switch (stateResult, projectsResult) {
+        case (.failure(let error), _):
+            return error
+        case (_, .failure(let error)):
+            return error
+        case (.success, .success):
+            return nil
         }
     }
 
@@ -1337,5 +1467,10 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
     }
     
     // MARK: - 刷新提示功能
-    
+
+    deinit {
+        // 对象销毁后不应该再由防抖任务写盘：目录可能已经不在了。
+        // 子组件（ProjectOperationManager）自己的 deinit 会取消它那条待写任务。
+        saveDebouncer.cancel()
+    }
 }

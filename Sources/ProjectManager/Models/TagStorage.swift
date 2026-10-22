@@ -1,6 +1,72 @@
 import Foundation
 import SwiftUI
 
+/// 本地 JSON 落盘的失败原因。
+///
+/// 定时/防抖保存发生在目录可能已经被删掉之后（测试收尾、用户清理缓存、
+/// 外置盘被拔掉）。这类失败必须能被调用方看见并安静收场：
+/// 不能抛未捕获错误，也不能顺手在别处重建目录再把问题掩盖过去。
+enum LocalPersistenceError: Error, Equatable, LocalizedError {
+    case directoryUnavailable(URL)
+    case encodingFailed(URL, String)
+    case writeFailed(URL, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .directoryUnavailable(let url):
+            return "目标目录不存在，已跳过写入: \(url.path)"
+        case .encodingFailed(let url, let reason):
+            return "编码失败: \(url.path)（\(reason)）"
+        case .writeFailed(let url, let reason):
+            return "写入失败: \(url.path)（\(reason)）"
+        }
+    }
+}
+
+/// 统一的本地 JSON 写入入口：先确认目标目录还在，再原子写入。
+///
+/// 这里刻意不调用 `createDirectory`：目录消失意味着这次保存已经失去目标，
+/// 悄悄重建只会把数据写到用户/测试都不期望的位置（临时目录尤其明显）。
+/// 目标不存在时返回 `.failure(.directoryUnavailable)`，由调用方决定是记日志还是重试。
+enum LocalJSONFile {
+    static func save<T: Encodable>(
+        _ value: T,
+        to url: URL,
+        formatting: JSONEncoder.OutputFormatting = []
+    ) -> Result<Void, LocalPersistenceError> {
+        // 统一成无尾斜杠的标准化路径：目录比较和日志里才不会出现两种写法。
+        let directoryPath = url.deletingLastPathComponent().standardizedFileURL.path
+        let directory = URL(fileURLWithPath: directoryPath)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directoryPath, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return .failure(.directoryUnavailable(directory))
+        }
+
+        let data: Data
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = formatting
+            data = try encoder.encode(value)
+        } catch {
+            return .failure(.encodingFailed(url, error.localizedDescription))
+        }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            return .success(())
+        } catch {
+            // 检查与写入之间目录可能刚被删掉（定时保存最常见的时序），
+            // 这种情况仍按「目标目录不存在」上报，调用方看到的原因才稳定。
+            var stillDirectory: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: directoryPath, isDirectory: &stillDirectory) {
+                return .failure(.directoryUnavailable(directory))
+            }
+            return .failure(.writeFailed(url, error.localizedDescription))
+        }
+    }
+}
+
 /// 管理标签数据的存储（旧版）
 /// - Warning: 已废弃。仅用于从旧版本数据结构迁移。
 /// 请使用 `AppStateStorage` 进行所有新的开发。
@@ -119,14 +185,21 @@ class TagStorage {
     }
 
     func saveProjects(_ projects: [Project]) {
-        do {
-            let encoder = JSONEncoder()
-            // 移除了 .prettyPrinted 以提升大型数据集的编码性能
-            let data = try encoder.encode(projects)
-            try data.write(to: projectsFileURL)
-        } catch {
-            print("保存项目数据失败: \(error)")
+        saveProjectsReportingResult(projects)
+    }
+
+    /// 保存项目列表并把失败原因交给调用方。
+    ///
+    /// 异步保存（定时器 / 串行 I/O 队列）用它拿明确的失败路径：目录被删后
+    /// 返回 `.failure(.directoryUnavailable)`，调用方记一条日志即可，不再有
+    /// 只在控制台出现、无人处理的错误文本。
+    @discardableResult
+    func saveProjectsReportingResult(_ projects: [Project]) -> Result<Void, LocalPersistenceError> {
+        let result = LocalJSONFile.save(projects, to: projectsFileURL)
+        if case .failure(let error) = result {
+            Log.error("保存项目数据失败: \(error.localizedDescription)")
         }
+        return result
     }
 
     func loadHiddenTags() -> Set<String> {

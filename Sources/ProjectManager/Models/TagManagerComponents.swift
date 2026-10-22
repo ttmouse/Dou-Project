@@ -290,10 +290,18 @@ class ProjectOperationManager {
 
     /// git 采集专用串行队列：git 进程本身是主要开销，串行避免多路刷新互相抢进程
     private let gitQueue = DispatchQueue(label: "com.projectmanager.gitdaily", qos: .utility)
-    /// projects.json 落盘走低优先级串行队列，主线程只做快照
+    /// projects.json 落盘走串行队列，主线程只做快照。
+    /// 不用 `.background`：最低 QoS 在系统繁忙时会被无限推迟，
+    /// 保存也就「调用了但没写盘」，与本次要修的静默丢保存是同一类问题。
     let ioQueue = DispatchQueue(label: "com.projectmanager.cache-writes", qos: .utility)
     private let savePendingLock = NSLock()
-    private var saveDebounceTimer: Timer?
+    private let saveDebouncer = DebouncedWorkScheduler(
+        label: "com.projectmanager.projects-cache-debounce"
+    )
+    /// 标记 ioQueue：flush 从 I/O 队列内部调用时不能再 sync，否则自锁。
+    private let ioQueueKey = DispatchSpecificKey<Void>()
+    private var lastSaveError: LocalPersistenceError?
+    private var storedSaveAttemptCount = 0
     weak var delegate: ProjectOperationDelegate?
     weak var sortDelegate: SortManagerDelegate?
     private let storage: TagStorage
@@ -302,6 +310,7 @@ class ProjectOperationManager {
         self.delegate = delegate
         self.sortDelegate = sortDelegate
         self.storage = storage
+        ioQueue.setSpecific(key: ioQueueKey, value: ())
     }
     
     func registerProject(_ project: Project, batchMode: Bool = false) {
@@ -549,33 +558,100 @@ class ProjectOperationManager {
 
         // 主线程只做轻量快照，编码与写盘全部挪到串行 I/O 队列；
         // 合并去抖：活动高峰（如 FSEvents 每 0.8s 一批）不再逐拍落盘，
-        // 待写定时器未触发就先重置，磁盘写频率从「每批次一次」降为「静默 2s 后一次」。
+        // 待写任务未触发就先重置，磁盘写频率从「每批次一次」降为「静默 2s 后一次」。
         let projectsArray = Array(delegate.projects.values)
         let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
 
-        savePendingLock.lock()
-        saveDebounceTimer?.invalidate()
-        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.savePendingLock.lock()
-            self?.saveDebounceTimer = nil
-            self?.savePendingLock.unlock()
-            self?.ioQueue.async { [weak self] in
+        saveDebouncer.schedule(after: 2.0) { [weak self] in
+            guard let self = self else { return }
+            self.ioQueue.async { [weak self] in
                 self?.writeProjectsSnapshot(projectsArray, to: cacheURL)
             }
         }
-        saveDebounceTimer = timer
+    }
+
+    /// 落盘并汇报结果。目录被删（测试收尾、用户清理缓存）时静默失败：
+    /// 只留一条错误日志，不重建目录，也不把错误抛到调度回调里。
+    @discardableResult
+    private func writeProjectsSnapshot(
+        _ projectsArray: [Project],
+        to cacheURL: URL
+    ) -> Result<Void, LocalPersistenceError> {
+        let result = LocalJSONFile.save(projectsArray, to: cacheURL)
+
+        savePendingLock.lock()
+        storedSaveAttemptCount += 1
+        switch result {
+        case .success:
+            lastSaveError = nil
+        case .failure(let error):
+            lastSaveError = error
+        }
+        savePendingLock.unlock()
+
+        switch result {
+        case .success:
+            Log.debug("项目数据已保存到缓存: \(cacheURL.lastPathComponent)")
+        case .failure(let error):
+            Log.error("保存项目缓存失败: \(error.localizedDescription)")
+        }
+        return result
+    }
+
+    /// 实际发生的写盘尝试次数（含失败）。用于验证合并去抖真的合并了，
+    /// 而不是把「有调度」当成「写了盘」。
+    var saveAttemptCount: Int {
+        savePendingLock.lock()
+        defer { savePendingLock.unlock() }
+        return storedSaveAttemptCount
+    }
+
+    /// 取消尚未触发的合并保存，并清掉失败记录。
+    /// 对象释放/测试收尾时调用，避免保存任务在目录已被删除之后才醒来。
+    func cancelPendingSave() {
+        saveDebouncer.cancel()
+        savePendingLock.lock()
+        lastSaveError = nil
         savePendingLock.unlock()
     }
 
-    private func writeProjectsSnapshot(_ projectsArray: [Project], to cacheURL: URL) {
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(projectsArray)
-            try data.write(to: cacheURL, options: .atomic)
-            print("项目数据已保存到缓存")
-        } catch {
-            print("保存项目缓存失败: \(error)")
+    /// 等已经排进 I/O 队列的写入跑完（不再触发新的写入）。
+    /// 退出前和测试收尾用：先排空在途写盘再删目录，才不会留下竞态噪声。
+    func drainPendingWrites() {
+        guard DispatchQueue.getSpecific(key: ioQueueKey) == nil else { return }
+        ioQueue.sync {}
+    }
+
+    /// 立即执行一次合并保存（跳过等待），返回写盘结果。
+    /// 退出前或测试里需要「确定落盘」时使用，不必依赖计时。
+    @discardableResult
+    func flushPendingSave() -> Result<Void, LocalPersistenceError> {
+        saveDebouncer.cancel()
+        guard let delegate = delegate else { return .success(()) }
+        let cacheURL = storage.appSupportURL.appendingPathComponent("projects.json")
+        let snapshot = Array(delegate.projects.values)
+
+        // 已经从 I/O 队列进来时直接写，避免 ioQueue.sync 自锁。
+        if DispatchQueue.getSpecific(key: ioQueueKey) != nil {
+            return writeProjectsSnapshot(snapshot, to: cacheURL)
         }
+        var result: Result<Void, LocalPersistenceError> = .success(())
+        ioQueue.sync {
+            result = writeProjectsSnapshot(snapshot, to: cacheURL)
+        }
+        return result
+    }
+
+    /// 最近一次异步保存的失败原因；成功或还没写过时为 nil。
+    /// 供测试和 UI 判断保存是否真的落地，而不是只看是否有错误日志。
+    var lastSaveResult: LocalPersistenceError? {
+        savePendingLock.lock()
+        defer { savePendingLock.unlock() }
+        return lastSaveError
+    }
+
+    deinit {
+        saveDebouncer.cancel()
     }
 }
 
