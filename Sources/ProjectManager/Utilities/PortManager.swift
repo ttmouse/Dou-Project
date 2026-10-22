@@ -5,27 +5,20 @@ class PortManager {
 
     /// 运行外部命令，参数走数组，不经 shell 解释（2026-09-29 安全收尾：
     /// 消除 `bash -c` 辅助入口，防止后人复用引入注入面）。
-    private static func runProcess(executable: String, arguments: [String]) -> (output: String, success: Bool) {
-        let process = Process()
-        let pipe = Pipe()
-        let errorPipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = pipe
-        process.standardError = errorPipe
-
+    ///
+    /// 读取顺序由 `ProcessPipeDrain` 统一保证：先并行排空 stdout/stderr，再等退出。
+    /// 先 wait 再读在 `lsof` 输出较多时会因管道写满而互相等待（审计后续 #5）。
+    static func runProcess(executable: String, arguments: [String]) -> (output: String, success: Bool) {
         do {
-            try process.run()
-            process.waitUntilExit()
+            let result = try ProcessPipeDrain.run(
+                executable: URL(fileURLWithPath: executable),
+                arguments: arguments
+            )
 
-            let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: result.standardOutput, encoding: .utf8) ?? ""
+            let errorOutput = String(data: result.standardError, encoding: .utf8) ?? ""
 
-            let output = String(data: outputData, encoding: .utf8) ?? ""
-            let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-
-            let success = process.terminationStatus == 0
+            let success = result.terminationStatus == 0
             let combinedOutput = success ? output : "\(output)\n\(errorOutput)".trimmingCharacters(in: .whitespacesAndNewlines)
 
             return (output: combinedOutput, success: success)

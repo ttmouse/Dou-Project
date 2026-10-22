@@ -14,29 +14,34 @@ class ShellExecutor {
     ///   - workingDir: 工作目录路径
     /// - Returns: 执行结果(输出内容, 是否成功)
     static func executeGitCommand(args: [String], workingDir: String) -> (output: String, success: Bool) {
-        let process = Process()
-        let pipe = Pipe()
-        let errorPipe = Pipe()
-        
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = args
-        process.currentDirectoryURL = URL(fileURLWithPath: workingDir)
-        process.standardOutput = pipe
-        process.standardError = errorPipe
-        
+        execute(
+            executable: "/usr/bin/git",
+            args: args,
+            workingDir: workingDir
+        )
+    }
+
+    /// 运行任意可执行文件并收集 stdout/stderr。
+    /// 读取顺序由 `ProcessPipeDrain` 统一保证：先并行排空两路管道，再等退出。
+    /// 大输出（`git diff`/`git show` 长输出）不会再因管道写满而死锁（审计后续 #5）。
+    static func execute(
+        executable: String,
+        args: [String],
+        workingDir: String
+    ) -> (output: String, success: Bool) {
         do {
-            try process.run()
-            process.waitUntilExit()
-            
-            let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            
-            let output = String(data: outputData, encoding: .utf8) ?? ""
-            let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-            
-            let success = process.terminationStatus == 0
+            let result = try ProcessPipeDrain.run(
+                executable: URL(fileURLWithPath: executable),
+                arguments: args,
+                currentDirectoryURL: URL(fileURLWithPath: workingDir)
+            )
+
+            let output = String(data: result.standardOutput, encoding: .utf8) ?? ""
+            let errorOutput = String(data: result.standardError, encoding: .utf8) ?? ""
+
+            let success = result.terminationStatus == 0
             let combinedOutput = success ? output : "\(output)\n\(errorOutput)".trimmingCharacters(in: .whitespacesAndNewlines)
-            
+
             return (output: combinedOutput, success: success)
         } catch {
             return (output: "执行命令失败: \(error.localizedDescription)", success: false)
