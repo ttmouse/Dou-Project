@@ -34,3 +34,23 @@ swift build -c release
 ```
 
 按用户要求重新生成项目根目录的 ProjectManager.app 与 ProjectManager.dmg；旧包保留在本地打包临时目录。原有异步保存测试仍可能在临时目录清理后输出保存错误，此次不把测试断言通过解释为该生命周期问题已解决。
+
+## 已关闭（2026-10-23）
+
+- **「异步保存测试仍可能在临时目录清理后输出保存错误」——已关闭**，`17d8e14`
+  `fix(storage): harden async save after temp dir removal`：
+  去抖保存从 `Timer.scheduledTimer`（依赖调用线程 RunLoop，后台队列上永远不触发）
+  换成 `DebouncedWorkScheduler`（串行队列 + `DispatchWorkItem`，任意线程可调度）；
+  新增 `LocalJSONFile` / `LocalPersistenceError`，写盘前确认目标目录仍在，
+  缺失时返回 `.directoryUnavailable` 而不是重建目录或静默丢任务；
+  `TagStorage` / `AppStateStorage` 增加返回 `Result` 的保存入口，
+  `TagManager` 暴露 `lastSaveError`、`drainPendingWrites`、`flushPendingSave`。
+  `AsyncSaveLifecycleTests`（16 条，含「目录删除后的整条生命周期」）覆盖该契约，
+  并改用临时目录注入点，不再触碰真实用户数据。本条不再作为未解释的残留保留。
+
+仍开放：
+
+- 本文「本机桌面驱动未运行且权限状态未返回」那条测量缺口，后来由
+  `docs/live-search-measurement-2026-10-22.md` 用 ScreenCaptureKit 补上
+  （搜索切换中位数 **159 ms**、清空恢复 **542 ms**，样本数有限）。
+  但那份数据对应**修复前**的运行包，当前包的端到端耗时仍需按同一方法复测 —— 见新卡。

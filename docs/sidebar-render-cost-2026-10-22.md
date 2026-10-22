@@ -96,3 +96,26 @@ Release 实测：
 - 同一天另有并发会话在改搜索链路本身（去 180 ms 停顿、拆搜索与筛选、
   目录候选复用），本轮只动了它没有碰的两个文件：`BusinessLogic.swift`、
   `SidebarView.swift`。两边无文件重叠。
+
+## 已关闭（2026-10-23）
+
+- **边界「`TagManager` 仍缺存储注入点」——已关闭**，`17d8e14`
+  `fix(storage): harden async save after temp dir removal` 增加
+  `TagManager(storageDirectory:startMonitoring:)`（`TagManager.swift:160`），
+  测试不再构造会读写 `~/Library/Application Support/com.projectmanager`、
+  并开始监视真实目录的生产组合根。
+  `DirectoryLogicTests.testTagManagerDirectoryCountMatchesFilterResult` 的
+  `RUN_TAGMANAGER_E2E` 开关仍在，但注释里写的恢复条件（注入点）已经满足，
+  剩下的只是把该用例改成传入临时目录 —— 小清理，无性能成本，本轮不建卡。
+- **边界「同日并发会话」——不再是开放项**。那条记录的是 2026-10-22 当天的写入
+  事实；`3ce6594` 之后两侧改动已在同一棵树上，此后无文件重叠。
+
+仍开放（本轮不建卡，附不建卡理由）：
+
+- `Assignment` 仍在每次 `DirectoryListView.body` 求值时重算
+  （`DirectoryListView.swift:18` → `TagManager.directoryAssignment()`）。
+  Release 实测 2000 项目 / 4 目录 **0.84 ms**，没到需要缓存的门槛；
+  等出现项目数或目录数增长的真实证据，再做按 `projects` / `watchedDirectories`
+  变更事件失效的缓存。
+- 真实滚动帧时间仍未采样，已在看板上以
+  「[阻塞] [P1] Instruments 记录真实交互帧时间」单卡跟踪，本文件不重复开卡。

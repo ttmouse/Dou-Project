@@ -83,3 +83,39 @@ swift build -c release
 证据及独立测试应用位于 artifacts/git-backfill-20261021。应用通过 codesign --verify --deep --strict 校验。原有测试临时目录清理后仍有延迟保存报错，未把测试通过解释为保存生命周期已修复。
 
 边界：当前仍有一次必要的主线程状态提交及可见视图更新。尚未做 Instruments 的真实滚动帧时间采样，不承诺任何机器、任意项目规模和资源压力下绝对无卡顿。
+
+## 已关闭（2026-10-23）
+
+对照「后续重构顺序」逐条核对当前 `main`（`17d8e14`）后的状态：
+
+- **#1 收敛双份项目状态 —— 部分关闭。** `b3db6c2` 已把差异写清
+  （`docs/project-projectdata-dual-state-2026-10-22.md`）并补 12 条转换契约测试，
+  「先补测试再决定唯一状态模型」这一步已完成。**仍未收敛**：
+  `TagManager` 同时维护 `projects: [UUID: Project]` 与
+  `appState.projects: [UUID: ProjectData]` 两份字典，
+  `activityAt` 与 `notes` 的归属也仍未拍板（见该文档第 4 节）。
+  这是需要产品/架构决策的项，不是可以按文档直接执行的成本项。
+- **#2 合并文件事件的状态发布 —— 已关闭。** `3ce6594` 落地
+  `ProjectBatchChange` / `ProjectBatchMerge`，`registerProjects`、
+  删除路径、`updateActivity` 全部走批次通道，`notifyProjectsChanged()`
+  不再逐项调用；`FileEventBatchPublishTests` 12 条含「旧写法必然发布 N 次」的护栏。
+- **#3 记录真实交互帧时间 —— 仍开放，已在看板单卡跟踪**
+  （「[阻塞] [P1] Instruments 记录真实交互帧时间」）：本机 `xctrace`
+  缺 Time Profiler 模板且 `list instruments` 为空，采样通道尚未打通。
+  不重复开卡。
+- **#4 完善异步保存的生命周期 —— 已关闭。** `17d8e14`：去抖保存改为
+  `DebouncedWorkScheduler`（不再依赖调用线程 RunLoop），写盘前确认目录仍在、
+  缺失返回 `.directoryUnavailable`，`TagManager` 暴露 `lastSaveError` /
+  `drainPendingWrites` / `flushPendingSave`；`AsyncSaveLifecycleTests` 16 条
+  覆盖「目录删除后的整条生命周期」，并改用临时目录注入点。
+  本文第 61 行与第 83 行记录的「临时目录清理后延迟保存报错」不再是未解释的残留。
+- **#5 单独审计分支操作的进程执行器 —— 部分关闭。** `a6dc525` 删掉了
+  `ShellExecutor.executeShellCommand`，`PortManager` 四处改为 `Process` 直调 +
+  参数数组，注入面已消除。但 **`executeGitCommand` 的管道顺序没有改**
+  （`ShellExecutor.swift:29-32`：先 `waitUntilExit()`，再读 stdout 与 stderr），
+  `PortManager.runProcess` 同样是先 `waitUntilExit()` 再读双管道。
+  正确顺序已在 `GitDailyCollector.runGit` 里落地（先排空 stdout 再等待），
+  `BusinessLogic`/`Project` 的 HEAD 查询仍是旧顺序，但只在元数据缺失时走。
+  看板上 `[P1] 审计 ShellExecutor 双管道等待` 已标完成，与当前代码不符 ——
+  实际只完成了「消除 bash -c」，双管道等待本身仍在。按卡上限本轮最多再开 1 张，
+  该缺口需要另开一张跟进卡。
