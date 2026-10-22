@@ -26,13 +26,22 @@ struct SearchBar: View {
                 .tint(AppTheme.searchBarCursor)
                 .focused($isFocused)
 
-            if !input.text.isEmpty {
-                Button(action: { input.text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(AppTheme.titleBarIcon)
-                }
-                .buttonStyle(.plain)
+            // 清除按钮始终存在，只用透明度控制可见性。
+            //
+            // 原先写成 `if !input.text.isEmpty { Button }`：每敲一个字都会
+            // 从这个 HStack 里插入/移除一个子视图，导致这一行的布局尺寸变化。
+            // 而它挂在窗口最顶层的 VStack 上，尺寸变化会向上传导，触发整窗
+            // `_layoutViewTree` —— 实测搜索时该路径占 14.7%，同样场景下只滚动
+            // 则只有 0.1%，可见不是滚动固有的代价，而是搜索引起的重布局。
+            // 结构恒定的写法把这条触发链去掉。
+            Button(action: { input.text = "" }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(AppTheme.titleBarIcon)
             }
+            .buttonStyle(.plain)
+            .opacity(input.text.isEmpty ? 0 : 1)
+            .allowsHitTesting(!input.text.isEmpty)
+            .accessibilityHidden(input.text.isEmpty)
         }
         .padding(.horizontal, 8)
         .frame(height: AppTheme.searchBarControlHeight)
