@@ -168,13 +168,28 @@ final class ProjectCardItem: NSCollectionViewItem {
     private var projectID: UUID?
 
     override func loadView() {
-        view = NSView()
-        view.wantsLayer = true
+        view = CardContainerView()
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         projectID = nil
+    }
+
+    /// 不让 AppKit 反算卡片的「理想尺寸」。
+    ///
+    /// 1ms 主线程采样（本轮）显示：输入到画面的时间里有 11.4% 花在
+    /// `_createPreparedCellForItemAtIndexPath` → `preferredLayoutAttributesFittingAttributes`
+    /// → `systemLayoutSizeFittingSize` → `updateConstraintsForSubtreeIfNeeded`
+    /// → `NSHostingView.minSize()` → `AG::Graph::UpdateStack::update()`。
+    /// 也就是说每复用一张卡，SwiftUI 就被要求重算一次整张卡的布局图，
+    /// 而尺寸其实由 `ProjectGridLayout` 早就确定好了。
+    ///
+    /// 布局是自定义的、尺寸是算出来的、卡片高度是固定的，所以这里直接原样返回。
+    override func preferredLayoutAttributesFitting(
+        _ layoutAttributes: NSCollectionViewLayoutAttributes
+    ) -> NSCollectionViewLayoutAttributes {
+        layoutAttributes
     }
 
     func configure(
@@ -210,17 +225,32 @@ final class ProjectCardItem: NSCollectionViewItem {
             hostingView.rootView = AnyView(card)
         } else {
             let host = NSHostingView(rootView: AnyView(card))
-            host.translatesAutoresizingMaskIntoConstraints = false
+            // 用 frame + autoresizing 而不是约束。
+            //
+            // 约束版每张卡都会向窗口级 AutoLayout 引擎登记 4 条约束，
+            // 窗口布局时要遍历整棵树（采样里 24.8% 的
+            // `NSWindow layoutIfNeeded → _layoutViewTree` 正是这条路径）；
+            // 卡片的尺寸本来就是已知的，约束只是纯开销。
+            host.translatesAutoresizingMaskIntoConstraints = true
+            host.autoresizingMask = [.width, .height]
+            if #available(macOS 13.0, *) {
+                // 不向父视图推荐 intrinsic 尺寸：尺寸由布局对象决定。
+                host.sizingOptions = []
+            }
             view.addSubview(host)
-            NSLayoutConstraint.activate([
-                host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                host.topAnchor.constraint(equalTo: view.topAnchor),
-                host.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
             hostingView = host
         }
         projectID = project.id
+    }
+}
+
+/// 卡片容器的根视图：只负责承载一张卡片，不做自适布局。
+private final class CardContainerView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        subviews.first?.frame = bounds
     }
 }
 

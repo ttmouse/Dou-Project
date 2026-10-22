@@ -315,20 +315,7 @@ struct ProjectCard: View, Equatable {
                         ? AppTheme.cardSelectedBorderWidth : AppTheme.cardBorderWidth
                 )
         )
-        // 去掉了每卡的 `.shadow`。
-        //
-        // 背景：`cardShadow` 主题色本来就是 alpha 0（不可见），但 `.shadow(radius: 4)`
-        // 依然会让 Core Animation 为每张卡建立离屏模糊图层——200 张卡就是 200 个
-        // 离屏合成层，而视觉上什么也没变。选中态的强调用左侧色条表达（在下方 overlay 里）。
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(AppTheme.accent)
-                    .frame(width: 3)
-                    .padding(.vertical, 10)
-                    .padding(.leading, 1)
-            }
-        }
+
         .onTapGesture {
             let flags = NSEvent.modifierFlags
             let isShiftPressed = flags.contains(.shift)
