@@ -126,10 +126,8 @@ class ProjectLoaderOptimized {
         guard FileManager.default.fileExists(atPath: path) else {
             return results
         }
-        
-        // 添加根目录本身
-        results.append(path)
-        
+
+        // 监视目录是容器，不是项目；只收录一级子目录
         // 扫描子目录
         do {
             let contents = try FileManager.default.contentsOfDirectory(atPath: path)

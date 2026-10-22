@@ -131,11 +131,13 @@ class ProjectIndex {
                 indexEntries[itemPath] = entry
             }
             
-            // 更新父目录
+            // 当前 path 若先前已作为「某监视目录的子项」标成项目，二级扫描时保留；
+            // 若只是监视根（从未当过别人的 child），保持 false，不当项目。
+            let treatAsProject = indexEntries[path]?.isProject ?? false
             indexEntries[path] = ProjectIndexEntry(
                 path: path,
                 lastScan: Date(),
-                isProject: true, // 父目录也是项目
+                isProject: treatAsProject,
                 lastModified: Date(),
                 children: childPaths
             )
@@ -196,15 +198,7 @@ class ProjectIndex {
         for watchedDir in watchedDirectories {
             Log.debug("处理监视目录: \(watchedDir)")
             
-            // 检查监视目录本身是否是项目
-            if let entry = indexEntries[watchedDir], entry.isProject, !processedPaths.contains(watchedDir) {
-                if let project = Project.createProject(at: watchedDir, existingProjects: existingProjects) {
-                    projects.append(project)
-                    processedPaths.insert(watchedDir)
-                    Log.debug("添加项目: \(watchedDir)")
-                }
-            }
-            
+            // 监视目录根不收录为项目，只处理其子目录
             // 获取并处理子目录
             if let children = indexEntries[watchedDir]?.children {
                 for childPath in children {
