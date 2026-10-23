@@ -146,6 +146,7 @@ struct ProjectListRowsView: View {
 
 /// 表格只创建可见原生行，不再为每行建立 SwiftUI 视图树。
 struct ProjectRowsTable: NSViewRepresentable {
+    @AppStorage(TagAppearance.preferenceKey) private var tagAppearance: TagAppearance = .colorful
     let projects: [Project]
     var selectedIDs: Set<UUID> = []
     var displayTags: (Project) -> [TagDisplayData] = { _ in [] }
@@ -220,7 +221,7 @@ struct ProjectRowsTable: NSViewRepresentable {
         private func configure(_ cell: NativeProjectListRow, project: Project) {
             cell.onAction = { [weak self] project, action in self?.parent.onAction(project, action) }
             cell.selectedIDs = { [weak self] in self?.parent.selectedIDs ?? [] }
-            cell.update(project: project, selected: parent.selectedIDs.contains(project.id), tags: parent.displayTags(project))
+            cell.update(project: project, selected: parent.selectedIDs.contains(project.id), tags: parent.displayTags(project), appearance: parent.tagAppearance)
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { parent.projects.count }

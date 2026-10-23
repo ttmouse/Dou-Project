@@ -8,6 +8,10 @@ struct TagView: View {
     var isPreview: Bool = false  // 新增：是否为预览状态（新建标签时）
     var onDelete: (() -> Void)? = nil
     var onClick: (() -> Void)? = nil  // 新增：点击回调
+    var appearanceOverride: TagAppearance? = nil
+
+    @AppStorage(TagAppearance.preferenceKey) private var storedAppearance: TagAppearance = .colorful
+    private var appearance: TagAppearance { appearanceOverride ?? storedAppearance }
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -31,8 +35,9 @@ struct TagView: View {
     
     private var tagContent: some View {
         HStack(spacing: 4) {
-            Text(tag)
+            Text(appearance.label(for: tag))
                 .font(.system(size: fontSize))
+                .fontWeight(appearance == .text && isSelected ? .semibold : .regular)
                 .foregroundColor(textColor)
 
             if isHovered && onDelete != nil {
@@ -62,26 +67,12 @@ struct TagView: View {
     
     // 计算文字颜色
     private var textColor: Color {
-        if isSelected {
-            return .white
-        } else if isPreview {
-            // 预览状态下使用更高对比度的文字颜色
-            return color.opacity(1.0)
-        } else {
-            return color.opacity(0.9)
-        }
+        appearance.foreground(base: color, selected: isSelected, preview: isPreview)
     }
     
     // 计算背景颜色
     private var backgroundColor: Color {
-        if isSelected {
-            return color
-        } else if isPreview {
-            // 预览状态下使用更高对比度的背景颜色
-            return color.opacity(0.3)
-        } else {
-            return color.opacity(0.2)
-        }
+        appearance.background(base: color, selected: isSelected, preview: isPreview)
     }
 }
 

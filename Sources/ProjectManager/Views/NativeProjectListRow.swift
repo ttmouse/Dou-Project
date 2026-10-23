@@ -36,6 +36,7 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
     var onAction: (Project, ProjectRowAction) -> Void = { _, _ in }
     var selectedIDs: () -> Set<UUID> = { [] }
     private var displayedTags: [TagDisplayData] = []
+    private var tagAppearance: TagAppearance = .colorful
     private let tagScroll = NSScrollView()
     private let tagDocument = FlippedProjectTagsView()
     private var tagButtons: [NativeProjectTagButton] = []
@@ -60,7 +61,7 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
 
     required init?(coder: NSCoder) { nil }
 
-    func update(project: Project, selected: Bool, tags: [TagDisplayData]) {
+    func update(project: Project, selected: Bool, tags: [TagDisplayData], appearance: TagAppearance = .colorful) {
         let changedIdentity = self.project?.id != project.id
         let changedRunButton = self.project?.startupCommand != project.startupCommand
         if changedIdentity {
@@ -77,8 +78,9 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
         setAccessibilityLabel("\(project.name)，修改日期 \(activityText)，提交 \(commitsText)")
         setAccessibilityValue(selected ? "已选中" : "未选中")
         setAccessibilitySelected(selected)
-        if changedIdentity || displayedTags != tags {
+        if changedIdentity || displayedTags != tags || tagAppearance != appearance {
             displayedTags = tags
+            tagAppearance = appearance
             updateTags()
         }
         if changedIdentity || changedRunButton { updateButtons() }
@@ -131,7 +133,7 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
     private func updateTags() {
         tagButtons.forEach { $0.removeFromSuperview() }
         tagButtons = displayedTags.map { data in
-            let button = NativeProjectTagButton(tag: data)
+            let button = NativeProjectTagButton(tag: data, appearance: tagAppearance)
             button.onClick = { [weak self] in self?.perform(.tag(data.name)) }
             button.onRemove = { [weak self] in self?.perform(.removeTag(data.name)) }
             button.onWidthChanged = { [weak self] in self?.layoutTags() }
@@ -331,6 +333,7 @@ private class ProjectRowButton: NSButton {
 /// 使用原生按钮响应键盘与辅助功能，外观绘制沿用原 TagView 的字号、内边距和颜色。
 final class NativeProjectTagButton: NSButton {
     let tagData: TagDisplayData
+    private let tagStyle: TagAppearance
     var onClick: () -> Void = {}
     var onRemove: () -> Void = {}
     var onWidthChanged: () -> Void = {}
@@ -339,19 +342,21 @@ final class NativeProjectTagButton: NSButton {
     private let textWidth: CGFloat
     var tagWidth: CGFloat { textWidth + 16 + (hovered ? 16 : 0) }
 
-    init(tag: TagDisplayData) {
+    init(tag: TagDisplayData, appearance: TagAppearance = .colorful) {
         self.tagData = tag
-        textWidth = ceil((tag.name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width)
+        self.tagStyle = appearance
+        let label = appearance.label(for: tag.name)
+        textWidth = ceil((label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width)
         super.init(frame: .zero)
         isBordered = false
-        title = tag.name
+        title = label
         target = self
         action = #selector(clicked)
         setAccessibilityLabel("标签 \(tag.name)")
         removeButton.isBordered = false
         removeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "移除标签 \(tag.name)")?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .regular))
-        removeButton.contentTintColor = NSColor(tag.color).withAlphaComponent(0.72)
+        removeButton.contentTintColor = NSColor(appearance.foreground(base: tag.color)).withAlphaComponent(0.8)
         removeButton.setAccessibilityLabel("移除标签 \(tag.name)")
         removeButton.toolTip = "移除标签 \(tag.name)"
         removeButton.onClick = { [weak self] in self?.onRemove() }
@@ -363,10 +368,10 @@ final class NativeProjectTagButton: NSButton {
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(tagData.color).withAlphaComponent(0.2).setFill()
+        NSColor(tagStyle.background(base: tagData.color)).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
-        (tagData.name as NSString).draw(at: NSPoint(x: 8, y: 4), withAttributes: [
-            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor(tagData.color).withAlphaComponent(0.9)
+        (tagStyle.label(for: tagData.name) as NSString).draw(at: NSPoint(x: 8, y: 4), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor(tagStyle.foreground(base: tagData.color))
         ])
         if window?.firstResponder === self {
             NSColor.keyboardFocusIndicatorColor.setStroke()

@@ -14,13 +14,15 @@ struct TagRow: View {
     @State var isEditing = false
     @State var tempName = ""
     @State private var isHovered = false
+    @AppStorage(TagAppearance.preferenceKey) private var appearance: TagAppearance = .colorful
 
     var body: some View {
         HStack {
             // 可点击的标签区域
             HStack(spacing: 4) {
-                Text(tag)
+                Text(appearance.label(for: tag))
                     .font(.system(size: 13))
+                    .fontWeight(appearance == .text && isSelected ? .semibold : .regular)
                     .foregroundColor(textColor)
             }
             .padding(.horizontal, 8)
@@ -99,22 +101,16 @@ struct TagRow: View {
     
     // 计算标签文字颜色
     private var textColor: Color {
-        if isSelected {
-            return .white
-        } else {
-            let color = tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
-            return color.opacity(0.9)
-        }
+        appearance.foreground(base: tagColor, selected: isSelected)
     }
     
     // 计算标签背景颜色  
     private var tagBackgroundColor: Color {
-        let color = tagManager.colorManager.getColor(for: tag) ?? AppTheme.tagPresetColors.randomElement()?.color ?? AppTheme.accent
-        if isSelected {
-            return color
-        } else {
-            return color.opacity(0.2)
-        }
+        appearance.background(base: tagColor, selected: isSelected)
+    }
+
+    private var tagColor: Color {
+        tagManager.colorManager.getColor(for: tag) ?? AppTheme.accent
     }
 
     // MARK: - View Components

@@ -3,12 +3,14 @@ import SwiftUI
 // MARK: - 设置面板 - 重新设计
 
 enum SettingsTab: String, CaseIterable {
+    case appearance = "外观"
     case editors = "编辑器"
     case tagging = "自动标签"
     case dashboard = "项目仪表盘"
 
     var icon: String {
         switch self {
+        case .appearance: return "paintpalette"
         case .editors: return "pencil"
         case .tagging: return "tag"
         case .dashboard: return "chart.line.uptrend.xyaxis"
@@ -84,6 +86,8 @@ struct SettingsView: View {
 
             VStack(spacing: 0) {
                 switch selectedTab {
+                case .appearance:
+                    AppearanceSettingsView()
                 case .editors:
                     EditorsTabView(editorManager: editorManager)
                 case .tagging:
