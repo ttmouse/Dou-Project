@@ -71,6 +71,7 @@ struct TagEditorView: View {
         }
         .frame(width: 300, height: 400)
         .background(AppTheme.sidebarBackground)
+        .onExitCommand { dismiss() }
     }
     
     // MARK: - 私有视图
@@ -164,8 +165,14 @@ struct TagEditorView: View {
                     Image(systemName: "plus.circle.fill")
                     Text("创建标签「\(searchText)」")
                 }
-                .foregroundColor(AppTheme.accent)
+                .font(AppTheme.bodyFont.weight(.medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(AppTheme.accent)
+                .cornerRadius(6)
             }
+            .buttonStyle(.plain)
         }
     }
     
@@ -214,4 +221,4 @@ struct TagEditorView_Previews: PreviewProvider {
         )
     }
 }
-#endif 
+#endif

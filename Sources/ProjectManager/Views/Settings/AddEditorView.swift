@@ -15,8 +15,8 @@ struct AddEditorView: View {
         VStack(spacing: 20) {
             // 标题
             Text("添加自定义编辑器")
-                .font(.title2)
-                .fontWeight(.medium)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(AppTheme.text)
             
             // 预设选择
             VStack(alignment: .leading) {
@@ -69,28 +69,28 @@ struct AddEditorView: View {
                         Text("名称:")
                             .frame(width: 80, alignment: .leading)
                         TextField("编辑器名称", text: $name)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AppDialogTextFieldStyle())
                     }
                     
                     HStack {
                         Text("Bundle ID:")
                             .frame(width: 80, alignment: .leading)
                         TextField("如: com.microsoft.VSCode", text: $bundleId)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AppDialogTextFieldStyle())
                     }
                     
                     HStack {
                         Text("命令路径:")
                             .frame(width: 80, alignment: .leading)
                         TextField("如: /usr/local/bin/code", text: $commandPath)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AppDialogTextFieldStyle())
                     }
                     
                     HStack {
                         Text("启动参数:")
                             .frame(width: 80, alignment: .leading)
                         TextField("可选，如: --wait", text: $arguments)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(AppDialogTextFieldStyle())
                     }
                 }
             }
@@ -100,6 +100,7 @@ struct AddEditorView: View {
                 Button("取消") {
                     presentationMode.wrappedValue.dismiss()
                 }
+                .buttonStyle(AppButtonStyle())
                 .keyboardShortcut(.escape)
                 
                 Spacer()
@@ -107,14 +108,14 @@ struct AddEditorView: View {
                 Button("添加") {
                     addEditor()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AppButtonStyle(isPrimary: true))
                 .disabled(name.isEmpty || (bundleId.isEmpty && commandPath.isEmpty))
                 .keyboardShortcut(.return)
             }
         }
         .padding(24)
         .frame(width: 500)
-        .background(AppTheme.background)
+        .background(AppTheme.secondaryBackground)
     }
     
     private func applyPreset(_ preset: EditorPreset) {

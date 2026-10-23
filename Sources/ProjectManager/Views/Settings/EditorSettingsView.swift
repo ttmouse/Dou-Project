@@ -157,7 +157,7 @@ struct EditorDetailView: View {
                     Button("设为默认") {
                         editorManager.setDefaultEditor(editor)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle())
                 }
             }
             
@@ -239,13 +239,13 @@ struct EditorDetailView: View {
                                 editorManager.updateEditor(editedEditor)
                                 hasChanges = false
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(AppButtonStyle(isPrimary: true))
                             
                             Button("撤销更改") {
                                 editedEditor = editor
                                 hasChanges = false
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(AppButtonStyle())
                         }
                         
                         Spacer()
@@ -254,14 +254,14 @@ struct EditorDetailView: View {
                         Button("测试打开") {
                             // TODO: 实现测试打开功能
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AppButtonStyle())
                         
                         // 删除按钮
                         if !EditorConfig.defaultEditors.contains(where: { $0.name == editor.name }) {
                             Button("删除") {
                                 editorManager.deleteEditor(editor)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(AppButtonStyle())
                             .foregroundColor(.red)
                         }
                     }
@@ -315,18 +315,18 @@ struct AutomationPermissionView: View {
                     Button("请求授权") {
                         refreshStatus(prompt: true)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
                     .disabled(status == .authorized)
                     
                     Button("打开系统设置…") {
                         openAutomationSettings()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle())
                     
                     Button("刷新状态") {
                         refreshStatus()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle())
                     
                     Spacer()
                 }

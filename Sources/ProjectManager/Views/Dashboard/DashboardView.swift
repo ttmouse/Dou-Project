@@ -259,7 +259,7 @@ struct DashboardView: View {
             Button("重试") {
                 viewModel.refreshData(with: [])
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppButtonStyle(isPrimary: true))
         }
         .padding(32)
         .frame(height: 200)

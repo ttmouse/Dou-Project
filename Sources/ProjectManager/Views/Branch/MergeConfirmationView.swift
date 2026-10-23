@@ -47,7 +47,7 @@ struct MergeConfirmationView: View {
         }
         .padding(24)
         .frame(width: 500)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(AppTheme.secondaryBackground)
         .cornerRadius(12)
         .shadow(radius: 10)
         .onAppear {
@@ -65,13 +65,13 @@ struct MergeConfirmationView: View {
                     .font(.title2)
                 
                 Text("合并分支")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.text)
             }
             
             Text("将分支 \"\(branch.name)\" 合并到 \"\(targetBranch)\"")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(AppTheme.secondaryText)
         }
     }
     
@@ -124,7 +124,7 @@ struct MergeConfirmationView: View {
                 }
             }
             .padding(12)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .background(AppTheme.cardBackground.opacity(0.55))
             .cornerRadius(8)
         }
     }
@@ -152,7 +152,7 @@ struct MergeConfirmationView: View {
                     .padding(.top, 4)
             }
             .padding(12)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .background(AppTheme.cardBackground.opacity(0.55))
             .cornerRadius(8)
         }
     }
@@ -256,7 +256,7 @@ struct MergeConfirmationView: View {
                 }
             }
             .padding(12)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .background(AppTheme.cardBackground.opacity(0.55))
             .cornerRadius(8)
         }
     }
@@ -292,7 +292,7 @@ struct MergeConfirmationView: View {
                 }
             }
             .padding(12)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .background(AppTheme.cardBackground.opacity(0.55))
             .cornerRadius(8)
         }
     }
@@ -302,6 +302,7 @@ struct MergeConfirmationView: View {
             Button("取消") {
                 isPresented = false
             }
+            .buttonStyle(AppButtonStyle())
             .keyboardShortcut(.escape)
             
             Spacer()
@@ -311,7 +312,7 @@ struct MergeConfirmationView: View {
                     onConfirmMerge(selectedStrategy)
                     isPresented = false
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AppButtonStyle())
                 .foregroundColor(.orange)
             }
             
@@ -319,7 +320,7 @@ struct MergeConfirmationView: View {
                 onConfirmMerge(selectedStrategy)
                 isPresented = false
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppButtonStyle(isPrimary: true))
             .disabled(isLoading || (mergeability?.canMerge == false))
             .keyboardShortcut(.return)
         }

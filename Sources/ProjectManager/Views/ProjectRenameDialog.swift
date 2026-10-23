@@ -24,53 +24,56 @@ struct ProjectRenameDialog: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             Text("重命名项目")
-                .font(.headline)
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(AppTheme.text)
+                .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("项目名称")
-                    .font(.caption)
-                    .foregroundColor(AppTheme.secondaryText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AppTheme.text)
                 
                 TextField("项目名称", text: $projectName)
-                    .textFieldStyle(CustomTextFieldStyle())
-                    .frame(width: 300)
+                    .textFieldStyle(AppDialogTextFieldStyle())
                     .disabled(isRenaming)
                     .onSubmit {
                         performRename()
                     }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("当前路径")
-                    .font(.caption)
-                    .foregroundColor(AppTheme.secondaryText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AppTheme.text)
                 
                 Text(project.path)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundColor(AppTheme.secondaryText)
-                    .padding(8)
-                    .background(AppTheme.cardBackground)
-                    .cornerRadius(4)
-                    .frame(width: 300, alignment: .leading)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.cardBackground.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
             }
             
             if !projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && 
                projectName != project.name {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("新路径预览")
-                        .font(.caption)
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(AppTheme.accent)
                     
                     Text(newPathPreview)
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundColor(AppTheme.accent)
-                        .padding(8)
-                        .background(AppTheme.accent.opacity(0.1))
-                        .cornerRadius(4)
-                        .frame(width: 300, alignment: .leading)
+                        .lineLimit(2)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AppTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                 }
             }
 
@@ -78,34 +81,37 @@ struct ProjectRenameDialog: View {
                 Text(errorMessage)
                     .foregroundColor(.red)
                     .font(.caption)
-                    .frame(width: 300, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             HStack(spacing: 12) {
                 Button("取消") {
                     isPresented = false
                 }
-                .buttonStyle(CustomButtonStyle(isPrimary: false))
+                .buttonStyle(AppButtonStyle())
                 .keyboardShortcut(.escape)
                 .disabled(isRenaming)
 
                 Button(isRenaming ? "重命名中..." : "确定") {
                     performRename()
                 }
-                .buttonStyle(CustomButtonStyle(isPrimary: true))
+                .buttonStyle(AppButtonStyle(isPrimary: true))
                 .keyboardShortcut(.return)
                 .disabled(isRenaming || !isValidName)
             }
+            .frame(maxWidth: .infinity)
             
             if isRenaming {
                 ProgressView()
                     .scaleEffect(0.8)
             }
         }
-        .padding()
+        .padding(24)
         .background(AppTheme.secondaryBackground)
-        .cornerRadius(8)
-        .frame(width: 350)
+        .frame(width: 360)
+        .onExitCommand {
+            if !isRenaming { isPresented = false }
+        }
     }
     
     // MARK: - 计算属性

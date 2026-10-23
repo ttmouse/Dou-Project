@@ -70,6 +70,7 @@ struct BranchListView: View {
                     }
                 }
             )
+            .dismissibleSheet(isPresented: $showCreateDialog)
         }
     }
     
@@ -284,7 +285,7 @@ struct BranchListView: View {
             Button("创建分支") {
                 showCreateDialog = true
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppButtonStyle(isPrimary: true))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

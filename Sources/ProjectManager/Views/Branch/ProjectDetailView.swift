@@ -163,6 +163,7 @@ struct ProjectDetailView: View {
                         mergeBranchWithStrategy(branch, strategy: strategy)
                     }
                 )
+                .dismissibleSheet(isPresented: $showAdvancedMergeDialog)
             }
         }
         .onAppear {

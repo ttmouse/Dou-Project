@@ -513,6 +513,7 @@ struct ProjectListView: View {
                 tagManager.renameTag(identifiableTag.value, to: newName, color: color)
                 tagToRename = nil
             }
+            .dismissibleSheet(isPresented: Binding(get: { tagToRename != nil }, set: { if !$0 { tagToRename = nil } }))
         }
         .toast()
         // 临时禁用性能监控通知

@@ -290,6 +290,7 @@ struct ProjectGridView: View {
         )
         .sheet(item: $editingTagsProject) { project in
             TagEditorView(project: project, tagManager: tagManager)
+                .dismissibleSheet(isPresented: Binding(get: { editingTagsProject != nil }, set: { if !$0 { editingTagsProject = nil } }))
         }
         .sheet(item: $renamingProject) { project in
             ProjectRenameDialog(
@@ -300,6 +301,7 @@ struct ProjectGridView: View {
                 ),
                 tagManager: tagManager
             ) { _ in }
+            .dismissibleSheet(isPresented: Binding(get: { renamingProject != nil }, set: { if !$0 { renamingProject = nil } }))
         }
         .alert(
             "端口冲突",

@@ -38,7 +38,7 @@ struct CreateProjectView: View {
                 .padding(.bottom, 24)
         }
         .frame(width: 450, height: 380)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(AppTheme.secondaryBackground)
         .alert("创建失败", isPresented: $showingError) {
             Button("确定", role: .cancel) { }
         } message: {
@@ -48,8 +48,8 @@ struct CreateProjectView: View {
     
     private var headerView: some View {
         Text("创建新项目")
-            .font(.title2)
-            .fontWeight(.bold)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundColor(AppTheme.text)
     }
     
     private var formContentView: some View {
@@ -64,11 +64,10 @@ struct CreateProjectView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("项目名称")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.primary)
+                .foregroundColor(AppTheme.text)
             
             TextField("输入项目名称", text: $projectName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .frame(height: 28)
+                .textFieldStyle(AppDialogTextFieldStyle())
         }
     }
     
@@ -76,7 +75,7 @@ struct CreateProjectView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("创建位置")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.primary)
+                .foregroundColor(AppTheme.text)
             
             Text(parentDirectory)
                 .font(.system(size: 12))
@@ -84,10 +83,10 @@ struct CreateProjectView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .background(AppTheme.cardBackground.opacity(0.55))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        .stroke(AppTheme.border, lineWidth: 1)
                 )
                 .cornerRadius(6)
         }
@@ -181,6 +180,7 @@ struct CreateProjectView: View {
             Button("取消") {
                 presentationMode.wrappedValue.dismiss()
             }
+            .buttonStyle(AppButtonStyle())
             .keyboardShortcut(.escape)
             
             Spacer()
@@ -188,7 +188,7 @@ struct CreateProjectView: View {
             Button("创建项目") {
                 createProject()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppButtonStyle(isPrimary: true))
             .disabled(projectName.isEmpty || isCreating)
             .keyboardShortcut(.return)
         }

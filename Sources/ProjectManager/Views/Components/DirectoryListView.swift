@@ -222,6 +222,7 @@ struct DirectoryListView: View {
                 parentDirectory: pathItem.path,
                 tagManager: tagManager
             )
+            .dismissibleSheet(isPresented: Binding(get: { createProjectPath != nil }, set: { if !$0 { createProjectPath = nil } }))
         }
     }
     

@@ -27,44 +27,52 @@ struct TagEditDialog: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
             Text(title)
-                .font(.headline)
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(AppTheme.text)
+                .frame(maxWidth: .infinity)
 
             TextField("标签名称", text: $tagName)
-                .textFieldStyle(CustomTextFieldStyle())
-                .frame(width: 200)
+                .textFieldStyle(AppDialogTextFieldStyle())
 
             HStack {
                 Text("标签颜色")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.text)
                 Spacer()
                 ColorPicker("", selection: $selectedColor)
                     .labelsHidden()
             }
-            .frame(width: 200)
+            .frame(height: 32)
 
-            if !errorMessage.isEmpty {
-                Text(errorMessage)
-                    .foregroundColor(.red)
-                    .font(.caption)
-            }
-
-            if !tagName.isEmpty {
+            HStack(spacing: 10) {
+                Text("预览")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.secondaryText)
                 TagView(
-                    tag: tagName,
+                    tag: tagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "标签名称"
+                        : tagName,
                     color: selectedColor,
                     fontSize: 13,
                     isPreview: true
                 )
             }
+            .frame(height: 30)
+
+            Text(errorMessage.isEmpty ? " " : errorMessage)
+                .foregroundColor(.red)
+                .font(.caption)
+                .lineLimit(1)
+                .frame(height: 16, alignment: .leading)
 
             HStack(spacing: 12) {
                 Button("取消") {
                     isPresented = false
                 }
-                .buttonStyle(CustomButtonStyle(isPrimary: false))
+                .font(.system(size: 14, weight: .medium))
+                .buttonStyle(AppButtonStyle())
                 .keyboardShortcut(.escape)
 
                 Button("确定") {
@@ -83,45 +91,17 @@ struct TagEditDialog: View {
                     onSubmit(name, selectedColor)
                     isPresented = false
                 }
-                .buttonStyle(CustomButtonStyle(isPrimary: true))
+                .font(.system(size: 14, weight: .medium))
+                .buttonStyle(AppButtonStyle(isPrimary: true))
                 .keyboardShortcut(.return)
                 .disabled(tagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .frame(maxWidth: .infinity)
         }
-        .padding()
+        .padding(24)
+        .frame(width: 360)
         .background(AppTheme.secondaryBackground)
-    }
-}
-
-// 自定义文本框样式
-struct CustomTextFieldStyle: TextFieldStyle {
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
-            .padding(8)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(AppTheme.border, lineWidth: 1)
-            )
-            .foregroundColor(AppTheme.text)
-    }
-}
-
-// 自定义按钮样式
-struct CustomButtonStyle: ButtonStyle {
-    let isPrimary: Bool
-    
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                isPrimary ? AppTheme.accent : AppTheme.buttonBackground
-            )
-            .foregroundColor(AppTheme.text)
-            .cornerRadius(6)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+        .onExitCommand { isPresented = false }
     }
 }
 

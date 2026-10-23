@@ -120,7 +120,7 @@ struct EditorsTabView: View {
                         }
                     }
                     .font(.system(size: 13))
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
 
                     Button(action: { editorManager.detectAvailableEditors() }) {
                         HStack(spacing: 6) {
@@ -129,7 +129,7 @@ struct EditorsTabView: View {
                         }
                     }
                     .font(.system(size: 13))
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle())
                 }
                 .padding(20)
                 .background(AppTheme.secondaryBackground)
@@ -146,6 +146,7 @@ struct EditorsTabView: View {
         }
         .sheet(isPresented: $showingAddEditor) {
             AddEditorView(editorManager: editorManager)
+                .dismissibleSheet(isPresented: $showingAddEditor)
         }
     }
 }
@@ -259,7 +260,7 @@ struct TaggingTabView: View {
                         }
                         .font(.system(size: 13))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
                     .disabled(tagManager.isRunningTaggingRules)
 
                     if let message = tagManager.lastTaggingRuleMessage {
@@ -275,7 +276,7 @@ struct TaggingTabView: View {
                         }
                         .font(.system(size: 13))
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
                 }
                 .padding(.horizontal, 20)
 
@@ -312,7 +313,7 @@ struct TaggingTabView: View {
                             Text("测试")
                                 .font(.system(size: 13, weight: .medium))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AppButtonStyle(isPrimary: true))
                         .disabled(testProjectPath.isEmpty)
                     }
 
@@ -351,6 +352,7 @@ struct TaggingTabView: View {
                 },
                 onCancel: { showingAddRule = false }
             )
+            .dismissibleSheet(isPresented: $showingAddRule)
         }
         .sheet(item: $editingRule) { rule in
             BusinessRuleEditView(
@@ -361,6 +363,7 @@ struct TaggingTabView: View {
                 },
                 onCancel: { editingRule = nil }
             )
+            .dismissibleSheet(isPresented: Binding(get: { editingRule != nil }, set: { if !$0 { editingRule = nil } }))
         }
     }
 
@@ -503,7 +506,7 @@ struct BusinessRuleEditView: View {
                         .foregroundColor(AppTheme.text)
                     
                     TextField("例如：视频项目", text: $name)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(AppDialogTextFieldStyle())
                 }
                 
                 // 关键词
@@ -514,7 +517,7 @@ struct BusinessRuleEditView: View {
                         .foregroundColor(AppTheme.text)
                     
                     TextField("例如：video, 视频, streaming, ffmpeg", text: $keywordsText)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(AppDialogTextFieldStyle())
                     
                     Text("匹配 README.md 中包含这些关键词的项目")
                         .font(.caption)
@@ -529,7 +532,7 @@ struct BusinessRuleEditView: View {
                         .foregroundColor(AppTheme.text)
                     
                     TextField("例如：视频, 多媒体", text: $tagsText)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(AppDialogTextFieldStyle())
                     
                     Text("匹配成功后自动添加这些标签")
                         .font(.caption)
@@ -549,19 +552,19 @@ struct BusinessRuleEditView: View {
                     Button("取消") {
                         onCancel()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AppButtonStyle())
                     
                     Button(isEditing ? "保存" : "添加") {
                         saveRule()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
                     .disabled(name.isEmpty || keywordsText.isEmpty || tagsText.isEmpty)
                 }
             }
             .padding(20)
         }
         .frame(width: 450, height: 400)
-        .background(AppTheme.background)
+        .background(AppTheme.secondaryBackground)
         .onAppear {
             if let rule = rule {
                 name = rule.name

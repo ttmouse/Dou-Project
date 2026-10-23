@@ -57,6 +57,7 @@ struct ProjectListPopover: View {
         .padding()
         .frame(minWidth: 300, maxWidth: 400, minHeight: 200, maxHeight: 400)
         .background(AppTheme.secondaryBackground)
+        .onExitCommand { isPresented = false }
     }
 }
 

@@ -67,6 +67,7 @@ struct SidebarView: View {
                 tagManager.addTag(newName, color: color)
                 isShowingNewTagDialog = false
             }
+            .dismissibleSheet(isPresented: $isShowingNewTagDialog)
         }
         .sheet(isPresented: $showProjectPopover) {
             ProjectListPopover(
@@ -74,6 +75,7 @@ struct SidebarView: View {
                 date: selectedDateString,
                 isPresented: $showProjectPopover
             )
+            .dismissibleSheet(isPresented: $showProjectPopover)
         }
         .onChange(of: tagManager.projects.count) { _ in
             // 只有用户已经打开过热力图时才刷新缓存。

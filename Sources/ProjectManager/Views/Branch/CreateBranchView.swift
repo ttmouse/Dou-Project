@@ -43,8 +43,11 @@ struct CreateBranchView: View {
             actionButtons
         }
         .padding(24)
+        .onExitCommand {
+            if !isCreating { isPresented = false }
+        }
         .frame(width: 400)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(AppTheme.secondaryBackground)
         .cornerRadius(12)
         .shadow(radius: 10)
         .onAppear {
@@ -57,22 +60,23 @@ struct CreateBranchView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("创建新分支")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(AppTheme.text)
             
             Text("基于现有分支创建新的Git worktree分支")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(AppTheme.secondaryText)
         }
     }
     
     private var branchNameInput: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("分支名称", systemImage: "branch")
-                .font(.headline)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppTheme.text)
             
             TextField("例如：feature-login 或 bugfix-ui", text: $branchName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .textFieldStyle(AppDialogTextFieldStyle())
                 .onChange(of: branchName) { newValue in
                     validateBranchName(newValue)
                 }
@@ -86,10 +90,11 @@ struct CreateBranchView: View {
     private var descriptionInput: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("描述（可选）", systemImage: "text.alignleft")
-                .font(.headline)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppTheme.text)
             
             TextField("描述这个分支的用途", text: $description)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .textFieldStyle(AppDialogTextFieldStyle())
         }
     }
     
@@ -141,7 +146,7 @@ struct CreateBranchView: View {
             }
             .keyboardShortcut(.return)
             .disabled(!isFormValid || isCreating)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AppButtonStyle(isPrimary: true))
         }
     }
     
