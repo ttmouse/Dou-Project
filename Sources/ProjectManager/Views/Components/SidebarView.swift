@@ -354,6 +354,7 @@ struct TagListView: View {
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
     @EnvironmentObject var tagManager: TagManager
+    @State private var isAddTagHovered = false
     let selectedDirectory: String?
     let onTagSelected: (String) -> Void  // 添加标签选择回调
     
@@ -380,8 +381,15 @@ struct TagListView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.accent)
+                    .frame(width: 24, height: 24)
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
+                    .background(
+                        isAddTagHovered ? AppTheme.buttonHover : .clear,
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
+                    .onHover { isAddTagHovered = $0 }
             }
-            .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
+            .buttonStyle(.plain)
             .help("新建标签")
         }
         .padding(.horizontal, AppTheme.tagListHeaderPaddingH)

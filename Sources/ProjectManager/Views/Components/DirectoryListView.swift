@@ -136,12 +136,12 @@ struct DirectoryListView: View {
                         .font(.system(size: 14, weight: .medium))
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
+                        .onHover { isActionsHovered = $0 }
                         .background(
                             isActionsHovered ? AppTheme.buttonHover : .clear,
                             in: RoundedRectangle(cornerRadius: 6)
                         )
                 }
-                .onHover { isActionsHovered = $0 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
@@ -438,12 +438,6 @@ struct DirectoryRow: View {
                     .foregroundColor(isSelected ? AppTheme.text : AppTheme.sidebarSecondaryText)
                     .padding(.horizontal, AppTheme.tagCountPaddingH)
                     .padding(.vertical, AppTheme.tagCountPaddingV)
-                    .background(
-                        isSelected
-                            ? AppTheme.accent.opacity(0.2)
-                            : AppTheme.sidebarDirectoryBackground
-                    )
-                    .cornerRadius(AppTheme.tagCountCornerRadius)
             }
             .contentShape(Rectangle()) // 使整个区域可点击
             .padding(.horizontal, AppTheme.tagRowPaddingH)

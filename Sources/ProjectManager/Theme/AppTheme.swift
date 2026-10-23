@@ -155,8 +155,8 @@ enum AppTheme {
     // MARK: - 按钮样式
     /// 按钮背景色 - 白色，不透明度8%
     static let buttonBackground = Color(hex: "#FFFFFF", alpha: 0.08)
-    /// 按钮悬停色 - 白色，不透明度12%
-    static let buttonHover = Color(hex: "#FFFFFF", alpha: 0.12)
+    /// 按钮悬停色 - 白色，不透明度20%
+    static let buttonHover = Color(hex: "#FFFFFF", alpha: 0.20)
     /// 主要按钮背景色
     static let primaryButtonBackground = Color(hex: "#3B82F6")
     /// 主要按钮悬停色
