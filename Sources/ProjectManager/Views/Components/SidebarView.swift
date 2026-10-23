@@ -27,11 +27,7 @@ struct SidebarView: View {
                 onDirectorySelected: clearSelectedTags
             )
             .padding(.bottom, 8)
-            
-            Divider()
-                .background(AppTheme.divider)
-                .padding(.vertical, 8)
-            
+
             // 标签列表使用剩余空间
             TagListView(
                 selectedTags: $selectedTags,
