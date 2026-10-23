@@ -71,25 +71,28 @@ struct MainContentView: View {
                 dateFilter: $dateFilter,
                 searchBarRef: $searchBarRef,
                 showDetailPanel: $showDetailPanel,
-                projectViewMode: $projectViewMode,
-                tagManager: tagManager
+                projectViewMode: $projectViewMode
             )
 
-            ScanStatusView()
+            ZStack(alignment: .topTrailing) {
+                // 结果区域自己订阅结果对象：搜索变化只重算这一块。
+                ProjectResultsRegion(
+                    results: results,
+                    selectedProjects: $selectedProjects,
+                    searchBarRef: $searchBarRef,
+                    projectViewMode: projectViewMode,
+                    sortOption: $sortOption,
+                    editorManager: editorManager,
+                    onShowProjectDetail: onShowProjectDetail,
+                    onTagSelected: onTagSelected,
+                    tagDisplayCache: tagDisplayCache
+                )
 
-            // 结果区域自己订阅结果对象：搜索变化只重算这一块，
-            // 工具栏与扫描状态条不参与重绘。
-            ProjectResultsRegion(
-                results: results,
-                selectedProjects: $selectedProjects,
-                searchBarRef: $searchBarRef,
-                projectViewMode: projectViewMode,
-                sortOption: $sortOption,
-                editorManager: editorManager,
-                onShowProjectDetail: onShowProjectDetail,
-                onTagSelected: onTagSelected,
-                tagDisplayCache: tagDisplayCache
-            )
+                // 扫描状态浮在结果区上方，不参与垂直布局，避免项目卡片跳动。
+                ScanStatusView()
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+            }
         }
         .onReceive(tagManager.colorManager.$tagColors.removeDuplicates()) { _ in
             // 只有标签颜色真的变化才作废展示缓存。

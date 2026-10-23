@@ -9,73 +9,61 @@ struct ScanStatusView: View {
             case .idle:
                 EmptyView()
             case .scanning(let directory):
-                statusRow(
+                statusBadge(
                     icon: "magnifyingglass",
-                    title: "正在扫描项目",
-                    detail: directory,
-                    showsProgress: true,
+                    title: "正在扫描",
+                    accessibilityDetail: directory,
                     color: AppTheme.accent
                 )
             case .completed(let directory, let discovered):
-                statusRow(
-                    icon: "checkmark.circle",
+                statusBadge(
+                    icon: "checkmark",
                     title: "已发现 \(discovered) 个项目",
-                    detail: directory,
-                    showsProgress: false,
+                    accessibilityDetail: directory,
                     color: AppTheme.success
                 )
             case .failed(let directory, let message):
-                HStack(spacing: 12) {
-                    statusRow(
+                HStack(spacing: 8) {
+                    statusBadge(
                         icon: "exclamationmark.triangle",
                         title: "扫描失败",
-                        detail: "\(message)：\(directory)",
-                        showsProgress: false,
+                        accessibilityDetail: "\(message)：\(directory)",
                         color: AppTheme.warning
                     )
 
                     Button("重试") {
                         tagManager.refreshProjects()
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .font(AppTheme.captionFont)
+                    .foregroundColor(AppTheme.accent)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.regularMaterial, in: Capsule())
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(AppTheme.secondaryBackground)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.18), value: tagManager.scanState)
     }
 
-    private func statusRow(
+    private func statusBadge(
         icon: String,
         title: String,
-        detail: String,
-        showsProgress: Bool,
+        accessibilityDetail: String,
         color: Color
     ) -> some View {
         HStack(spacing: 8) {
-            if showsProgress {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(AppTheme.captionFont)
-                    .foregroundColor(AppTheme.text)
-                Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundColor(AppTheme.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer()
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.secondaryText)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title)，\(accessibilityDetail)")
     }
 }
