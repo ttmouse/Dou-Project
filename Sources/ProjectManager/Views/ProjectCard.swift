@@ -108,11 +108,13 @@ struct ProjectCard: View, Equatable {
 
             // Git 提交次数
             if let gitInfo = project.gitInfo {
+                Spacer(minLength: 0)
                 HStack(spacing: 4) {
                     ProjectGitBranchIcon()
                         .stroke(lineWidth: 13 * 1.5 / 16)
                         .frame(width: 13, height: 13)
                     Text("\(gitInfo.commitCount)")
+                        .monospacedDigit()
                 }
                 .help("累计提交")
                 .accessibilityElement(children: .ignore)
