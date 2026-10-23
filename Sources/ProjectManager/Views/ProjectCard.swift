@@ -50,31 +50,36 @@ struct ProjectCard: View, Equatable {
 
             Spacer()
 
-            // 快速启动按钮
-            if project.startupCommand != nil {
-                Button(action: handleQuickStart) {
-                    Image(systemName: "play.fill")
-                    .foregroundColor(.green)
+            HStack(spacing: 4) {
+                // 快速启动按钮
+                if project.startupCommand != nil {
+                    Button(action: handleQuickStart) {
+                        Image(systemName: "play.fill")
+                    }
+                    .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
+                    .help("快速启动 (端口: \(project.customPort.map(String.init) ?? "默认"))")
                 }
-                .buttonStyle(.plain)
-                .help("快速启动 (端口: \(project.customPort.map(String.init) ?? "默认"))")
-            }
 
-            // 在默认编辑器中打开按钮
-            Button(action: { AppOpenHelper.openInDefaultEditor(path: project.path) }) {
-                Image(systemName: "cursorarrow.rays")
-                    .foregroundColor(AppTheme.secondaryIcon)
-            }
-            .buttonStyle(.plain)
-            .help("在默认编辑器中打开")
+                // 打开文件夹按钮
+                Button(action: { AppOpenHelper.openInFinder(path: project.path) }) {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
+                .help("打开文件夹")
 
-            // 打开文件夹按钮
-            Button(action: { AppOpenHelper.openInFinder(path: project.path) }) {
-                Image(systemName: "folder")
-                    .foregroundColor(AppTheme.folderIcon)
+                // 默认编辑器图标：点击打开项目，切换默认应用请在设置或右键菜单中操作。
+                Button(action: { AppOpenHelper.openInDefaultEditor(path: project.path) }) {
+                    editorIcon(for: editorManager.defaultEditor)
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
+                .help("在\(editorManager.defaultEditor?.name ?? "默认编辑器")中打开")
+
             }
-            .buttonStyle(.plain)
-            .help("打开文件夹")
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
+            .accessibilityHidden(!isHovered)
+            .animation(.easeOut(duration: 0.14), value: isHovered)
         }
     }
 
@@ -98,22 +103,18 @@ struct ProjectCard: View, Equatable {
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)
 
-            Spacer()
-
             // Git 提交次数
             if let gitInfo = project.gitInfo {
                 HStack(spacing: 4) {
+                    Image(systemName: "arrow.branch")
+                        .foregroundColor(AppTheme.secondaryIcon)
                     Text("\(gitInfo.commitCount)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(AppTheme.accent)
-                    Text("次提交")
-                        .font(AppTheme.captionFont)
-                        .foregroundColor(AppTheme.secondaryText)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AppTheme.accent.opacity(0.1))
-                .cornerRadius(6)
+                .font(AppTheme.captionFont)
+                .foregroundColor(AppTheme.secondaryText)
+                .help("累计提交")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("累计提交 \(gitInfo.commitCount) 次")
             }
         }
     }
@@ -139,10 +140,7 @@ struct ProjectCard: View, Equatable {
                 Button(action: { onRequestEditTags(project) }) {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(AppTheme.secondaryIcon)
-                .frame(width: 24, height: 24)
+                .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
                 .help("添加标签")
                 .accessibilityLabel("添加标签")
                 .opacity(isHovered ? 1 : 0)
@@ -166,7 +164,9 @@ struct ProjectCard: View, Equatable {
                     AppOpenHelper.openInEditor(editor, path: project.path)
                 }) {
                     HStack {
-                        Label(editor.name, systemImage: getEditorIcon(for: editor))
+                        editorIcon(for: editor)
+                            .frame(width: 16, height: 16)
+                        Text(editor.name)
                         Spacer()
                         
                         // 状态指示器
@@ -243,15 +243,38 @@ struct ProjectCard: View, Equatable {
     private func getEditorIcon(for editor: EditorConfig) -> String {
         switch editor.name.lowercased() {
         case "cursor":
-            return "cursorarrow.rays"
+            return "cursor"
         case "visual studio code", "vscode", "code":
-            return "chevron.left.slash.chevron.right"
+            return "vscode"
+        case "trae":
+            return "trae"
+        case "codebuddy cn":
+            return "codebuddy"
+        case "antigravity":
+            return "antigravity"
         case "sublime text":
-            return "doc.text"
+            return "sublimetext"
         case "ghostty":
-            return "terminal.fill"
+            return "ghostty"
         default:
             return "app"
+        }
+    }
+
+    @ViewBuilder
+    private func editorIcon(for editor: EditorConfig?) -> some View {
+        let iconName = editor.map(getEditorIcon(for:)) ?? "app"
+        if let image = EditorIconAssets.image(named: iconName) {
+            Image(nsImage: image)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(AppTheme.secondaryIcon)
+        } else {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(AppTheme.secondaryIcon)
         }
     }
     
@@ -304,17 +327,8 @@ struct ProjectCard: View, Equatable {
         .frame(height: AppTheme.cardHeight)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                .fill(isSelected ? AppTheme.cardSelectedBackground : AppTheme.cardBackground)
+                .fill(isSelected || isHovered ? AppTheme.cardSelectedBackground : AppTheme.cardBackground)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                .strokeBorder(
-                    isSelected ? AppTheme.cardSelectedBorder : AppTheme.cardBorder,
-                    lineWidth: isSelected
-                        ? AppTheme.cardSelectedBorderWidth : AppTheme.cardBorderWidth
-                )
-        )
-
         .onHover { isHovered = $0 }
 
         .onTapGesture {

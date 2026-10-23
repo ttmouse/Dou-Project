@@ -91,10 +91,10 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
         let columns = ProjectRowLayout(width: bounds.width)
         tagScroll.frame = columns.tags
         layoutTags()
-        var x = columns.actions.maxX - 16
+        var x = columns.actions.maxX - 24
         for button in actionButtons.reversed() {
-            button.frame = NSRect(x: x, y: 12, width: 16, height: 18)
-            x -= 24
+            button.frame = NSRect(x: x, y: 9, width: 24, height: 24)
+            x -= 32
         }
     }
 
@@ -155,19 +155,18 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
         actionButtons.forEach { $0.removeFromSuperview() }
         actionButtons = []
         if project?.startupCommand != nil {
-            addButton("play.fill", title: "运行项目", color: .systemGreen, action: .run)
+            addButton("play.fill", title: "运行项目", action: .run)
         }
-        addButton("cursorarrow.rays", title: "在默认编辑器中打开", color: NSColor(AppTheme.accent), action: .editor)
-        addButton("folder", title: "在访达中显示", color: NSColor(AppTheme.folderIcon), action: .finder)
+        addButton("cursorarrow.rays", title: "在默认编辑器中打开", action: .editor)
+        addButton("folder", title: "在访达中显示", action: .finder)
     }
 
-    private func addButton(_ symbol: String, title: String, color: NSColor, action: ProjectRowAction) {
+    private func addButton(_ symbol: String, title: String, action: ProjectRowAction) {
         let button = ProjectRowButton()
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
         button.isBordered = false
         button.imagePosition = .imageOnly
-        button.contentTintColor = color
         button.toolTip = title
         button.setAccessibilityLabel(title)
         button.onClick = { [weak self] in self?.perform(action) }
@@ -287,12 +286,45 @@ private final class ProjectRowMenuItem: NSMenuItem {
 
 private class ProjectRowButton: NSButton {
     var onClick: () -> Void = {}
+    private var hovered = false
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         target = self
         action = #selector(clicked)
+        isBordered = false
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+        contentTintColor = NSColor(AppTheme.secondaryIcon)
+        updateAppearance()
     }
     required init?(coder: NSCoder) { nil }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        updateAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        updateAppearance()
+    }
+
+    private func updateAppearance() {
+        layer?.backgroundColor = hovered ? NSColor(AppTheme.buttonHover).cgColor : NSColor.clear.cgColor
+    }
+
     @objc private func clicked() { onClick() }
 }
 
