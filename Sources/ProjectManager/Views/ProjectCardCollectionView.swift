@@ -64,10 +64,7 @@ struct ProjectCardCollectionView: NSViewRepresentable {
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
+        scrollView.configureProjectScrollIndicators()
         scrollView.documentView = collectionView
 
         context.coordinator.collectionView = collectionView
@@ -76,6 +73,7 @@ struct ProjectCardCollectionView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        scrollView.configureProjectScrollIndicators()
         context.coordinator.parent = self
         context.coordinator.apply(animated: true)
     }

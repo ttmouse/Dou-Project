@@ -158,8 +158,7 @@ struct ProjectRowsTable: NSViewRepresentable {
     func makeScrollView(coordinator: Coordinator) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
+        scrollView.configureProjectScrollIndicators()
 
         let table = NativeProjectRowsTableView()
         table.headerView = nil
@@ -182,6 +181,7 @@ struct ProjectRowsTable: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        scrollView.configureProjectScrollIndicators()
         context.coordinator.update(self)
     }
 
