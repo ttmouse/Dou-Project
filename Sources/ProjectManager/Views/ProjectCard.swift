@@ -35,6 +35,8 @@ struct ProjectCard: View, Equatable {
     let onRequestEditTags: (Project) -> Void
     let onRequestRename: (Project) -> Void
     let onPortConflict: (Project, Int) -> Void
+
+    @State private var isHovered = false
     
     // MARK: - 子视图
     
@@ -57,14 +59,6 @@ struct ProjectCard: View, Equatable {
                 .buttonStyle(.plain)
                 .help("快速启动 (端口: \(project.customPort.map(String.init) ?? "默认"))")
             }
-
-            // 编辑标签按钮
-            Button(action: { onRequestEditTags(project) }) {
-                Image(systemName: "tag")
-                    .foregroundColor(AppTheme.secondaryIcon)
-            }
-            .buttonStyle(.plain)
-            .help("编辑标签")
 
             // 在默认编辑器中打开按钮
             Button(action: { AppOpenHelper.openInDefaultEditor(path: project.path) }) {
@@ -126,30 +120,38 @@ struct ProjectCard: View, Equatable {
 
     /// 标签视图，显示项目相关标签
     private var tagsView: some View {
-        Group {
-            if !displayTags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(displayTags) { tagData in
-                            TagView(
-                                tag: tagData.name,
-                                color: tagData.color,
-                                fontSize: 13,
-                                onDelete: {
-                                    tagManager.removeTagFromProject(projectId: project.id, tag: tagData.name)
-                                },
-                                onClick: {
-                                    print("🏷️ ProjectCard onClick: \(tagData.name)")
-                                    onTagSelected(tagData.name)
-                                }
-                            )
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(displayTags) { tagData in
+                    TagView(
+                        tag: tagData.name,
+                        color: tagData.color,
+                        fontSize: 13,
+                        onDelete: {
+                            tagManager.removeTagFromProject(projectId: project.id, tag: tagData.name)
+                        },
+                        onClick: {
+                            print("🏷️ ProjectCard onClick: \(tagData.name)")
+                            onTagSelected(tagData.name)
                         }
-                    }
+                    )
                 }
-            } else {
-                EmptyView()
+                Button(action: { onRequestEditTags(project) }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(AppTheme.secondaryIcon)
+                .frame(width: 24, height: 24)
+                .help("添加标签")
+                .accessibilityLabel("添加标签")
+                .opacity(isHovered ? 1 : 0)
+                .allowsHitTesting(isHovered)
+                .accessibilityHidden(!isHovered)
+                .animation(.easeOut(duration: 0.14), value: isHovered)
             }
         }
+        .frame(height: 26)
     }
     // MARK: - 右键菜单
     
@@ -291,12 +293,9 @@ struct ProjectCard: View, Equatable {
             infoView
                 .padding(.bottom, 8)
             
-            // 标签部分（如果有）
-            if !displayTags.isEmpty {
-                tagsView
-                    .padding(.bottom, 4)
-                    .allowsHitTesting(true)  // 确保标签区域可以接收点击
-            }
+            // 始终保留标签行，让空标签项目也能添加，悬停时不改变布局。
+            tagsView
+                .padding(.bottom, 4)
             
             Spacer(minLength: 0)
         }
@@ -315,6 +314,8 @@ struct ProjectCard: View, Equatable {
                         ? AppTheme.cardSelectedBorderWidth : AppTheme.cardBorderWidth
                 )
         )
+
+        .onHover { isHovered = $0 }
 
         .onTapGesture {
             let flags = NSEvent.modifierFlags
