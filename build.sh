@@ -27,6 +27,14 @@ mkdir -p ProjectManager.app/Contents/Resources
 cp .build/release/ProjectManager ProjectManager.app/Contents/MacOS/
 cp -r Sources/ProjectManager/Resources/* ProjectManager.app/Contents/Resources/ 2>/dev/null || true
 
+# SwiftPM 把 resources 打成一个独立 bundle；Bundle.module 运行时会在
+# Contents/Resources 下按名字找它，漏拷会在启动时直接 fatalError。
+cp -r .build/release/ProjectManager_ProjectManager.bundle ProjectManager.app/Contents/Resources/
+
+# SwiftPM 生成的资源 bundle：Bundle.module 只认这个路径，
+# 缺了它启动时会在 EditorIconAssets 里直接 fatalError。
+cp -R .build/release/ProjectManager_ProjectManager.bundle ProjectManager.app/Contents/Resources/
+
 # 应用包现在在项目根目录：./ProjectManager.app
 # ⚠️ 严禁复制到桌面或其他位置
 
