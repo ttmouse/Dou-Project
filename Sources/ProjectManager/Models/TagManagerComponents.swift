@@ -114,7 +114,7 @@ class ProjectSortManager: SortManagerDelegate {
         case .name:
             primaryComparison = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
         case .lastModified:
-            primaryComparison = compare(lhs.activityAt, rhs.activityAt)
+            primaryComparison = compare(lhs.mtime, rhs.mtime)
         case .gitCommits:
             primaryComparison = compare(lhs.git_commits, rhs.git_commits)
         }
@@ -510,6 +510,16 @@ class ProjectOperationManager {
         _ = applyProjectBatch(updates: updates)
     }
 
+    /// 扫描结果只回填系统快照，避免覆盖扫描期间用户修改的标签或启动设置。
+    func applyFileSystemBatch(_ scanned: [Project]) {
+        guard let delegate = delegate else { return }
+        let updates = scanned.compactMap { project -> Project? in
+            guard let current = delegate.projects[project.id] else { return nil }
+            return current.copyWith(fileSystemInfo: project.fileSystemInfo)
+        }
+        _ = applyProjectBatch(updates: updates)
+    }
+
     /// 文件事件专用：整批只提升 `activityAt`，整批发布一次。
     ///
     /// 与 `updateProjects` 的差别是合并时重新读取当前项目，只改活动时间一个字段；
@@ -664,8 +674,7 @@ class DirectoryWatcher {
     private let storage: TagStorage
     private let projectIndex: ProjectIndex
     private let queue = DispatchQueue(label: "com.example.DirectoryWatcherQueue", attributes: [])
-    private lazy var eventMonitor = FileSystemEventMonitor { [weak self] changedPaths in
-        self?.updateActivity(for: changedPaths)
+    private lazy var eventMonitor = FileSystemEventMonitor { [weak self] _ in
         self?.incrementallyReloadProjects(showStatus: false)
     }
     private var reloadInProgress = false
@@ -676,26 +685,6 @@ class DirectoryWatcher {
         self.operationManager = operationManager
         self.storage = storage
         self.projectIndex = ProjectIndex(storage: storage)
-    }
-
-    /// 用 FSEvents 的变更路径增量更新活动时间，不递归扫描项目内容。
-    ///
-    /// 一批事件可能命中几十个项目。旧实现为每个命中的项目复制一次快照、逐项写
-    /// `projects` 让 `@Published` 每次都通知观察者；现在只传命中的项目 ID，
-    /// 由 `applyActivityBatch` 重新读取当前值后整批发布一次。
-    private func updateActivity(for changedPaths: Set<String>) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let delegate = self.delegate else { return }
-
-            let changedIDs = Set(delegate.projects.values.compactMap { project -> UUID? in
-                changedPaths.contains { changedPath in
-                    changedPath == project.path || changedPath.hasPrefix(project.path + "/")
-                } ? project.id : nil
-            })
-            guard !changedIDs.isEmpty else { return }
-
-            self.operationManager?.applyActivityBatch(changedIDs, at: Date())
-        }
     }
 
     func startMonitoring(paths: Set<String>) {
@@ -1014,90 +1003,23 @@ class DirectoryWatcher {
             // 确定新增、删除和修改的项目
             let newPaths = Set(allProjects.map { $0.path })
             
-            // 检查是否有变化
-            if newPaths == existingPaths && existingProjects.count == allProjects.count {
-                print("项目数据没有变化，保持现有显示")
-                if showStatus {
-                    DispatchQueue.main.async {
-                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
-                    }
-                }
-                return
-            }
-            
-            // 找出已添加、已删除和保持不变的项目
-            let addedPaths = newPaths.subtracting(existingPaths)
             let removedPaths = existingPaths.subtracting(newPaths)
-            
-            // 只有在有变化时才更新UI
-            if !addedPaths.isEmpty || !removedPaths.isEmpty {
-                print("检测到项目变化，增量更新UI...")
-                print("新增项目: \(addedPaths.count) 个, 移除项目: \(removedPaths.count) 个")
-                
-                DispatchQueue.main.async {
-                    // 1. 删除已移除的项目：整批一次发布，不逐项通知。
-                    let removedIDs = Set(existingProjects.values
-                        .filter { removedPaths.contains($0.path) }
-                        .map(\.id))
-                    if !removedIDs.isEmpty {
-                        self.operationManager?.applyProjectBatch(updates: [], removals: removedIDs)
-                    }
+            let addedProjects = allProjects.filter { !existingPaths.contains($0.path) }
 
-                    // 2. 收集需要注册/更新的项目
-                    var projectsToRegister: [Project] = []
-                    for project in allProjects {
-                        if addedPaths.contains(project.path) {
-                            // 新项目
-                            projectsToRegister.append(project)
-                        } else {
-                            // 检查是否需要更新现有项目（比如修改时间或标签变化）
-                            if let existingProject = existingProjects.values.first(where: { $0.path == project.path }),
-                               (existingProject.lastModified != project.lastModified || 
-                                existingProject.tags != project.tags) {
-                                projectsToRegister.append(project)
-                            }
-                        }
-                    }
-                    
-                    // 3. 批量注册/更新项目
-                    if !projectsToRegister.isEmpty {
-                        self.operationManager?.registerProjects(projectsToRegister)
-                    }
-                    
-                    if addedPaths.count > 0 || removedPaths.count > 0 {
-                        print("项目增量更新完成: +\(addedPaths.count) -\(removedPaths.count)")
-                    }
-                    if showStatus {
-                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
-                    }
+            DispatchQueue.main.async {
+                let removedIDs = Set(existingProjects.values
+                    .filter { removedPaths.contains($0.path) }
+                    .map(\.id))
+                if !removedIDs.isEmpty {
+                    self.operationManager?.applyProjectBatch(updates: [], removals: removedIDs)
                 }
-            } else {
-                print("没有项目添加或删除，检查是否有项目内容更新...")
-                
-                // 检查是否有项目内容更新（如修改时间或标签变化）
-                var updatedProjects: [Project] = []
-                
-                for project in allProjects {
-                    if let existingProject = existingProjects.values.first(where: { $0.path == project.path }),
-                       (existingProject.lastModified != project.lastModified || 
-                        existingProject.tags != project.tags) {
-                        updatedProjects.append(project)
-                    }
+                // 现有项目只更新磁盘快照；新增项目沿用注册流程。
+                self.operationManager?.applyFileSystemBatch(allProjects)
+                if !addedProjects.isEmpty {
+                    self.operationManager?.registerProjects(addedProjects)
                 }
-                
-                if !updatedProjects.isEmpty {
-                    DispatchQueue.main.async {
-                        // 批量更新项目
-                        self.operationManager?.registerProjects(updatedProjects)
-                        print("项目内容更新完成：已更新 \(updatedProjects.count) 个项目内容")
-                        if showStatus {
-                            delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
-                        }
-                    }
-                } else if showStatus {
-                    DispatchQueue.main.async {
-                        delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
-                    }
+                if showStatus {
+                    delegate.scanDidFinish(directory: "全部监视目录", discovered: allProjects.count)
                 }
             }
         }

@@ -2,6 +2,16 @@ import XCTest
 @testable import ProjectManager
 
 final class ProjectListSortingTests: XCTestCase {
+    func testModificationSortingIgnoresRecentActivity() {
+        let older = makeProject(name: "older", activityAt: Date(timeIntervalSince1970: 100))
+            .copyWith(activityAt: Date(timeIntervalSince1970: 300))
+        let newer = makeProject(name: "newer", activityAt: Date(timeIntervalSince1970: 200))
+        XCTAssertEqual(sortedNames([older, newer], criteria: .lastModified, ascending: false),
+                       ["newer", "older"])
+        XCTAssertEqual(sortedNames([older, newer], criteria: .lastModified, ascending: true),
+                       ["older", "newer"])
+    }
+
     func testNameSortingSupportsAscendingAndDescendingOrder() {
         let projects = [
             makeProject(name: "zeta"),

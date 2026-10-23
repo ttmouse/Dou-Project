@@ -93,7 +93,7 @@ struct ProjectCard: View, Equatable {
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
                     .foregroundColor(AppTheme.secondaryIcon)
-                Text(ProjectCard.dateTimeFormatter.string(from: project.activityAt))
+                Text(ProjectCard.dateTimeFormatter.string(from: project.mtime))
             }
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)

@@ -98,7 +98,7 @@ struct ProjectListRowsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("标签")
                 .frame(width: 180, alignment: .leading)
-            sortableHeader("最近活动", column: .activity, alignment: .leading)
+            sortableHeader("修改日期", column: .activity, alignment: .leading)
                 .frame(width: 150, alignment: .leading)
             sortableHeader("提交", column: .commits, alignment: .trailing)
                 .frame(width: 60, alignment: .trailing)

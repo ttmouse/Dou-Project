@@ -71,10 +71,10 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
         }
         self.project = project
         self.selected = selected
-        activityText = Self.dateFormatter.string(from: project.activityAt)
+        activityText = Self.dateFormatter.string(from: project.mtime)
         commitsText = project.gitInfo.map { String($0.commitCount) } ?? "—"
         toolTip = "\(project.name)\n\(project.path)"
-        setAccessibilityLabel("\(project.name)，最近活动 \(activityText)，提交 \(commitsText)")
+        setAccessibilityLabel("\(project.name)，修改日期 \(activityText)，提交 \(commitsText)")
         setAccessibilityValue(selected ? "已选中" : "未选中")
         setAccessibilitySelected(selected)
         if changedIdentity || displayedTags != tags {

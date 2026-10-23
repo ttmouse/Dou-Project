@@ -366,6 +366,21 @@ struct Project: Identifiable, Equatable, Codable {
         )
     }
 
+    /// 仅替换系统快照，保留用户设置和 Git 数据；时间允许回退，以磁盘为准。
+    func copyWith(fileSystemInfo info: FileSystemInfo) -> Project {
+        guard mtime != info.modificationDate || size != Int64(info.size) || checksum != info.checksum else {
+            return self
+        }
+        return Project(
+            id: id, name: name, path: path, tags: tags,
+            mtime: info.modificationDate, activityAt: activityAt,
+            size: Int64(info.size), checksum: info.checksum,
+            git_commits: git_commits, git_last_commit: git_last_commit,
+            git_daily: git_daily, startupCommand: startupCommand, customPort: customPort,
+            created: created, checked: info.lastCheckTime
+        )
+    }
+
     /// 只提升活动时间，其余字段保持当前值
     /// 用途：文件事件批次合并 —— 文件事件只说明「这个目录刚动过」，
     /// 事件排队期间用户可能改过标签/端口，整条快照回写会把这些修改覆盖掉。

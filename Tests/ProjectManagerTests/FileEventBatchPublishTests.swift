@@ -153,7 +153,7 @@ final class FileEventBatchPublishTests: XCTestCase {
                        "活动时间不影响标签归属，不应触发标签索引失效")
     }
 
-    func testSortedOrderReflectsBatchedActivityOnce() {
+    func testBatchedActivityDoesNotChangeModificationOrder() {
         let old = makeProject(
             name: "old", path: "/tmp/old", activityAt: Date(timeIntervalSince1970: 100)
         )
@@ -168,8 +168,8 @@ final class FileEventBatchPublishTests: XCTestCase {
         let bump = Date(timeIntervalSince1970: 300)
         manager.applyActivityBatch([old.id], at: bump)
 
-        XCTAssertEqual(sorter.getSortedProjects().map(\.name), ["old", "newer"],
-                       "活动时间是排序键，批次发布后排序缓存必须落在正确位置")
+        XCTAssertEqual(sorter.getSortedProjects().map(\.name), ["newer", "old"],
+                       "系统修改时间才是排序键，活动时间不能改变顺序")
         XCTAssertEqual(store.projects[old.id]?.activityAt, bump)
     }
 
@@ -181,6 +181,26 @@ final class FileEventBatchPublishTests: XCTestCase {
         let before = store.publicationCount
         manager.updateProjects([project])
         XCTAssertEqual(store.publicationCount, before, "内容相同的批次不应发布")
+    }
+
+    func testSystemSnapshotBatchKeepsLiveEditsAndUpdatesSorting() {
+        let old = makeProject(name: "old", path: "/tmp/old", activityAt: Date(timeIntervalSince1970: 100))
+        let newer = makeProject(name: "newer", path: "/tmp/newer", activityAt: Date(timeIntervalSince1970: 200))
+        store.projects = [old.id: old.copyWith(tags: ["live"]), newer.id: newer]
+        sorter.updateSortedProjects(Array(store.projects.values))
+        sorter.setSortCriteria(.lastModified, ascending: false)
+        let scanned = old.copyWith(fileSystemInfo: Project.FileSystemInfo(
+            modificationDate: Date(timeIntervalSince1970: 300), size: 42,
+            checksum: "new", lastCheckTime: Date()
+        ))
+        let before = store.publicationCount
+        manager.applyFileSystemBatch([scanned])
+        XCTAssertEqual(store.publicationCount - before, 1)
+        XCTAssertEqual(store.projects[old.id]?.tags, ["live"])
+        XCTAssertEqual(store.projects[old.id]?.mtime, scanned.mtime)
+        XCTAssertEqual(sorter.getSortedProjects().map(\.name), ["old", "newer"])
+        manager.applyFileSystemBatch([scanned])
+        XCTAssertEqual(store.publicationCount - before, 1)
     }
 
     func testBatchRemovalPublishesOnceAndClearsSortedList() {

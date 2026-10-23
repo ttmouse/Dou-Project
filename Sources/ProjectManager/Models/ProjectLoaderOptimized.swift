@@ -170,10 +170,6 @@ class ProjectLoaderOptimized {
             
             print("增量更新: 新增 \(addedPaths.count), 移除 \(removedPaths.count)")
             
-            if addedPaths.isEmpty && removedPaths.isEmpty {
-                return Array(currentProjects.values)
-            }
-            
             // 3. 创建新项目
             let newProjects = addedPaths.isEmpty ? [] : 
                 createProjectsBatch(paths: addedPaths, existingProjects: currentProjects)
@@ -191,6 +187,18 @@ class ProjectLoaderOptimized {
             // 添加新项目
             for project in newProjects {
                 updatedProjects[project.id] = project
+            }
+
+            // 路径集合没变也可能有修改日期变化，只读项目目录本身，不递归扫描。
+            for project in currentProjects.values where newPaths.contains(project.path) {
+                guard let values = try? URL(fileURLWithPath: project.path).resourceValues(
+                    forKeys: [.contentModificationDateKey, .fileSizeKey]
+                ), let modified = values.contentModificationDate else { continue }
+                let size = UInt64(values.fileSize ?? 0)
+                updatedProjects[project.id] = project.copyWith(fileSystemInfo: Project.FileSystemInfo(
+                    modificationDate: modified, size: size,
+                    checksum: "\(modified.timeIntervalSince1970)_\(size)", lastCheckTime: Date()
+                ))
             }
             
             return Array(updatedProjects.values)

@@ -338,7 +338,7 @@ class ProjectListViewModel: ObservableObject {
         // 7. 日期筛选
         if let cutoff = dateFilter.cutoffDate {
             projects = projects.filter { project in
-                project.activityAt >= cutoff
+                project.mtime >= cutoff
             }
         }
         
