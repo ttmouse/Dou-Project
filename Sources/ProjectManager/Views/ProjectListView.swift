@@ -503,6 +503,12 @@ struct ProjectListView: View {
             .accessibilityHidden(true)
         }
         .background(SelectAllResponder(action: selectAllProjects))
+        .background(
+            EscapeKeyCanceller(
+                isEnabled: TagSelectionEscapeLogic.shouldCancel(viewModel.selectedTags),
+                action: clearTagSelection
+            )
+        )
         .onAppear {
             // 设置 viewModel 的 tagManager 引用
             viewModel.setTagManager(tagManager)
@@ -536,6 +542,13 @@ struct ProjectListView: View {
 
     // MARK: - 私有方法
     
+    /// Esc 取消标签筛选：回到「全部」。
+    /// 只清标签，不动搜索、目录与日期筛选 —— 那些各自有明确的清除入口。
+    private func clearTagSelection() {
+        guard TagSelectionEscapeLogic.shouldCancel(viewModel.selectedTags) else { return }
+        viewModel.selectedTags.removeAll()
+    }
+
     private func handleTagSelection(_ tag: String) {
         print("🏷️ 标签点击: \(tag)")
         NSApp.keyWindow?.makeFirstResponder(nil)
