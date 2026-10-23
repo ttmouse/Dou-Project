@@ -32,13 +32,6 @@ struct SidebarView: View {
                 .background(AppTheme.divider)
                 .padding(.vertical, 8)
             
-            // 热力图 - 使用缓存数据
-            heatmapSection
-            
-            Divider()
-                .background(AppTheme.divider)
-                .padding(.vertical, 8)
-            
             // 标签列表使用剩余空间
             TagListView(
                 selectedTags: $selectedTags,
