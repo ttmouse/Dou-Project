@@ -4,6 +4,24 @@ import XCTest
 @testable import ProjectManager
 
 final class TagAppearanceTests: XCTestCase {
+    func testTextTagsHaveNoInsetsAndPillStylesKeepTheirInsets() {
+        XCTAssertEqual(TagAppearance.text.horizontalPadding, 0)
+        XCTAssertEqual(TagAppearance.text.verticalPadding, 0)
+        for appearance in [TagAppearance.gray, .colorful] {
+            XCTAssertEqual(appearance.horizontalPadding, 8)
+            XCTAssertEqual(appearance.verticalPadding, 4)
+        }
+    }
+
+    @MainActor
+    func testSwiftUITextTagFitsItsTextWithoutExtraInsets() {
+        _ = NSApplication.shared
+        let tag = NSHostingView(rootView: TagView(tag: "yiwu", color: .blue, fontSize: 13, appearanceOverride: .text))
+        let text = NSHostingView(rootView: Text("#yiwu").font(.system(size: 13)))
+        XCTAssertEqual(tag.fittingSize.width, text.fittingSize.width, accuracy: 0.5)
+        XCTAssertEqual(tag.fittingSize.height, text.fittingSize.height, accuracy: 0.5)
+    }
+
     func testHashStyleOnlyChangesDisplayLabel() {
         XCTAssertEqual(TagAppearance.text.label(for: "AI"), "#AI")
         XCTAssertEqual(TagAppearance.text.label(for: "#已有前缀"), "#已有前缀")
@@ -55,7 +73,9 @@ final class TagAppearanceTests: XCTestCase {
         row.update(project: project, selected: false, tags: tags, appearance: .text)
         let text = try XCTUnwrap(tagButton(in: row))
         XCTAssertEqual(text.title, "#AI")
-        XCTAssertGreaterThan(text.tagWidth, original.tagWidth)
+        XCTAssertLessThan(text.tagWidth, original.tagWidth)
+        let expectedWidth = ceil(("#AI" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width)
+        XCTAssertEqual(text.tagWidth, expectedWidth)
         text.performClick(nil)
         XCTAssertEqual(received, .tag("AI"))
         text.onRemove()

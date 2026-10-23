@@ -52,8 +52,8 @@ struct TagView: View {
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, appearance.horizontalPadding)
+        .padding(.vertical, appearance.verticalPadding)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(backgroundColor)

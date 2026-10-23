@@ -147,7 +147,7 @@ final class NativeProjectListRow: NSTableCellView, NSDraggingSource {
     private func layoutTags() {
         var x: CGFloat = 0
         for button in tagButtons {
-            button.frame = NSRect(x: x, y: 1, width: button.tagWidth, height: 22)
+            button.frame = NSRect(x: x, y: (24 - button.tagHeight) / 2, width: button.tagWidth, height: button.tagHeight)
             x = button.frame.maxX + 4
         }
         tagDocument.frame.size = NSSize(width: max(tagScroll.contentSize.width, x - 4), height: 24)
@@ -340,7 +340,12 @@ final class NativeProjectTagButton: NSButton {
     private var hovered = false
     private let removeButton = ProjectRowButton()
     private let textWidth: CGFloat
-    var tagWidth: CGFloat { textWidth + 16 + (hovered ? 16 : 0) }
+    var tagWidth: CGFloat { textWidth + tagStyle.horizontalPadding * 2 + (hovered ? 16 : 0) }
+    var tagHeight: CGFloat {
+        guard tagStyle == .text else { return 22 }
+        let font = NSFont.systemFont(ofSize: 11)
+        return ceil(font.ascender - font.descender + font.leading)
+    }
 
     init(tag: TagDisplayData, appearance: TagAppearance = .colorful) {
         self.tagData = tag
@@ -370,7 +375,7 @@ final class NativeProjectTagButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         NSColor(tagStyle.background(base: tagData.color)).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
-        (tagStyle.label(for: tagData.name) as NSString).draw(at: NSPoint(x: 8, y: 4), withAttributes: [
+        (tagStyle.label(for: tagData.name) as NSString).draw(at: NSPoint(x: tagStyle.horizontalPadding, y: tagStyle.verticalPadding), withAttributes: [
             .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor(tagStyle.foreground(base: tagData.color))
         ])
         if window?.firstResponder === self {
@@ -381,7 +386,7 @@ final class NativeProjectTagButton: NSButton {
 
     override func layout() {
         super.layout()
-        removeButton.frame = NSRect(x: bounds.width - 20, y: 4, width: 12, height: 14)
+        removeButton.frame = NSRect(x: bounds.width - 12 - tagStyle.horizontalPadding, y: (bounds.height - 14) / 2, width: 12, height: 14)
     }
 
     override func updateTrackingAreas() {

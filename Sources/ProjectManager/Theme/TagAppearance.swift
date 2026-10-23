@@ -7,6 +7,8 @@ enum TagAppearance: String, CaseIterable, Identifiable {
 
     static let preferenceKey = "tagAppearance"
     var id: String { rawValue }
+    var horizontalPadding: CGFloat { self == .text ? 0 : 8 }
+    var verticalPadding: CGFloat { self == .text ? 0 : 4 }
 
     var title: String {
         switch self {

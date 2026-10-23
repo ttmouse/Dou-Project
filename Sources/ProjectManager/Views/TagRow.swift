@@ -25,8 +25,8 @@ struct TagRow: View {
                     .fontWeight(appearance == .text && isSelected ? .semibold : .regular)
                     .foregroundColor(textColor)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, appearance.horizontalPadding)
+            .padding(.vertical, appearance.verticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(tagBackgroundColor)
