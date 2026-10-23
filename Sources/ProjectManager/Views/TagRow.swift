@@ -77,9 +77,7 @@ struct TagRow: View {
                     isSelected ? AppTheme.sidebarSelectedBackground : 
                     (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
                 )
-                .onHover { hovering in
-                    isHovered = hovering
-                }
+                .background(IconHoverTracking { isHovered = $0 })
         )
         .contentShape(Rectangle())
         .onTapGesture {

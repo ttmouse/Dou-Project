@@ -19,6 +19,7 @@ struct IconHoverTracking: NSViewRepresentable {
 final class IconHoverTrackingView: NSView {
     var onHover: (Bool) -> Void = { _ in }
     private var hoverArea: NSTrackingArea?
+    private var isHovering = false
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -26,12 +27,29 @@ final class IconHoverTrackingView: NSView {
         super.updateTrackingAreas()
         if let hoverArea { removeTrackingArea(hoverArea) }
         let area = NSTrackingArea(rect: .zero,
-                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
                                   owner: self)
         addTrackingArea(area)
         hoverArea = area
+        // 布局或行位置变化时，旧的进入/离开状态可能仍留在上一行。
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window, window.isVisible else { return }
+            self.updateHover(at: window.mouseLocationOutsideOfEventStream)
+        }
     }
 
-    override func mouseEntered(with event: NSEvent) { onHover(true) }
-    override func mouseExited(with event: NSEvent) { onHover(false) }
+    override func mouseEntered(with event: NSEvent) { updateHover(at: event.locationInWindow) }
+    override func mouseMoved(with event: NSEvent) { updateHover(at: event.locationInWindow) }
+    override func mouseExited(with event: NSEvent) { setHovered(false) }
+
+    private func updateHover(at windowPoint: NSPoint) {
+        let point = convert(windowPoint, from: nil)
+        setHovered(!isHiddenOrHasHiddenAncestor && bounds.contains(point))
+    }
+
+    private func setHovered(_ value: Bool) {
+        guard isHovering != value else { return }
+        isHovering = value
+        onHover(value)
+    }
 }

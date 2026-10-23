@@ -439,21 +439,19 @@ struct DirectoryRow: View {
                     .padding(.horizontal, AppTheme.tagCountPaddingH)
                     .padding(.vertical, AppTheme.tagCountPaddingV)
             }
-            .contentShape(Rectangle()) // 使整个区域可点击
             .padding(.horizontal, AppTheme.tagRowPaddingH)
             .padding(.vertical, AppTheme.tagRowPaddingV)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.tagRowCornerRadius)
                     .fill(
                         isSelected ? AppTheme.sidebarSelectedBackground : 
                         (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
                     )
+                    .background(IconHoverTracking { isHovered = $0 })
             )
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            self.isHovered = hovering
-        }
     }
 }
 
