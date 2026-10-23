@@ -475,6 +475,14 @@ struct ProjectListView: View {
             }
         }
         .environmentObject(tagManager)
+        .background {
+            Button(action: copySelectedProjectPaths) {
+                EmptyView()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .option])
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+        }
         .background(SelectAllResponder(action: selectAllProjects))
         .onAppear {
             // 设置 viewModel 的 tagManager 引用
@@ -555,6 +563,34 @@ struct ProjectListView: View {
         }
         
         print("已选择 \(selectedProjects.count) 个项目")
+    }
+
+    private func copySelectedProjectPaths() {
+        let paths = selectedProjects.compactMap { tagManager.projects[$0]?.path }.sorted()
+        guard !paths.isEmpty else { return }
+
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string) else {
+            return
+        }
+
+        let soundURL = Bundle.main.url(
+            forResource: "speech_stop",
+            withExtension: "wav",
+            subdirectory: "RTC"
+        ) ?? Bundle.module.url(
+            forResource: "speech_stop",
+            withExtension: "wav",
+            subdirectory: "Resources/RTC"
+        )
+        guard let soundURL else {
+            return
+        }
+
+        if let sound = NSSound(contentsOf: soundURL, byReference: false) {
+            sound.volume = 0.6
+            sound.play()
+        }
     }
 }
 
