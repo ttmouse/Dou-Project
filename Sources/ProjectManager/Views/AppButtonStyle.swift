@@ -133,10 +133,10 @@ struct IconButtonSurface<Label: View>: View {
             .background {
                 RoundedRectangle(cornerRadius: 7)
                     .fill(backgroundColor)
+                    .background(IconHoverTracking { isHovered = $0 })
             }
             .contentShape(RoundedRectangle(cornerRadius: 7))
             .animation(.easeOut(duration: 0.12), value: isHovered)
-            .onHover { isHovered = $0 }
     }
 
     private var backgroundColor: Color {
