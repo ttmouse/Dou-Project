@@ -68,12 +68,6 @@ struct TagRow: View {
                 .frame(minWidth: 24, alignment: .center) // 固定最小宽度，居中对齐
                 .padding(.horizontal, AppTheme.tagCountPaddingH)
                 .padding(.vertical, AppTheme.tagCountPaddingV)
-                .background(
-                    isSelected
-                        ? AppTheme.accent.opacity(0.2)
-                        : AppTheme.sidebarDirectoryBackground
-                )
-                .cornerRadius(AppTheme.tagCountCornerRadius)
         }
         .padding(.horizontal, AppTheme.tagRowPaddingH)
         .padding(.vertical, AppTheme.tagRowPaddingV)

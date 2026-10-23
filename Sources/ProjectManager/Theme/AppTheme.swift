@@ -245,8 +245,6 @@ enum AppTheme {
     static let tagRowPaddingV: CGFloat = 4
     /// 标签行圆角
     static let tagRowCornerRadius: CGFloat = 0
-    /// 标签计数背景圆角
-    static let tagCountCornerRadius: CGFloat = 4
     /// 标签计数内边距 - 水平
     static let tagCountPaddingH: CGFloat = 8
     /// 标签计数内边距 - 垂直
