@@ -479,6 +479,8 @@ struct ProjectListView: View {
             Button(action: copySelectedProjectPaths) {
                 EmptyView()
             }
+            // 默认按钮即使布局尺寸为零，仍会在窗口中央绘制原生按钮底座。
+            .buttonStyle(.plain)
             .keyboardShortcut("c", modifiers: [.command, .option])
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
