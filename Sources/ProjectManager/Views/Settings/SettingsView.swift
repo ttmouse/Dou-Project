@@ -5,11 +5,13 @@ import SwiftUI
 enum SettingsTab: String, CaseIterable {
     case editors = "编辑器"
     case tagging = "自动标签"
+    case dashboard = "项目仪表盘"
 
     var icon: String {
         switch self {
         case .editors: return "pencil"
         case .tagging: return "tag"
+        case .dashboard: return "chart.line.uptrend.xyaxis"
         }
     }
 }
@@ -86,6 +88,12 @@ struct SettingsView: View {
                     EditorsTabView(editorManager: editorManager)
                 case .tagging:
                     TaggingTabView(tagManager: tagManager)
+                case .dashboard:
+                    DashboardView(
+                        projects: tagManager.projects.values.map { ProjectData(from: $0) },
+                        usesCompactLayout: true
+                    )
+                        .environmentObject(tagManager)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

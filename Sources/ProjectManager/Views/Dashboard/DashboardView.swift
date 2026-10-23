@@ -8,6 +8,7 @@ struct DashboardView: View {
     
     let projects: [ProjectData]
     let onClose: (() -> Void)?
+    private let usesCompactLayout: Bool
     
     private var dashboardProjects: [ProjectData] {
         let allProjects = tagManager.projects.values.map { project in
@@ -17,9 +18,10 @@ struct DashboardView: View {
         return ProjectLogic.filterProjectsByHiddenTags(allProjects)
     }
     
-    init(projects: [ProjectData] = [], onClose: (() -> Void)? = nil) {
+    init(projects: [ProjectData] = [], onClose: (() -> Void)? = nil, usesCompactLayout: Bool = false) {
         self.projects = projects
         self.onClose = onClose
+        self.usesCompactLayout = usesCompactLayout
         self._viewModel = StateObject(wrappedValue: DashboardViewModel(projects: projects))
     }
     
@@ -43,7 +45,7 @@ struct DashboardView: View {
             }
             .padding(20)
         }
-        .navigationTitle("开发活动概览")
+        .navigationTitle(usesCompactLayout ? "" : "开发活动概览")
         .onChange(of: projects) { newProjects in
             // Linus式修复：使用tagManager重新获取最新的项目数据，确保包含git_daily
             let freshProjects = tagManager.projects.values.map { project in
@@ -138,55 +140,48 @@ struct DashboardView: View {
     }
     
     private var quickStatsCards: some View {
-        HStack(spacing: 16) {
-            QuickStatCard(
-                title: "当前连续",
-                value: "\(viewModel.currentStreak)",
-                subtitle: "天",
-                icon: "flame.fill",
-                color: .orange
-            )
-            
-            QuickStatCard(
-                title: "最长连续",
-                value: "\(viewModel.longestStreak)",
-                subtitle: "天",
-                icon: "trophy.fill",
-                color: .yellow
-            )
-            
-            QuickStatCard(
-                title: "最近7天",
-                value: "\(viewModel.recentActiveDays)",
-                subtitle: "活跃天数",
-                icon: "calendar",
-                color: .blue
-            )
-            
-            QuickStatCard(
-                title: "活跃项目",
-                value: "\(viewModel.mostActiveProjects.count)",
-                subtitle: "个项目",
-                icon: "folder.fill",
-                color: .green
-            )
+        Group {
+            if usesCompactLayout {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(0..<4, id: \.self) { index in
+                        quickStatCard(for: index)
+                    }
+                }
+            } else {
+                HStack(spacing: 16) {
+                    ForEach(0..<4, id: \.self) { index in
+                        quickStatCard(for: index)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func quickStatCard(for index: Int) -> some View {
+        switch index {
+        case 0:
+            QuickStatCard(title: "当前连续", value: "\(viewModel.currentStreak)", subtitle: "天", icon: "flame.fill", color: .orange)
+        case 1:
+            QuickStatCard(title: "最长连续", value: "\(viewModel.longestStreak)", subtitle: "天", icon: "trophy.fill", color: .yellow)
+        case 2:
+            QuickStatCard(title: "最近7天", value: "\(viewModel.recentActiveDays)", subtitle: "活跃天数", icon: "calendar", color: .blue)
+        default:
+            QuickStatCard(title: "活跃项目", value: "\(viewModel.mostActiveProjects.count)", subtitle: "个项目", icon: "folder.fill", color: .green)
         }
     }
     
     private var mainContentSection: some View {
         VStack(spacing: 20) {
             // 热力图区域
-            VStack(alignment: .leading, spacing: 12) {
-                Text("提交活动热力图")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                UnifiedHeatmapView(
-                    projects: dashboardProjects,
-                    config: .dashboard
-                )
-                .background(AppTheme.secondaryBackground)
-                .cornerRadius(10)
+            if usesCompactLayout {
+                ScrollView(.horizontal) {
+                    heatmapSection
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                heatmapSection
             }
             
             // 统计信息卡片
@@ -196,6 +191,21 @@ struct DashboardView: View {
             if !viewModel.mostActiveProjects.isEmpty {
                 recentCommitProjectsSection
             }
+        }
+    }
+
+    private var heatmapSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("提交活动热力图")
+                .font(.headline)
+                .fontWeight(.semibold)
+
+            UnifiedHeatmapView(
+                projects: dashboardProjects,
+                config: .dashboard
+            )
+            .background(AppTheme.secondaryBackground)
+            .cornerRadius(10)
         }
     }
     
@@ -373,6 +383,7 @@ struct RecentCommitProjectRow: View {
                 Text(project.path)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
                     .truncationMode(.middle)
             }
             
