@@ -109,8 +109,10 @@ enum AppTheme {
     static let cardBorder = Color(hex: "#2D2D2D")
     /// 卡片阴影色 - 黑色，不透明度30%
     static let cardShadow = Color(hex: "#000000", alpha: 0.0)
-    /// 卡片悬停色 - 白色，不透明度8%
-    static let cardHover = Color(hex: "#FFFFFF", alpha: 0.08)
+    /// 网格卡片悬停时轻微提亮。
+    static let cardHover = Color(hex: "#FFFFFF", alpha: 0.03)
+    /// 网格卡片的选中状态使用淡紫色叠层。
+    static let cardSelectionTint = accent.opacity(0.1)
     /// 卡片选中背景色
     static let cardSelectedBackground = accent.opacity(0.2)
     /// 卡片选中边框色

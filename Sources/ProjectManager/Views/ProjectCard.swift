@@ -333,7 +333,11 @@ struct ProjectCard: View, Equatable {
         .frame(height: AppTheme.cardHeight)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
-                .fill(isSelected || isHovered ? AppTheme.cardSelectedBackground : AppTheme.cardBackground)
+                .fill(AppTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius)
+                        .fill(isSelected ? AppTheme.cardSelectionTint : (isHovered ? AppTheme.cardHover : Color.clear))
+                )
         )
         .onHover { isHovered = $0 }
 
