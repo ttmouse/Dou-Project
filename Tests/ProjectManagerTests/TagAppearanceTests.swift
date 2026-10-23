@@ -7,7 +7,7 @@ final class TagAppearanceTests: XCTestCase {
     func testTextTagsHaveNoInsetsAndPillStylesKeepTheirInsets() {
         XCTAssertEqual(TagAppearance.text.horizontalPadding, 0)
         XCTAssertEqual(TagAppearance.text.verticalPadding, 0)
-        for appearance in [TagAppearance.gray, .colorful] {
+        for appearance in [TagAppearance.gray, .colorful, .mutedColorful] {
             XCTAssertEqual(appearance.horizontalPadding, 8)
             XCTAssertEqual(appearance.verticalPadding, 4)
         }
@@ -46,13 +46,29 @@ final class TagAppearanceTests: XCTestCase {
         XCTAssertEqual(TagAppearance.colorful.background(base: .green, selected: true), .green)
     }
 
+    func testMutedColorsHalveOpacityInNormalSelectedAndPreviewStates() {
+        for selected in [false, true] {
+            for preview in [false, true] {
+                for base in [Color.blue, .green, .orange] {
+                    XCTAssertEqual(TagAppearance.mutedColorful.foreground(base: base, selected: selected, preview: preview),
+                                   TagAppearance.colorful.foreground(base: base, selected: selected, preview: preview).opacity(0.5))
+                    XCTAssertEqual(TagAppearance.mutedColorful.background(base: base, selected: selected, preview: preview),
+                                   TagAppearance.colorful.background(base: base, selected: selected, preview: preview).opacity(0.5))
+                }
+            }
+        }
+        XCTAssertEqual(TagAppearance.mutedColorful.label(for: "AI"), "AI")
+    }
+
     func testPreferenceDefaultsToColorfulAndPersistsSelection() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "TagAppearanceTests.\(UUID().uuidString)"))
         let storage = AppStorage(wrappedValue: TagAppearance.colorful, TagAppearance.preferenceKey, store: defaults)
         XCTAssertEqual(storage.wrappedValue, .colorful)
-        storage.wrappedValue = .text
-        let restored = AppStorage(wrappedValue: TagAppearance.colorful, TagAppearance.preferenceKey, store: defaults)
-        XCTAssertEqual(restored.wrappedValue, .text)
+        for appearance in TagAppearance.allCases {
+            storage.wrappedValue = appearance
+            let restored = AppStorage(wrappedValue: TagAppearance.colorful, TagAppearance.preferenceKey, store: defaults)
+            XCTAssertEqual(restored.wrappedValue, appearance)
+        }
     }
 
     @MainActor
@@ -70,6 +86,11 @@ final class TagAppearanceTests: XCTestCase {
 
         row.update(project: project, selected: false, tags: tags, appearance: .colorful)
         let original = try XCTUnwrap(tagButton(in: row))
+        row.update(project: project, selected: false, tags: tags, appearance: .mutedColorful)
+        let muted = try XCTUnwrap(tagButton(in: row))
+        XCTAssertFalse(muted === original)
+        XCTAssertEqual(muted.title, "AI")
+        XCTAssertEqual(muted.tagWidth, original.tagWidth)
         row.update(project: project, selected: false, tags: tags, appearance: .text)
         let text = try XCTUnwrap(tagButton(in: row))
         XCTAssertEqual(text.title, "#AI")
