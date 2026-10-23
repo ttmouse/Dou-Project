@@ -32,6 +32,7 @@ struct ProjectCardCollectionView: NSViewRepresentable {
     let onRequestRename: (Project) -> Void
     let onPortConflict: (Project, Int) -> Void
     let onClearSelection: () -> Void
+    let onSelectionChange: (Set<UUID>) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -44,7 +45,7 @@ struct ProjectCardCollectionView: NSViewRepresentable {
         // `prepare()` 里按当前宽度重算，宽度一变尺寸跟着变。
         let layout = ProjectGridLayout()
 
-        let collectionView = NSCollectionView()
+        let collectionView = ProjectSelectableCollectionView()
         collectionView.collectionViewLayout = layout
         collectionView.dataSource = context.coordinator
         collectionView.delegate = context.coordinator
@@ -54,13 +55,20 @@ struct ProjectCardCollectionView: NSViewRepresentable {
             ProjectCardItem.self,
             forItemWithIdentifier: ProjectCardItem.identifier
         )
+        let selectionOverlay = SelectionOverlayView(frame: collectionView.bounds)
+        selectionOverlay.autoresizingMask = [.width, .height]
+        collectionView.addSubview(selectionOverlay, positioned: .above, relativeTo: nil)
+        collectionView.selectionOverlay = selectionOverlay
 
-        // 点空白处：取消选择 + 交还焦点，行为与原来的网格背景手势一致。
-        let background = ClearSelectionView()
-        background.onClick = { [weak coordinator = context.coordinator] in
+        collectionView.onClearSelection = { [weak coordinator = context.coordinator] in
             coordinator?.parent.onClearSelection()
         }
-        collectionView.backgroundView = background
+        collectionView.onSelectionChange = { [weak coordinator = context.coordinator] ids in
+            coordinator?.parent.onSelectionChange(ids)
+        }
+        collectionView.currentSelection = { [weak coordinator = context.coordinator] in
+            coordinator?.parent.selectedIDs ?? []
+        }
 
         let scrollView = ProjectGridScrollView()
         scrollView.drawsBackground = false
@@ -165,6 +173,7 @@ final class ProjectCardItem: NSCollectionViewItem {
 
     private var hostingView: NSHostingView<AnyView>?
     private var projectID: UUID?
+    var representedProjectID: UUID? { projectID }
 
     override func loadView() {
         view = CardContainerView()
@@ -269,13 +278,84 @@ private final class CardContainerView: NSView {
     }
 }
 
-/// 网格空白处的点击区。
-private final class ClearSelectionView: NSView {
-    var onClick: (() -> Void)?
+/// 由网格本身接收空白区域的鼠标事件，避免 backgroundView 命中测试绕过手势。
+private final class ProjectSelectableCollectionView: NSCollectionView {
+    var onClearSelection: (() -> Void)?
+    var onSelectionChange: ((Set<UUID>) -> Void)?
+    var currentSelection: (() -> Set<UUID>)?
+    private var dragOrigin: NSPoint?
+    private var selectionRect: NSRect?
+    private var startingSelection: Set<UUID> = []
+    weak var selectionOverlay: SelectionOverlayView?
+
+    override var isFlipped: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        onClick?()
+        let point = convert(event.locationInWindow, from: nil)
+        guard indexPathForItem(at: point) == nil else {
+            super.mouseDown(with: event)
+            return
+        }
+        dragOrigin = point
+        selectionRect = nil
+        let additive = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.shift)
+        startingSelection = additive ? (currentSelection?() ?? []) : []
         window?.makeFirstResponder(nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragOrigin else {
+            super.mouseDragged(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let rect = NSRect(x: min(dragOrigin.x, point.x), y: min(dragOrigin.y, point.y),
+                          width: abs(point.x - dragOrigin.x), height: abs(point.y - dragOrigin.y))
+        selectionRect = rect
+        selectionOverlay?.selectionRect = rect
+        updateSelection(rect)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard dragOrigin != nil else {
+            super.mouseUp(with: event)
+            return
+        }
+        if selectionRect == nil { onClearSelection?() }
+        dragOrigin = nil
+        selectionRect = nil
+        selectionOverlay?.selectionRect = nil
+    }
+
+    private func updateSelection(_ rect: NSRect) {
+        var ids = startingSelection
+        for index in 0..<numberOfItems(inSection: 0) {
+            let indexPath = IndexPath(item: index, section: 0)
+            guard let attributes = collectionViewLayout?.layoutAttributesForItem(at: indexPath),
+                  attributes.frame.intersects(rect),
+                  let item = item(at: indexPath) as? ProjectCardItem,
+                  let id = item.representedProjectID else { continue }
+            ids.insert(id)
+        }
+        onSelectionChange?(ids)
+    }
+}
+
+private final class SelectionOverlayView: NSView {
+    var selectionRect: NSRect? { didSet { needsDisplay = true } }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let selectionRect else { return }
+        NSColor.controlAccentColor.withAlphaComponent(0.16).setFill()
+        NSBezierPath(rect: selectionRect).fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.8).setStroke()
+        let border = NSBezierPath(rect: selectionRect)
+        border.lineWidth = 1
+        border.stroke()
     }
 }
 

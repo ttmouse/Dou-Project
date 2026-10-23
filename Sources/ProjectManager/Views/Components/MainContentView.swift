@@ -285,7 +285,8 @@ struct ProjectGridView: View {
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 searchBarRef?.clearFocus()
                 if !selectedProjects.isEmpty { selectedProjects.removeAll() }
-            }
+            },
+            onSelectionChange: { selectedProjects = $0 }
         )
         .sheet(item: $editingTagsProject) { project in
             TagEditorView(project: project, tagManager: tagManager)
