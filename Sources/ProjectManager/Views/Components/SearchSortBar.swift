@@ -24,8 +24,7 @@ struct SearchSortBar: View {
             } label: {
                 ToolbarIcon(systemName: projectViewMode.icon)
             }
-            .buttonStyle(IconButtonStyle())
-            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
+            .buttonStyle(IconButtonStyle(iconSize: 16, buttonSize: AppTheme.searchBarControlHeight))
             .accessibilityLabel("切换视图，当前\(projectViewMode.title)")
             .help("切换到\(projectViewMode == .grid ? ProjectViewMode.list.title : ProjectViewMode.grid.title)")
 
@@ -37,7 +36,7 @@ struct SearchSortBar: View {
             }) {
                 ToolbarIcon(systemName: "sidebar.trailing")
             }
-            .buttonStyle(IconButtonStyle(isSelected: showDetailPanel))
+            .buttonStyle(IconButtonStyle(isSelected: showDetailPanel, iconSize: 16, buttonSize: AppTheme.searchBarControlHeight))
             .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
         }
         .padding(.leading, AppTheme.cardGridPadding)
@@ -76,7 +75,7 @@ struct SortButtons: View {
         } label: {
             ToolbarIcon(systemName: "arrow.up.arrow.down")
         }
-        .buttonStyle(IconButtonStyle())
+        .buttonStyle(IconButtonStyle(iconSize: 16, buttonSize: AppTheme.searchBarControlHeight))
         .popover(isPresented: $isShowingOptions, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 5) {
                 sortSection("更新时间", options: [
@@ -173,8 +172,8 @@ struct DateFilterMenu: View {
         }
         .buttonStyle(IconButtonStyle(
             isSelected: isFiltering,
-            iconSize: 18,
-            buttonSize: 30,
+            iconSize: 16,
+            buttonSize: AppTheme.searchBarControlHeight,
             buttonWidth: 62
         ))
         .popover(isPresented: $isShowingOptions, arrowEdge: .bottom) {
