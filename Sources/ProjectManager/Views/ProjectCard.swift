@@ -44,7 +44,7 @@ struct ProjectCard: View, Equatable {
     private var headerView: some View {
         HStack {
             Text(project.name)
-                .font(AppTheme.titleFont)
+                .font(.system(size: 17, weight: .medium))
                 .foregroundColor(AppTheme.text)
                 .lineLimit(1)
 
@@ -86,8 +86,8 @@ struct ProjectCard: View, Equatable {
     /// 路径视图，显示项目路径
     private var pathView: some View {
         Text(project.displayPath)
-            .font(AppTheme.captionFont)
-            .foregroundColor(AppTheme.secondaryText)
+            .font(.system(size: 11))
+            .foregroundColor(AppTheme.secondaryText.opacity(0.8))
             .lineLimit(1)
             .help(project.path)
     }
