@@ -108,7 +108,6 @@ struct ProjectCard: View, Equatable {
 
             // Git 提交次数
             if let gitInfo = project.gitInfo {
-                Spacer(minLength: 0)
                 HStack(spacing: 4) {
                     ProjectGitBranchIcon()
                         .stroke(lineWidth: 13 * 1.5 / 16)
