@@ -125,3 +125,10 @@ tasks/
 artifacts/
 .pm-tag-package-*/
 .dsh/
+
+# 本地快照备份（*.bak.<时间戳>，不进版本库）
+*.bak
+*.bak.*
+
+# 应用自身的项目备注文件（由 ProjectManager 读写，非源码）
+PROJECT_NOTES.md
