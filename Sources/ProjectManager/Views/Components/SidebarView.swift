@@ -45,6 +45,7 @@ struct SidebarView: View {
                 searchBarRef: $searchBarRef,
                 isShowingNewTagDialog: $isShowingNewTagDialog,
                 tagToRename: $tagToRename,
+                selectedDirectory: selectedDirectory,
                 onTagSelected: onTagSelected
             )
             .layoutPriority(1)
@@ -364,6 +365,7 @@ struct TagListView: View {
     @Binding var isShowingNewTagDialog: Bool
     @Binding var tagToRename: IdentifiableString?
     @EnvironmentObject var tagManager: TagManager
+    let selectedDirectory: String?
     let onTagSelected: (String) -> Void  // 添加标签选择回调
     
     var body: some View {
@@ -386,23 +388,35 @@ struct TagListView: View {
             Button(action: {
                 isShowingNewTagDialog = true
             }) {
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.accent)
             }
             .buttonStyle(.plain)
             .help("新建标签")
-
-            clearButton
         }
         .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
         .padding(.vertical, AppTheme.tagListHeaderPaddingV)
     }
     
     private var tagListContent: some View {
-        // 标签使用统计只算一次：原先排序比较器里每次比较都重算整份统计，
-        // 一次排序会重复计算 O(tags × log(tags)) 次，标签多时明显拖慢侧边栏重绘。
-        let statistics = tagManager.getAllTagStatistics()
-        let sortedTags = TagLogic.sortTagsByUsage(Array(tagManager.allTags), usage: statistics)
+        // 目录选中时，标签集合与计数都基于该目录内的项目，和主列表保持一致。
+        let scopedProjects: [Project]
+        if let selectedDirectory {
+            scopedProjects = selectedDirectory == DirectoryLogic.unassignedKey
+                ? tagManager.unassignedProjects()
+                : tagManager.projects(in: selectedDirectory)
+        } else {
+            scopedProjects = Array(tagManager.projects.values)
+        }
+        var statistics: [String: Int] = [:]
+        for project in scopedProjects {
+            for tag in project.tags {
+                statistics[tag, default: 0] += 1
+            }
+        }
+        let visibleTags = Set(statistics.keys)
+        let sortedTags = TagLogic.sortTagsByUsage(Array(visibleTags), usage: statistics)
 
         return ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: AppTheme.tagRowSpacing) {
@@ -410,7 +424,7 @@ struct TagListView: View {
                 TagRow(
                     tag: "全部",
                     isSelected: selectedTags.isEmpty,
-                    count: tagManager.projects.count,
+                    count: scopedProjects.count,
                     action: {
                         onTagSelected("全部")  // 使用统一的回调
                     },
@@ -423,7 +437,7 @@ struct TagListView: View {
                 TagRow(
                     tag: "没有标签",
                     isSelected: selectedTags.contains("没有标签"),
-                    count: tagManager.projects.values.filter { $0.tags.isEmpty }.count,
+                    count: scopedProjects.filter { $0.tags.isEmpty }.count,
                     action: {
                         onTagSelected("没有标签")  // 使用统一的回调
                     },
@@ -448,17 +462,6 @@ struct TagListView: View {
             }
             .padding(.vertical, AppTheme.tagListContentPaddingV)
         }
-    }
-    
-    private var clearButton: some View {
-        Button(action: { selectedTags.removeAll() }) {
-            Text("清除")
-                .font(.subheadline)
-                .foregroundColor(
-                    selectedTags.isEmpty ? AppTheme.sidebarSecondaryText : AppTheme.accent)
-        }
-        .buttonStyle(.plain)
-        .opacity(selectedTags.isEmpty ? 0.5 : 1)
     }
     
     private func handleDrop(tag: String) -> Bool {

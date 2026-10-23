@@ -81,8 +81,8 @@ enum AppTheme {
     // MARK: - 侧边栏样式
     /// 侧边栏背景色 - #1A1A1A
     static let sidebarBackground = Color(hex: "#1A1A1A")
-    /// 侧边栏边框色 - #2D2D2D
-    static let sidebarBorder = Color(hex: "#2D2D2D")
+    /// 侧边栏与主内容之间的弱分隔线
+    static let sidebarBorder = Color(hex: "#383838")
     /// 侧边栏标题色 - 白色，不透明度90%
     static let sidebarTitle = Color(hex: "#FFFFFF", alpha: 0.9)
     /// 侧边栏次要文本色 - 白色，不透明度60%

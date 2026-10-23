@@ -81,6 +81,9 @@ struct TagRow: View {
                     isSelected ? AppTheme.sidebarSelectedBackground : 
                     (isHovered ? AppTheme.sidebarHoverBackground : Color.clear)
                 )
+                .onHover { hovering in
+                    isHovered = hovering
+                }
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -88,13 +91,10 @@ struct TagRow: View {
             action()
         }
         .contextMenu { contextMenuContent }
-        .onHover { hovering in
-            self.isHovered = hovering
-        }
         .onDrop(of: [.data], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
-        .id("\(tag)-\(tagManager.colorManager.getColor(for: tag)?.description ?? "")")
+        .id(tag)
     }
     
     // 计算标签文字颜色

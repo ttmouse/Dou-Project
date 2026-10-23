@@ -25,7 +25,7 @@ struct DirectoryListView: View {
                     .font(.headline)
                     .foregroundColor(AppTheme.sidebarTitle)
                 
-                Spacer()
+                Spacer(minLength: 12)
                 
                 // 添加目录管理菜单
                 Menu {
@@ -130,12 +130,15 @@ struct DirectoryListView: View {
                     }
                     .disabled(tagManager.scanState.isScanning)
                 } label: {
-                    Image(systemName: "folder.badge.plus")
+                    Image(systemName: "ellipsis")
                         .foregroundColor(AppTheme.sidebarSecondaryText)
-                        .font(.system(size: 14))
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 24, height: 24)
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
             .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
             .padding(.vertical, AppTheme.tagListHeaderPaddingV)
@@ -468,4 +471,4 @@ struct DirectoryListView_Previews: PreviewProvider {
         .background(AppTheme.sidebarBackground)
     }
 }
-#endif 
+#endif
