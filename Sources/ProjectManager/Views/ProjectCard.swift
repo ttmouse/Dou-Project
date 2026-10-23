@@ -85,10 +85,11 @@ struct ProjectCard: View, Equatable {
 
     /// 路径视图，显示项目路径
     private var pathView: some View {
-        Text(project.path)
+        Text(project.displayPath)
             .font(AppTheme.captionFont)
             .foregroundColor(AppTheme.secondaryText)
             .lineLimit(1)
+            .help(project.path)
     }
 
     /// 信息视图，显示项目日期和Git提交次数
