@@ -168,7 +168,16 @@ class ProjectListViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var orderedProjects: [Project] = []
     private var searchCandidates: [Project] = []
-    private var searchIndex: [UUID: String] = [:]
+    private var searchIndex: [UUID: SearchableProjectText] = [:]
+
+    private struct SearchableProjectText {
+        let name: String
+        let tags: [String]
+
+        func matches(_ query: String) -> Bool {
+            name.contains(query) || tags.contains { $0.contains(query) }
+        }
+    }
     private var isSetup = false
 
     init() {
@@ -326,12 +335,12 @@ class ProjectListViewModel: ObservableObject {
     private func updateSearchResults() {
         var projects = searchCandidates
         // 6. 搜索文本筛选
-        // 不在这里读取 Project.notes：它会同步访问磁盘，输入每个字符都会触发一次 I/O，
-        // 这是搜索“卡住”的主要来源。普通搜索只匹配项目名，不匹配路径和用户名。
+        // 不在这里读取 Project.notes：它会同步访问磁盘，输入每个字符都会触发一次 I/O。
+        // 搜索匹配项目名和标签，不匹配路径、用户名或备注。
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
         if !query.isEmpty {
             projects = projects.filter { project in
-                searchIndex[project.id]?.contains(query) == true
+                searchIndex[project.id]?.matches(query) == true
             }
         }
 
@@ -372,7 +381,10 @@ class ProjectListViewModel: ObservableObject {
 
         let allProjects = Array(tagManager.projects.values)
         searchIndex = Dictionary(uniqueKeysWithValues: allProjects.map { project in
-            (project.id, project.name.localizedLowercase)
+            (project.id, SearchableProjectText(
+                name: project.name.localizedLowercase,
+                tags: project.tags.map { $0.localizedLowercase }
+            ))
         })
     }
     
