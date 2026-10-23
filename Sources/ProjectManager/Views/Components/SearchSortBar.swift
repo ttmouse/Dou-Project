@@ -7,63 +7,9 @@ struct SearchSortBar: View {
     @Binding var searchBarRef: SearchBar?
     @Binding var showDetailPanel: Bool
     @Binding var projectViewMode: ProjectViewMode
-    let tagManager: TagManager
-    @State private var isShowingDashboard = false
-    @State private var dashboardProjects: [ProjectData] = []
-
-    private func makeDashboardProjects() -> [ProjectData] {
-        Array(tagManager.projects.values).map { project in
-            ProjectData(
-                id: project.id,
-                name: project.name,
-                path: project.path,
-                lastModified: project.lastModified,
-                tags: project.tags,
-                gitInfo: project.gitInfo.map { gitInfo in
-                    ProjectData.GitInfoData(
-                        commitCount: gitInfo.commitCount,
-                        lastCommitDate: gitInfo.lastCommitDate
-                    )
-                },
-                fileSystemInfo: ProjectData.FileSystemInfoData(
-                    modificationDate: project.fileSystemInfo.modificationDate,
-                    size: UInt64(project.size),
-                    checksum: project.checksum,
-                    lastCheckTime: project.checked
-                )
-            )
-        }
-    }
     
     var body: some View {
-        HStack(spacing: 12) {
-            // 左侧工具按钮组
-            HStack(spacing: 8) {
-                // 仪表盘按钮
-                Button(action: {
-                    dashboardProjects = makeDashboardProjects()
-                    isShowingDashboard = true
-                }) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .foregroundColor(AppTheme.titleBarIcon)
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(.plain)
-                .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
-                .help("项目仪表盘")
-                
-                Picker("视图", selection: $projectViewMode) {
-                    ForEach(ProjectViewMode.allCases, id: \.self) { mode in
-                        Image(systemName: mode.icon)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 72, height: AppTheme.searchBarControlHeight)
-                .help(projectViewMode.title)
-            }
-
+        HStack(spacing: AppTheme.searchToolbarItemSpacing) {
             // 搜索框占据中间剩余空间，避免右侧控件溢出
             SearchBar(input: searchInput)
                 .modifier(ViewReferenceSetter(reference: $searchBarRef))
@@ -73,30 +19,30 @@ struct SearchSortBar: View {
             DateFilterMenu(dateFilter: $dateFilter)
             SortButtons(sortOption: $sortOption)
 
+            Button {
+                projectViewMode = projectViewMode == .grid ? .list : .grid
+            } label: {
+                ToolbarIcon(systemName: projectViewMode.icon)
+            }
+            .buttonStyle(IconButtonStyle())
+            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
+            .accessibilityLabel("切换视图，当前\(projectViewMode.title)")
+            .help("切换到\(projectViewMode == .grid ? ProjectViewMode.list.title : ProjectViewMode.grid.title)")
+
             // 详情面板从右侧展开，开关固定在工具栏最右侧以保持空间映射。
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showDetailPanel.toggle()
                 }
             }) {
-                Image(systemName: "sidebar.trailing")
-                    .foregroundColor(showDetailPanel ? AppTheme.accent : AppTheme.titleBarIcon)
-                    .font(.system(size: 18))
+                ToolbarIcon(systemName: "sidebar.trailing")
             }
-            .buttonStyle(.plain)
-            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
+            .buttonStyle(IconButtonStyle(isSelected: showDetailPanel))
             .help(showDetailPanel ? "隐藏详情面板" : "显示详情面板")
         }
-        .sheet(isPresented: $isShowingDashboard) {
-            DashboardView(
-                projects: dashboardProjects,
-                onClose: {
-                    isShowingDashboard = false
-                }
-            )
-            .frame(minWidth: 800, minHeight: 600)
-        }
-        .padding(AppTheme.searchBarAreaPadding)
+        .padding(.leading, AppTheme.cardGridPadding)
+        .padding(.vertical, AppTheme.searchBarAreaPadding)
+        .padding(.trailing, AppTheme.searchBarAreaPadding)
         .frame(height: AppTheme.searchBarAreaHeight)
         .background(AppTheme.searchBarAreaBackground)
         .overlay(
@@ -111,41 +57,84 @@ struct SearchSortBar: View {
 // MARK: - 排序按钮组件
 struct SortButtons: View {
     @Binding var sortOption: SortOption
-    
+    @State private var isShowingOptions = false
+
+    private var currentSortLabel: String {
+        switch sortOption.column {
+        case .activity:
+            return sortOption.isAscending ? "更新时间 · 最早优先" : "更新时间 · 最新优先"
+        case .commits:
+            return sortOption.isAscending ? "提交次数 · 少到多" : "提交次数 · 多到少"
+        case .name:
+            return sortOption.isAscending ? "项目名称 · A 到 Z" : "项目名称 · Z 到 A"
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            // 时间排序按钮
-            Button(action: {
-                sortOption = sortOption.toggled(for: .activity)
-            }) {
-                Image(systemName: sortOption.column == .activity && sortOption.isAscending
-                    ? "arrow.up.circle.fill"
-                    : "arrow.down.circle.fill")
-                    .foregroundColor(sortOption.column == .activity ? AppTheme.accent : AppTheme.titleBarIcon)
-                    .font(.system(size: 20))
+        Button {
+            isShowingOptions.toggle()
+        } label: {
+            ToolbarIcon(systemName: "arrow.up.arrow.down")
+        }
+        .buttonStyle(IconButtonStyle())
+        .popover(isPresented: $isShowingOptions, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 5) {
+                sortSection("更新时间", options: [
+                    ("最新优先", .timeDescending),
+                    ("最早优先", .timeAscending)
+                ])
+                Divider()
+                sortSection("提交次数", options: [
+                    ("多到少", .commitCountDescending),
+                    ("少到多", .commitCountAscending)
+                ])
+                Divider()
+                sortSection("项目名称", options: [
+                    ("A 到 Z", .nameAscending),
+                    ("Z 到 A", .nameDescending)
+                ])
             }
-            .buttonStyle(.plain)
-            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
-            .help(sortOption.column == .activity && sortOption.isAscending ? "最早的在前" : "最新的在前")
+            .padding(7)
+            .frame(width: 192)
+        }
+        .help("排序方式：\(currentSortLabel)")
+        .accessibilityLabel("排序方式")
+        .accessibilityValue(currentSortLabel)
+    }
 
-            // 提交次数排序按钮
-            Button(action: {
-                sortOption = sortOption.toggled(for: .commits)
-            }) {
-                HStack(spacing: 2) {
-                    Image(systemName: "number.circle.fill")
-                        .font(.system(size: 20))
+    private func sortSection(_ title: String, options: [(String, SortOption)]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.secondaryText)
+                .padding(.horizontal, 8)
 
-                    if sortOption.column == .commits {
-                        Image(systemName: sortOption.isAscending ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
+            ForEach(Array(options.enumerated()), id: \.offset) { _, item in
+                let (title, option) = item
+                Button {
+                    sortOption = option
+                    isShowingOptions = false
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(title)
+                        Spacer(minLength: 8)
+                        if sortOption == option {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
                     }
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(AppTheme.text)
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, minHeight: 27)
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
+                    .background(
+                        sortOption == option ? AppTheme.accent.opacity(0.18) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
                 }
-                .foregroundColor(sortOption.column == .commits ? AppTheme.accent : AppTheme.titleBarIcon)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .frame(width: AppTheme.searchBarControlHeight, height: AppTheme.searchBarControlHeight)
-            .help(sortOption.column == .commits && sortOption.isAscending ? "提交少的在前" : "提交多的在前")
         }
     }
 }
@@ -159,8 +148,7 @@ struct SearchSortBar_Previews: PreviewProvider {
             dateFilter: .constant(.all),
             searchBarRef: .constant(nil),
             showDetailPanel: .constant(false),
-            projectViewMode: .constant(.grid),
-            tagManager: TagManager()
+            projectViewMode: .constant(.grid)
         )
     }
 }
@@ -169,36 +157,57 @@ struct SearchSortBar_Previews: PreviewProvider {
 // MARK: - 日期筛选菜单
 struct DateFilterMenu: View {
     @Binding var dateFilter: DateFilter
+    @State private var isShowingOptions = false
+
+    private var isFiltering: Bool { dateFilter != .all }
     
     var body: some View {
-        Menu {
-            ForEach(DateFilter.allCases, id: \.self) { option in
-                Button(action: { dateFilter = option }) {
-                    if dateFilter == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
+        Button {
+            isShowingOptions.toggle()
+        } label: {
+            HStack(spacing: AppTheme.toolbarIconLabelSpacing) {
+                ToolbarIcon(systemName: "calendar")
+                Text(dateFilter.compactLabel)
+                    .font(.system(size: 12, weight: .medium))
+            }
+        }
+        .buttonStyle(IconButtonStyle(
+            isSelected: isFiltering,
+            iconSize: 18,
+            buttonSize: 30,
+            buttonWidth: 62
+        ))
+        .popover(isPresented: $isShowingOptions, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(DateFilter.allCases, id: \.self) { option in
+                    Button {
+                        dateFilter = option
+                        isShowingOptions = false
+                    } label: {
+                        HStack {
+                            Text(option.title)
+                            Spacer(minLength: 12)
+                            if dateFilter == option {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                        }
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(AppTheme.text)
+                        .padding(.horizontal, 9)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                        .background(
+                            dateFilter == option ? AppTheme.accent.opacity(0.18) : .clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "calendar")
-                Text(dateFilter.compactLabel)
-            }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(AppTheme.titleBarIcon)
-                .padding(.horizontal, 5)
-                .frame(height: AppTheme.searchBarControlHeight)
-                .contentShape(Rectangle())
-                .fixedSize()
+            .padding(6)
+            .frame(width: 152)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        // Borderless menus otherwise absorb the toolbar's remaining width, which also
-        // makes the opened menu nearly as wide as the window.
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(height: AppTheme.searchBarControlHeight)
         .accessibilityLabel("日期筛选")
         .accessibilityValue(dateFilter.title)
         .help("按日期筛选项目")
