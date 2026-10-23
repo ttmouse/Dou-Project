@@ -97,8 +97,8 @@ struct ProjectCard: View, Equatable {
         HStack(spacing: 16) {
             // 日期信息
             HStack(spacing: 4) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 13))
+                ProjectCalendarIcon()
+                    .stroke(lineWidth: 13 * 1.5 / 16)
                     .frame(width: 13, height: 13)
                 Text(ProjectCardDateDisplay.label(for: project.mtime))
             }
