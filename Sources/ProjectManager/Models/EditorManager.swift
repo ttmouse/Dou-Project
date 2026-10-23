@@ -356,6 +356,9 @@ class EditorManager: ObservableObject {
     func setDefaultEditor(_ editor: EditorConfig) {
         for index in editors.indices {
             editors[index].isDefault = (editors[index].id == editor.id)
+            if editors[index].id == editor.id {
+                editors[index].isEnabled = true
+            }
         }
         print("⭐ 设置默认编辑器: \(editor.name)")
         saveEditors()

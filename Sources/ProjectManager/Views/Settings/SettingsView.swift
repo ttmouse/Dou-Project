@@ -177,6 +177,17 @@ struct EditorRowView: View {
 
             Spacer()
 
+            if !editor.isDefault {
+                Button("设为默认") {
+                    editorManager.setDefaultEditor(editor)
+                }
+                .font(.system(size: 11, weight: .medium))
+                .buttonStyle(AppButtonStyle())
+                .help(editor.isEnabled
+                    ? "将 \(editor.name) 设为默认编辑器"
+                    : "启用并设 \(editor.name) 为默认编辑器")
+            }
+
             // 默认标记
             if editor.isDefault {
                 HStack(spacing: 4) {
