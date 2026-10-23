@@ -316,6 +316,7 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             let decoder = JSONDecoder()
             let projects = try decoder.decode([Project].self, from: data).filter {
                 ProjectDiscoveryPolicy.isEligibleProjectPath($0.path)
+                    && !ProjectDiscoveryPolicy.isWatchedRoot($0.path, watchedDirectories: watchedDirectories)
             }
             print("成功从缓存加载项目数据")
             return projects
@@ -1003,6 +1004,12 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
 
     func addWatchedDirectory(_ path: String) {
         directoryWatcher.addWatchedDirectory(path)
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        if let project = projects.values.first(where: {
+            URL(fileURLWithPath: $0.path).standardizedFileURL.path == normalizedPath
+        }) {
+            projectOperations.removeProject(project.id)
+        }
     }
 
     func removeWatchedDirectory(_ path: String) {
