@@ -69,23 +69,42 @@ final class ProjectListViewModelTests: XCTestCase {
         }
     }
 
-    func testSearchMatchesOnlyNamesNotUsernamesOrParentDirectories() async {
-        let named = ProjectFixtures.make(name: "DouTools", path: "/fixture/tools")
+    func testSearchMatchesNamesTagsAndPathsWithAllKeywords() async {
+        let named = ProjectFixtures.make(name: "DouTools", path: "/fixture/tools", tags: ["dev"])
         let usernameOnly = ProjectFixtures.make(name: "Alpha", path: "/Users/example-dou/Projects/Alpha")
         let directoryOnly = ProjectFixtures.make(name: "beta", path: "/fixture/dou-projects/beta")
-        let source = Source([named, usernameOnly, directoryOnly])
+        let taggedOnly = ProjectFixtures.make(name: "gamma", path: "/fixture/gamma", tags: ["dou"])
+        let projects = [named, usernameOnly, directoryOnly, taggedOnly]
+        let source = Source(projects)
         let model = ProjectListViewModel()
         model.setTagManager(source)
+
         model.searchText = "dou"
         await nextMainTurn()
-        XCTAssertEqual(model.filteredProjects.map(\.id), [named.id])
-        let pureResults = ProjectLogic.filterProjects(
-            [named, usernameOnly, directoryOnly].map { $0.toProjectData() }, by: "dou"
-        )
-        XCTAssertEqual(pureResults.map(\.id), [named.id])
+        XCTAssertEqual(Set(model.filteredProjects.map(\.id)), Set([named.id, usernameOnly.id, directoryOnly.id, taggedOnly.id]), "项目名、标签、路径都应命中")
+
+        model.searchText = "dou tools"
+        await nextMainTurn()
+        XCTAssertEqual(model.filteredProjects.map(\.id), [named.id], "空格分隔的关键词必须全部命中")
+
+        model.searchText = "dou fixture"
+        await nextMainTurn()
+        XCTAssertEqual(Set(model.filteredProjects.map(\.id)), Set([named.id, directoryOnly.id, taggedOnly.id]))
+
+        model.searchText = "  dou   beta  "
+        await nextMainTurn()
+        XCTAssertEqual(model.filteredProjects.map(\.id), [directoryOnly.id], "连续空格与前后空格都要折叠")
+
+        model.searchText = "dou nomatch"
+        await nextMainTurn()
+        XCTAssertTrue(model.filteredProjects.isEmpty)
+
         model.searchText = ""
         await nextMainTurn()
-        XCTAssertEqual(model.filteredProjects.count, 3)
+        XCTAssertEqual(model.filteredProjects.count, 4)
+
+        let pureResults = ProjectLogic.filterProjects(projects.map { $0.toProjectData() }, by: "dou beta")
+        XCTAssertEqual(pureResults.map(\.id), [directoryOnly.id])
     }
 
     func testTypingDoesNotInvalidateWholeListBeforeResultsChange() {

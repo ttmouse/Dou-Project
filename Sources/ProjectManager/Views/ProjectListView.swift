@@ -173,9 +173,16 @@ class ProjectListViewModel: ObservableObject {
     private struct SearchableProjectText {
         let name: String
         let tags: [String]
+        let path: String
 
-        func matches(_ query: String) -> Bool {
-            name.contains(query) || tags.contains { $0.contains(query) }
+        func matches(_ keywords: [String]) -> Bool {
+            // 空格分隔的多个关键词之间是「并且」关系：每个词都要在
+            // 项目名、标签或路径里命中，才能让输入越具体结果越收敛。
+            keywords.allSatisfy { keyword in
+                name.contains(keyword) ||
+                    path.contains(keyword) ||
+                    tags.contains { $0.contains(keyword) }
+            }
         }
     }
     private var isSetup = false
@@ -336,11 +343,12 @@ class ProjectListViewModel: ObservableObject {
         var projects = searchCandidates
         // 6. 搜索文本筛选
         // 不在这里读取 Project.notes：它会同步访问磁盘，输入每个字符都会触发一次 I/O。
-        // 搜索匹配项目名和标签，不匹配路径、用户名或备注。
+        // 搜索匹配项目名、标签和项目路径，不匹配备注。
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
-        if !query.isEmpty {
+        let keywords = SearchQuery.keywords(in: query)
+        if !keywords.isEmpty {
             projects = projects.filter { project in
-                searchIndex[project.id]?.matches(query) == true
+                searchIndex[project.id]?.matches(keywords) == true
             }
         }
 
@@ -383,7 +391,8 @@ class ProjectListViewModel: ObservableObject {
         searchIndex = Dictionary(uniqueKeysWithValues: allProjects.map { project in
             (project.id, SearchableProjectText(
                 name: project.name.localizedLowercase,
-                tags: project.tags.map { $0.localizedLowercase }
+                tags: project.tags.map { $0.localizedLowercase },
+                path: project.path.localizedLowercase
             ))
         })
     }
@@ -391,6 +400,18 @@ class ProjectListViewModel: ObservableObject {
     // MARK: - 手动刷新（用于某些特殊情况）
     func forceRefresh() {
         updateFilteredProjects()
+    }
+}
+
+/// 搜索查询解析：空格外视为多个关键词的「并且」组合。
+///
+/// 拆词只做一次，索引匹配阶段不重复解析；连续空格、前后空格都折叠掉。
+enum SearchQuery {
+    static func keywords(in text: String) -> [String] {
+        text
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+            .filter { !$0.isEmpty }
     }
 }
 

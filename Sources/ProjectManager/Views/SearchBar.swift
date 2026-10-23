@@ -19,7 +19,7 @@ struct SearchBar: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(AppTheme.titleBarIcon)
 
-            TextField("搜索项目...", text: $input.text)
+            TextField("搜索项目名、标签或路径，空格分隔多个关键词", text: $input.text)
                 .textFieldStyle(.plain)
                 .font(AppTheme.searchBarFont)
                 .foregroundColor(AppTheme.searchBarText)

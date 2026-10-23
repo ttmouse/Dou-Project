@@ -224,7 +224,7 @@ struct EmptyStateView: View {
             Text(isSearching ? "没有匹配的项目" : "当前筛选下没有项目")
                 .font(.headline)
 
-            Text(isSearching ? "换个关键词，或清空搜索框回到浏览" : "尝试清除标签、目录或日期筛选")
+            Text(isSearching ? "换个关键词（空格分隔多个词需全部命中），或清空搜索框回到浏览" : "尝试清除标签、目录或日期筛选")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 

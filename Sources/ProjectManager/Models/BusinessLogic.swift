@@ -26,16 +26,23 @@ enum ProjectLogic {
     }
     
     /// 根据搜索文本筛选项目
+    ///
+    /// 空格分隔多个关键词，全部命中才算匹配；关键词分别比对项目名、标签和路径。
     static func filterProjects(
         _ projects: [ProjectData],
         by searchText: String
     ) -> [ProjectData] {
-        if searchText.isEmpty {
+        let keywords = SearchQuery.keywords(in: searchText.lowercased())
+        if keywords.isEmpty {
             return projects
         }
         
         return projects.filter { project in
-            project.name.localizedCaseInsensitiveContains(searchText)
+            keywords.allSatisfy { keyword in
+                project.name.localizedCaseInsensitiveContains(keyword) ||
+                    project.path.localizedCaseInsensitiveContains(keyword) ||
+                    project.tags.contains { $0.localizedCaseInsensitiveContains(keyword) }
+            }
         }
     }
     
