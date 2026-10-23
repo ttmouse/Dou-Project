@@ -62,9 +62,10 @@ struct ProjectCardCollectionView: NSViewRepresentable {
         }
         collectionView.backgroundView = background
 
-        let scrollView = NSScrollView()
+        let scrollView = ProjectGridScrollView()
         scrollView.drawsBackground = false
         scrollView.configureProjectScrollIndicators()
+        layout.scrollView = scrollView
         scrollView.documentView = collectionView
 
         context.coordinator.collectionView = collectionView
@@ -242,6 +243,22 @@ final class ProjectCardItem: NSCollectionViewItem {
     }
 }
 
+/// Keep the collection document view aligned with the visible width as an HSplitView resizes.
+private final class ProjectGridScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+
+        guard let collectionView = documentView as? NSCollectionView else { return }
+        let visibleWidth = contentView.bounds.width
+        guard abs(collectionView.frame.width - visibleWidth) > 0.5 else { return }
+
+        collectionView.setFrameSize(
+            NSSize(width: visibleWidth, height: collectionView.frame.height)
+        )
+        collectionView.collectionViewLayout?.invalidateLayout()
+    }
+}
+
 /// 卡片容器的根视图：只负责承载一张卡片，不做自适布局。
 private final class CardContainerView: NSView {
     override var isFlipped: Bool { true }
@@ -272,6 +289,8 @@ private final class ClearSelectionView: NSView {
 final class ProjectGridLayout: NSCollectionViewLayout {
     private var metrics = ProjectGridMetrics.compute(containerWidth: 0, itemCount: 0)
     private var cachedAttributes: [NSCollectionViewLayoutAttributes] = []
+    weak var scrollView: NSScrollView?
+    private var preparedWidth: CGFloat = 0
 
     override func prepare() {
         super.prepare()
@@ -281,8 +300,13 @@ final class ProjectGridLayout: NSCollectionViewLayout {
             return
         }
         let count = collectionView.numberOfItems(inSection: 0)
+        // The collection view is the actual layout container. NSScrollView's frame
+        // can still report its old width during a split-view resize, which leaves
+        // cached card frames extending underneath the detail panel.
+        let layoutWidth = collectionView.bounds.width
+        preparedWidth = layoutWidth
         metrics = ProjectGridMetrics.compute(
-            containerWidth: collectionView.bounds.width,
+            containerWidth: layoutWidth,
             itemCount: count
         )
 
@@ -297,13 +321,11 @@ final class ProjectGridLayout: NSCollectionViewLayout {
 
     /// 宽度变化必须让布局失效，否则尺寸会被缓存住。
     override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {
-        let current = collectionView?.bounds.width ?? 0
-        return abs(newBounds.width - current) > 0.5
+        return abs(newBounds.width - preparedWidth) > 0.5
     }
 
     override var collectionViewContentSize: NSSize {
-        let width = collectionView?.bounds.width ?? 0
-        return NSSize(width: width, height: metrics.contentHeight)
+        NSSize(width: preparedWidth, height: metrics.contentHeight)
     }
 
     override func layoutAttributesForElements(in rect: NSRect) -> [NSCollectionViewLayoutAttributes] {

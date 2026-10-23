@@ -200,7 +200,7 @@ struct ProjectDetailPanelContainer: View {
                 isVisible: $isVisible,
                 tagManager: tagManager
             )
-            .frame(minWidth: 380, maxWidth: 380)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

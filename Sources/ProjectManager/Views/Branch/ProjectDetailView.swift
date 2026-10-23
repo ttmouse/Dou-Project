@@ -124,7 +124,6 @@ struct ProjectDetailView: View {
             contentSection
         }
         .background(AppTheme.background)
-        .frame(width: 380)
         .confirmationDialog(
             "删除分支",
             isPresented: $showDeleteConfirmation,

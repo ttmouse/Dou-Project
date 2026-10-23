@@ -138,7 +138,7 @@ enum AppTheme {
     /// 卡片网格内边距
     static let cardGridPadding: CGFloat = 16
     /// 卡片最小宽度
-    static let cardMinWidth: CGFloat = 250
+    static let cardMinWidth: CGFloat = 280
     /// 卡片最大宽度
     static let cardMaxWidth: CGFloat = 400
 

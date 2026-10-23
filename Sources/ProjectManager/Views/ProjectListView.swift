@@ -446,32 +446,37 @@ struct ProjectListView: View {
                 onTagSelected: handleTagSelection
             )
             
-            MainContentView(
-                searchInput: viewModel.searchInput,
-                results: viewModel.results,
-                sortOption: $viewModel.sortOption,
-                dateFilter: $viewModel.dateFilter,
-                selectedProjects: $selectedProjects,
-                searchBarRef: $searchBarRef,
-                showDetailPanel: $showDetailPanel,
-                projectViewMode: $projectViewMode,
-                editorManager: editorManager,
-                onShowProjectDetail: showProjectDetail,
-                onTagSelected: handleTagSelection
-            )
-            
-            // 详情面板（条件显示）。单独持有结果对象，
-            // 搜索结果变化只让它自己重算，不牵动侧边栏和网格。
-            if showDetailPanel {
-                ProjectDetailPanelContainer(
-                    results: viewModel.results,
-                    selectedProjectIDs: selectedProjects,
-                    currentProjectID: $selectedProjectForDetailId,
-                    isVisible: $showDetailPanel,
-                    tagManager: tagManager
-                )
-                .transition(.move(edge: .trailing))
-                .zIndex(1)
+            GeometryReader { contentGeometry in
+                HStack(spacing: 0) {
+                    MainContentView(
+                        searchInput: viewModel.searchInput,
+                        results: viewModel.results,
+                        sortOption: $viewModel.sortOption,
+                        dateFilter: $viewModel.dateFilter,
+                        selectedProjects: $selectedProjects,
+                        searchBarRef: $searchBarRef,
+                        showDetailPanel: $showDetailPanel,
+                        projectViewMode: $projectViewMode,
+                        editorManager: editorManager,
+                        onShowProjectDetail: showProjectDetail,
+                        onTagSelected: handleTagSelection
+                    )
+                    .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+
+                    // Keep the detail panel inside the main content column so it
+                    // takes real width from the grid instead of covering its cards.
+                    if showDetailPanel {
+                        ProjectDetailPanelContainer(
+                            results: viewModel.results,
+                            selectedProjectIDs: selectedProjects,
+                            currentProjectID: $selectedProjectForDetailId,
+                            isVisible: $showDetailPanel,
+                            tagManager: tagManager
+                        )
+                        .frame(width: detailPanelWidth(for: contentGeometry.size.width))
+                        .transition(.move(edge: .trailing))
+                    }
+                }
             }
         }
         .environmentObject(tagManager)
@@ -542,6 +547,10 @@ struct ProjectListView: View {
         if showDetailPanel {
             selectedProjectForDetailId = project.id
         }
+    }
+
+    private func detailPanelWidth(for availableWidth: CGFloat) -> CGFloat {
+        min(380, max(280, availableWidth * 0.38))
     }
     
     private func convertToProjectData(_ project: Project) -> ProjectData {
