@@ -64,7 +64,15 @@ struct ContentView: View {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+
         if let window = NSApplication.shared.windows.first {
+            removeFocusRings(from: window.contentView)
             window.backgroundColor = NSColor(AppTheme.background)
 
             window.titleVisibility = .hidden
@@ -89,6 +97,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        for delay in [0.0, 0.15] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak window] in
+                self.removeFocusRings(from: window?.contentView)
+            }
+        }
+    }
+
+    private func removeFocusRings(from view: NSView?) {
+        guard let view else { return }
+        view.focusRingType = .none
+        view.subviews.forEach { removeFocusRings(from: $0) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
