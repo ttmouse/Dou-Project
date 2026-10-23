@@ -48,7 +48,7 @@ struct TagView: View {
                         .font(.system(size: fontSize))
                         .foregroundColor(textColor.opacity(0.8))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconButtonStyle(iconSize: fontSize, buttonSize: 20))
                 .transition(.opacity)
             }
         }

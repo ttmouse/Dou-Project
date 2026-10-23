@@ -69,7 +69,7 @@ struct SettingsView: View {
                             )
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(HoverBackgroundButtonStyle())
                         .padding(.horizontal, 8)
                     }
                 }
@@ -464,14 +464,14 @@ struct BusinessRuleRowView: View {
                         .font(.system(size: 12))
                         .foregroundColor(AppTheme.secondaryText)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconButtonStyle(iconSize: 12, buttonSize: 24))
                 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 12))
                         .foregroundColor(.red.opacity(0.8))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconButtonStyle(iconSize: 12, buttonSize: 24))
             }
         }
         .padding(.horizontal, 16)
@@ -514,7 +514,7 @@ struct BusinessRuleEditView: View {
                         .font(.system(size: 20))
                         .foregroundColor(AppTheme.secondaryText)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconButtonStyle(iconSize: 20, buttonSize: 30))
             }
             .padding(16)
             .background(AppTheme.sidebarBackground)

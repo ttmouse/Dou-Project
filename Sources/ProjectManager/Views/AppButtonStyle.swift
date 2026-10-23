@@ -57,6 +57,27 @@ struct IconButtonStyle: ButtonStyle {
     }
 }
 
+struct HoverBackgroundButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HoverBackgroundButtonBody(configuration: configuration)
+    }
+}
+
+private struct HoverBackgroundButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var isHovered = false
+
+    var body: some View {
+        configuration.label
+            .background {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered || configuration.isPressed ? AppTheme.buttonHover : .clear)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .onHover { isHovered = $0 }
+    }
+}
+
 private struct IconButtonStyleBody: View {
     let configuration: ButtonStyleConfiguration
     let isSelected: Bool

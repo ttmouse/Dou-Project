@@ -52,6 +52,7 @@ struct MainTabView: View {
                 }) {
                     Image(systemName: "sidebar.left")
                 }
+                .buttonStyle(IconButtonStyle())
             }
         }
     }
@@ -85,7 +86,7 @@ struct MainTabView: View {
                     )
                     .cornerRadius(6)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(HoverBackgroundButtonStyle())
             }
             
             Spacer()

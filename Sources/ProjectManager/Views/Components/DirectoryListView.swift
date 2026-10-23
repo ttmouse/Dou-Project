@@ -12,6 +12,7 @@ struct DirectoryListView: View {
     var onDirectorySelected: (() -> Void)? = nil // 添加目录选择的回调
     
     @State private var createProjectPath: CreateProjectPath?
+    @State private var isActionsHovered = false
     
     var body: some View {
         // 归属解析只算一次，保证“全部 = Σ目录 + 未分类”自洽
@@ -135,7 +136,12 @@ struct DirectoryListView: View {
                         .font(.system(size: 14, weight: .medium))
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
+                        .background(
+                            isActionsHovered ? AppTheme.buttonHover : .clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
                 }
+                .onHover { isActionsHovered = $0 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()

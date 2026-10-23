@@ -113,6 +113,7 @@ struct BranchListView: View {
                         .font(.caption)
                         .foregroundColor(isInSelectionMode ? .blue : .secondary)
                 }
+                .buttonStyle(IconButtonStyle(iconSize: 13, buttonSize: 26))
                 .help(isInSelectionMode ? "退出选择模式" : "批量选择")
                 
                 // 刷新按钮
@@ -120,6 +121,7 @@ struct BranchListView: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
                 }
+                .buttonStyle(IconButtonStyle(iconSize: 13, buttonSize: 26))
                 .help("刷新分支列表")
                 
                 // 创建分支按钮
@@ -127,9 +129,9 @@ struct BranchListView: View {
                     Image(systemName: "plus")
                         .font(.caption)
                 }
+                .buttonStyle(IconButtonStyle(iconSize: 13, buttonSize: 26))
                 .help("创建新分支")
             }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -150,7 +152,7 @@ struct BranchListView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(IconButtonStyle(iconSize: 13, buttonSize: 24))
                 }
             }
             .padding(.horizontal, 12)

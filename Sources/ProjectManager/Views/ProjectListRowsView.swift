@@ -132,7 +132,7 @@ struct ProjectListRowsView: View {
             .frame(maxWidth: .infinity, alignment: alignment)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverBackgroundButtonStyle())
         .help("按\(title)\(sortOption.toggled(for: column).isAscending ? "升序" : "降序")排列")
         .accessibilityLabel("按\(title)排序")
         .accessibilityValue(

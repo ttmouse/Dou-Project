@@ -203,10 +203,7 @@ struct ProjectDetailView: View {
                     .font(.system(size: 14))
                     .foregroundColor(AppTheme.secondaryIcon)
             }
-            .buttonStyle(.plain)
-            .padding(8)
-            .background(AppTheme.buttonBackground)
-            .cornerRadius(6)
+            .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 30))
             .help("关闭详情面板")
         }
         .padding(.horizontal, 20)
@@ -247,7 +244,7 @@ struct ProjectDetailView: View {
                     )
                     .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HoverBackgroundButtonStyle())
             }
             
             Spacer()
@@ -637,10 +634,7 @@ struct ProjectDetailView: View {
                     .font(.system(size: 11))
                     .foregroundColor(AppTheme.secondaryIcon)
             }
-            .buttonStyle(.plain)
-            .padding(4)
-            .background(AppTheme.buttonBackground.opacity(0.5))
-            .cornerRadius(4)
+            .buttonStyle(IconButtonStyle(iconSize: 11, buttonSize: 24))
             .help("复制")
         }
     }

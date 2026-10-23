@@ -59,7 +59,7 @@ struct TagRow: View {
                         .opacity(isHovered ? 0.8 : 0.0)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconButtonStyle(iconSize: 11, buttonSize: 20))
             .animation(.easeInOut(duration: 0.2), value: isHovered)
             
             Text("\(count)")

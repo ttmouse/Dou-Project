@@ -38,7 +38,7 @@ struct SearchBar: View {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(AppTheme.titleBarIcon)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconButtonStyle(iconSize: 12, buttonSize: 24))
             .opacity(input.text.isEmpty ? 0 : 1)
             .allowsHitTesting(!input.text.isEmpty)
             .accessibilityHidden(input.text.isEmpty)

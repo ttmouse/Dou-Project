@@ -101,10 +101,7 @@ struct DashboardView: View {
                                 .font(.system(size: 14))
                                 .foregroundColor(AppTheme.secondaryIcon)
                         }
-                        .buttonStyle(.plain)
-                        .padding(8)
-                        .background(AppTheme.buttonBackground)
-                        .cornerRadius(6)
+                        .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 30))
                         .help("关闭数据看板")
                     }
                 }
@@ -299,6 +296,7 @@ struct DashboardView: View {
         }) {
             Image(systemName: "arrow.clockwise")
         }
+        .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 28))
         .help("刷新仪表盘数据")
     }
     

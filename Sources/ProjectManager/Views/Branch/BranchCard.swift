@@ -26,7 +26,7 @@ struct BranchCard: View {
                             .foregroundColor(isSelected ? .blue : .secondary)
                             .font(.caption)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(IconButtonStyle(iconSize: 12, buttonSize: 24))
                 }
                 
                 // 分支名称和状态
@@ -106,7 +106,7 @@ struct BranchCard: View {
                 Image(systemName: "folder.fill")
                     .foregroundColor(.blue)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
             .help("在编辑器中打开分支")
             
             // Ghostty 终端按钮
@@ -116,7 +116,7 @@ struct BranchCard: View {
                 Image(systemName: "terminal.fill")
                     .foregroundColor(.purple)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
             .help("在 Ghostty 终端中打开")
             
             // 合并按钮（仅非主分支显示）
@@ -125,7 +125,7 @@ struct BranchCard: View {
                     Image(systemName: "arrow.triangle.merge")
                         .foregroundColor(.green)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
                 .help("合并到主分支")
             }
             
@@ -135,7 +135,7 @@ struct BranchCard: View {
                     Image(systemName: "trash.fill")
                         .foregroundColor(.red)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
                 .help("删除分支")
             }
         }

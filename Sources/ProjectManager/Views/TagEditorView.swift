@@ -42,7 +42,7 @@ struct TagEditorView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(AppTheme.sidebarSecondaryText)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(IconButtonStyle(iconSize: 13, buttonSize: 24))
                     }
                 }
                 .padding(8)

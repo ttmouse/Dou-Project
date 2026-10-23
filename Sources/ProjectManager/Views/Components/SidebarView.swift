@@ -381,7 +381,7 @@ struct TagListView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.accent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IconButtonStyle(iconSize: 14, buttonSize: 24))
             .help("新建标签")
         }
         .padding(.horizontal, AppTheme.tagListHeaderPaddingH)
