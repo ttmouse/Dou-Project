@@ -94,30 +94,34 @@ struct ProjectCard: View, Equatable {
 
     /// 信息视图，显示项目日期和Git提交次数
     private var infoView: some View {
-        HStack {
+        HStack(spacing: 16) {
             // 日期信息
             HStack(spacing: 4) {
                 Image(systemName: "calendar")
-                    .foregroundColor(AppTheme.secondaryIcon)
-                Text(ProjectCard.dateTimeFormatter.string(from: project.mtime))
+                    .font(.system(size: 13))
+                    .frame(width: 13, height: 13)
+                Text(ProjectCardDateDisplay.label(for: project.mtime))
             }
-            .font(AppTheme.captionFont)
-            .foregroundColor(AppTheme.secondaryText)
+            .help(ProjectCard.dateTimeFormatter.string(from: project.mtime))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("修改时间 \(ProjectCard.dateTimeFormatter.string(from: project.mtime))")
 
             // Git 提交次数
             if let gitInfo = project.gitInfo {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.branch")
-                        .foregroundColor(AppTheme.secondaryIcon)
+                        .font(.system(size: 13))
+                        .frame(width: 13, height: 13)
                     Text("\(gitInfo.commitCount)")
                 }
-                .font(AppTheme.captionFont)
-                .foregroundColor(AppTheme.secondaryText)
                 .help("累计提交")
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("累计提交 \(gitInfo.commitCount) 次")
             }
         }
+        .font(.system(size: 12))
+        .foregroundColor(AppTheme.secondaryText)
+        .lineLimit(1)
     }
 
     /// 标签视图，显示项目相关标签
