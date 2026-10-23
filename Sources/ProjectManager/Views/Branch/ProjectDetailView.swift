@@ -29,7 +29,7 @@ struct ProjectDetailView: View {
     // 备注编辑状态
     @State private var noteDraft: String = ""
     @State private var noteLoadedSnapshot: String = ""
-    @State private var noteSaveWorkItem: DispatchWorkItem?
+    @State private var noteSaveFailed = false
     @State private var activeProjectId: UUID?
     @State private var projectSnapshot: ProjectData
 
@@ -59,10 +59,10 @@ struct ProjectDetailView: View {
     
     // MARK: - 备注编辑逻辑
     private func syncNoteEditor() {
-        noteSaveWorkItem?.cancel()
         let snapshot = currentProjectData.notes ?? ""
         noteLoadedSnapshot = snapshot
         noteDraft = snapshot
+        noteSaveFailed = false
     }
     
     private func refreshNoteEditorFromStore() {
@@ -75,32 +75,20 @@ struct ProjectDetailView: View {
         }
     }
     
-    private func handleNoteDraftChange(_ newValue: String) {
-        if newValue == noteLoadedSnapshot {
-            noteSaveWorkItem?.cancel()
-            return
-        }
-        scheduleNoteSave(with: newValue)
-    }
-    
-    private func scheduleNoteSave(with text: String) {
-        noteSaveWorkItem?.cancel()
-        let pendingText = text
-        let projectId = currentProjectData.id
-        let workItem = DispatchWorkItem {
-            tagManager.updateProjectNotes(projectId: projectId, notes: pendingText)
-        }
-        noteSaveWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+    private var isNoteDirty: Bool {
+        noteDraft != noteLoadedSnapshot
     }
 
-    private func commitPendingNote(for projectId: UUID? = nil) {
-        noteSaveWorkItem?.cancel()
-        guard noteDraft != noteLoadedSnapshot else { return }
-        let targetId = projectId ?? activeProjectId ?? projectSnapshot.id
-        let currentText = noteDraft
-        tagManager.updateProjectNotes(projectId: targetId, notes: currentText)
-        noteLoadedSnapshot = currentText
+    private func saveNote() {
+        guard isNoteDirty else { return }
+        let succeeded = tagManager.updateProjectNotes(
+            projectId: activeProjectId ?? projectSnapshot.id,
+            notes: noteDraft
+        )
+        noteSaveFailed = !succeeded
+        if succeeded {
+            noteLoadedSnapshot = noteDraft
+        }
     }
 
     private func refreshProjectSnapshotFromStore(for targetId: UUID? = nil) {
@@ -173,20 +161,16 @@ struct ProjectDetailView: View {
             syncNoteEditor()
         }
         .onChange(of: project.id) { newId in
-            commitPendingNote(for: activeProjectId)
             activeProjectId = newId
             refreshProjectSnapshotFromStore(for: newId)
             loadProjectConfiguration()
             syncNoteEditor()
         }
-        .onChange(of: noteDraft) { newValue in
-            handleNoteDraftChange(newValue)
+        .onChange(of: noteDraft) { _ in
+            noteSaveFailed = false
         }
         .onReceive(tagManager.$projects) { _ in
             refreshNoteEditorFromStore()
-        }
-        .onDisappear {
-            commitPendingNote(for: activeProjectId)
         }
     }
     
@@ -311,7 +295,7 @@ struct ProjectDetailView: View {
             DetailTextEditor(placeholder: "输入备注…", text: $noteDraft)
             
             HStack(spacing: 12) {
-                Text("自动保存 · 搜索可用")
+                Text("手动保存")
                     .font(AppTheme.captionFont)
                     .foregroundColor(AppTheme.secondaryText)
                     .lineLimit(1)
@@ -319,9 +303,14 @@ struct ProjectDetailView: View {
 
                 Spacer()
 
-                Text(noteDraft != noteLoadedSnapshot ? "未保存" : "已保存")
+                Text(noteSaveFailed ? "保存失败" : (isNoteDirty ? "未保存" : "已保存"))
                     .font(AppTheme.captionFont)
-                    .foregroundColor(noteDraft != noteLoadedSnapshot ? AppTheme.accent : AppTheme.secondaryText)
+                    .foregroundColor(noteSaveFailed ? AppTheme.warning : (isNoteDirty ? AppTheme.accent : AppTheme.secondaryText))
+
+                Button("保存", action: saveNote)
+                    .buttonStyle(AppButtonStyle(isPrimary: true))
+                    .disabled(!isNoteDirty)
+                    .opacity(isNoteDirty ? 1 : 0.5)
 
                 Button("清除") {
                     noteDraft = ""

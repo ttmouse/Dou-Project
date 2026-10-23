@@ -603,12 +603,16 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
         }
     }
 
-    func updateProjectNotes(projectId: UUID, notes: String) {
-        print("更新项目备注: \(projectId) -> \(notes)")
-
-        guard var project = projects[projectId] else {
+    @discardableResult
+    func updateProjectNotes(projectId: UUID, notes: String) -> Bool {
+        guard let project = projects[projectId] else {
             print("⚠️ 项目不存在: \(projectId)")
-            return
+            return false
+        }
+
+        let normalizedNotes = notes.isEmpty ? nil : notes
+        guard ProjectNotesManager.writeNotes(normalizedNotes, to: project.path) else {
+            return false
         }
 
         let updatedProject = Project(
@@ -626,13 +630,19 @@ class TagManager: ObservableObject, ProjectOperationDelegate, DirectoryWatcherDe
             startupCommand: project.startupCommand,
             customPort: project.customPort,
             created: project.created,
-            checked: Date()
+            checked: project.checked
         )
 
         projects[projectId] = updatedProject
         sortManager.updateProject(updatedProject)
+        if let currentProjectData = appState.projects[projectId] {
+            var updatedProjects = appState.projects
+            updatedProjects[projectId] = currentProjectData.replacingNotes(normalizedNotes)
+            appState = AppStateLogic.updateState(appState, projects: updatedProjects)
+        }
         needsSave = true
         saveAll()
+        return true
     }
 
     /// Linus式标签操作 - 使用BusinessLogic处理，Manager只管状态同步
