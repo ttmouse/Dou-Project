@@ -2,7 +2,36 @@
 
 > 本文档由 ZCode 定时优化审查任务自动维护：定期扫描近期改动，聚焦最近修改的文件输出有代码依据的优化点。已有条目不重复记录，修复后请在对应条目标注「已修复（日期）」。
 
-最近更新：2026-09-29 03:09
+最近更新：2026-10-24 22:37
+
+## 2026-10-24 22:37（间隔 25 天合并审查）
+
+本轮范围：窗口内 8 个提交（86985f8 打包拷贝 SwiftPM 资源 bundle、e2e24af 多关键词+路径匹配搜索、sidebar/toolbar/tags/cards UI 修复）+ 未提交改动（实际仅 ProjectCard.swift 修改 + 新增 ProjectPathClipboard.swift / ProjectPathClipboardTests.swift，其余简报里的文件已不在工作区改动中）。docs/*.md 为过程测量笔记不审。ProjectManager.dmg 未被跟踪且 .gitignore:86 已覆盖，无问题。subagent 审查。
+
+- [中] Sources/ProjectManager/Models/BusinessLogic.swift:40-46 — 多关键词搜索逻辑存在两套并行实现，且纯函数那套在生产链路上是死代码
+  证据：e2e24af 同时改了两处。活的一套在 ProjectListView.swift:181-185（预小写索引 + `contains`）；另一套在 BusinessLogic.swift:41-45（`localizedCaseInsensitiveContains`），其生产入口 `TagManager.getFilteredProjects` 与 `AppStateLogic.getProcessedProjects` grep 全库均无调用方，唯一消费者是新增测试（ProjectListViewModelTests.swift:106）。两套匹配语义还有细微差别，目前只靠测试压平价。
+  为什么改：同一语义改两处迟早漂移；且一半被测代码在 App 里永远不跑，测试给死代码提供虚假保障。
+  怎么改：抽共享匹配器（预小写字段统一入参），`ProjectLogic.filterProjects` 与 ViewModel 都调它；或删掉死链，测试只测共享实现。
+
+- [中] build.sh:32-36 — 资源 bundle 被连续拷贝两次，且拷贝失败时脚本仍继续打出一个必然启动即崩的包
+  证据：86985f8 在同一提交加入两段几乎相同的 cp 块（一留一删的编辑事故）；脚本无 `set -e`，若 bundle 不存在，两次 cp 报错后照样走到 `hdiutil create`，产物正是这次修复想避免的「启动即崩」包。
+  为什么改：重复拷贝浪费且迷惑维护者；更关键的是该修复的失败路径仍是静默产出坏包。
+  怎么改：删一组，保留行改成 `cp -R ... || { echo "错误：SwiftPM 资源 bundle 缺失"; exit 1; }`（或脚本加 `set -e`）。
+
+- [低] Sources/ProjectManager/Models/BusinessLogic.swift:218-262 — HeatmapLogic 里两个 private 函数是死代码，且是全库最后一个 `bash -c` 注入面
+  证据：`getCommitsForDate`（:218）与 `executeGitCommand`（:237-262，内含 `process.arguments = ["-c", command]`）均 private static 且全库无调用。a6dc525/c2b6aa3 已消除 ShellExecutor 与 PortManager 的 bash -c，PortManager.swift:7 注释明确要杜绝该模式，唯独漏了这两段。
+  为什么改：注释明说要杜绝的模式只剩这一处；死代码留着就有被复用的一天。
+  怎么改：整体删除这两个 private 函数，bash -c 即清零。
+
+- [低] Sources/ProjectManager/Views/ProjectCardCollectionView.swift:108-112 — apply(animated:) 两个分支完全相同，参数形同虚设
+  证据：`if animated { reloadData() } else { reloadData() }`；makeNSView 传 false、updateNSView 传 true，行为无差别。
+  为什么改：误导读者以为初始加载与更新走不同路径。
+  怎么改：删条件直接 `reloadData()`；暂不做动画就连参数一并去掉。
+
+- [低] Sources/ProjectManager/Utilities/ProjectPathClipboard.swift:22 — 新代码再次硬编码 "ShowToast" 通知名，与 ToastView 形成第二处魔法字符串
+  证据：`NotificationCenter.default.post(name: Notification.Name("ShowToast"), ...)`；ToastView.swift:36 用 `.init("ShowToast")` 监听。同文件已为 toast 文案建了常量，唯独通知名没建。
+  为什么改：两处字符串任一改动 toast 就静默失效，无编译期保护。
+  怎么改：加 `extension Notification.Name { static let showToast = ... }`，两处改用 `.showToast`。
 
 ## 2026-09-29 03:09
 
@@ -17,11 +46,13 @@
   证据：`collectSingleProjectGitDaily` 构造 `cd '\(project.path)' && git log ... | sort | uniq -c | awk ... | tr ... | sed ...` 交 `executeShellCommand`（280-282 行 `process.arguments = ["-c", command]`）执行；同文件本轮新增的 `currentGitHead`（255-274 行）已示范正确写法：`process.executableURL = /usr/bin/git` + `arguments`，不经 shell。另外 `executeShellCommand` 每次打印完整命令与完整输出（278、303 行）。
   为什么改：项目路径来自磁盘扫描/拖拽，任何含 `'` 的目录名既导致采集失败，也可注入任意 shell 命令（本地安全/健壮性隐患）；5 个管道子进程纯属浪费，Swift 端按天聚合一行 `git log --pretty=%cd --date=short` 输出即可。
   怎么改：仿 `currentGitHead` 用 `Process` 直接调 git，在 Swift 里按天计数生成 git_daily，删除 `executeShellCommand`。
+  已修复（2026-10-24 复核）：executeShellCommand 已删除，采集改用 `Process` 直调（GitDailyCollector.swift:81 起）。
 
 - [中] Sources/ProjectManager/Models/GitDailyCollector.swift:327-345 — `withUpdatedGitDaily` 重建 Project 时漏传 `activityAt`，会把活动时间悄悄回退为 mtime
   证据：329 行起的 `Project(id:...)` 参数列表没有 `activityAt:`，而 `Project.init` 中 `self.activityAt = activityAt ?? self.mtime`（Project.swift:119）；唯一调用点是右键「刷新项目」（TagManager.swift:1006）。同批改动在其他所有重建点都补了 `activityAt: project.activityAt`（AutoTagger.swift:324/343、BusinessTagger.swift:229/248 等），唯独此处遗漏。排序 `.lastModified` 比较的就是 `activityAt`（TagManagerComponents.swift:74），日期筛选也用它。
   为什么改：刷新单个项目后，该项目会从「最近活动」排序和日期筛选中错误地退回 mtime；且暴露结构性风险——全仓有 9 处手工重建 Project 的样板，每加一个字段都要遍历修改，这次就漏了一处。
   怎么改：短期在 329 行补 `activityAt: project.activityAt`；长期仿照已有的 `Project.copyWith(...)` 把全部字段重建收敛为一个统一 copy 助手，替换散落各文件的样板。
+  已修复（2026-10-24 复核）：`withUpdatedGitDaily` 已改为 `copyWith(gitDaily:)`（GitDailyCollector.swift:316-321），activityAt 语义不再丢失。
 
 - [中] Sources/ProjectManager/Models/AutoTagger.swift:1-367 — 整个 AutoTagger（367 行）在生产代码中已无任何调用者，是 BusinessTagger 的同构重复
   证据：全仓 grep `AutoTagger` 仅命中 TagManager.swift:407 的注释，`generateTags/applyAutoTags/debugRules`（281/314/358 行）无调用、无测试引用；其结构与 BusinessTagger 完全同构，规则体里还有逐项目解析 package.json 的磁盘 I/O（24-56 行）。本轮 diff 仍不得不为它的两处 Project 重建补 `activityAt`——死代码也要跟着改。另：本轮新增的 `TagManager.isProject(_:in:)`（880-882 行）与 `projectCount(in:)`（896-898 行）同样无任何调用点。
