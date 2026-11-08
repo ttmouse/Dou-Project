@@ -37,7 +37,8 @@ struct ProjectCard: View, Equatable {
     let onPortConflict: (Project, Int) -> Void
 
     @State private var isHovered = false
-    
+    @State private var isPathHovered = false
+
     // MARK: - 子视图
     
     /// 头部视图，包含项目名称和操作按钮
@@ -83,13 +84,25 @@ struct ProjectCard: View, Equatable {
         }
     }
 
-    /// 路径视图，显示项目路径
+    /// 路径视图：单击直接复制完整路径，不进入详情。
+    /// 用按钮承载点击，与卡片其他图标按钮一致：既拿到正确的命中区域，
+    /// 也不会把单击继续传给卡片自身的 `.onTapGesture`（那会打开详情）。
     private var pathView: some View {
-        Text(project.displayPath)
-            .font(.system(size: 11))
-            .foregroundColor(AppTheme.secondaryText.opacity(0.8))
-            .lineLimit(1)
-            .help(project.path)
+        Button(action: { ProjectPathClipboard.copyWithToast(path: project.path) }) {
+            Text(project.displayPath)
+                .font(.system(size: 11))
+                .foregroundColor(isPathHovered ? AppTheme.secondaryText : AppTheme.secondaryText.opacity(0.8))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isPathHovered = hovering
+        }
+        .help("单击复制路径\n\(project.path)")
+        .accessibilityLabel("项目路径 \(project.displayPath)")
+        .accessibilityHint("单击复制完整路径")
     }
 
     /// 信息视图，显示项目日期和Git提交次数
